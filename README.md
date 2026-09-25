@@ -126,7 +126,7 @@ See the component READMEs for current detailed limits. Treat this release as an 
 
 ```sh
 # API
-cd api && npm ci && npm run check && npm run test:updates && npm run test:templates
+cd api && npm ci && npm run check && npm run test:cors && npm run test:updates && npm run test:templates
 
 # Web
 cd ../web && npm ci && npm run check && npm run build
@@ -140,3 +140,4 @@ The disposable API smoke test is in `tests/api-smoke-disposable.ps1`; it creates
 ## Project status
 
 Contributions and issue reports are welcome; please include reproduction steps and redact credentials, enrollment tokens, and backup URLs. A license has not yet been selected.
+
