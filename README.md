@@ -20,6 +20,8 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 Fledge is a self-hosted control panel for operating game servers across multiple Linux Docker hosts. The web panel and API manage users, templates, server lifecycle, placement, backups, and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port.
 
+The visible product, repository, package names, and release assets use **Fledge**. Version 0.1 retains a few internal `navrylo` identifiers for existing database volumes, database roles, session cookies, Docker labels, and agent paths so an in-place rename does not orphan current data or enrolled nodes.
+
 ```text
  Browser ── Panel ── API ── PostgreSQL
                          ├── S3-compatible backups
