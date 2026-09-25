@@ -37,7 +37,7 @@ services:
       PORT: "4000"
       NODE_ENV: production
       APP_VERSION: ${APP_VERSION:-0.1.0}
-      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-kavaliersdelikt/fledge}
+      GITHUB_REPOSITORY: kavaliersdelikt/fledge
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
