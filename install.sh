@@ -7,7 +7,7 @@ NO_WAIT=0
 
 usage() {
   cat <<'EOF'
-Navrylo local panel installer
+Fledge local panel installer
 
 Usage: sh install.sh [--check] [--no-wait]
   --check    Verify Docker Compose and repository files without changing anything.
@@ -24,7 +24,7 @@ for arg in "$@"; do
   esac
 done
 
-[ -f "$ROOT/compose.yaml" ] || { echo 'compose.yaml was not found; run this from a Navrylo source checkout.' >&2; exit 2; }
+[ -f "$ROOT/compose.yaml" ] || { echo 'compose.yaml was not found; run this from a Fledge source checkout.' >&2; exit 2; }
 [ -f "$ROOT/.env.example" ] || { echo '.env.example was not found.' >&2; exit 2; }
 command -v docker >/dev/null 2>&1 || { echo 'Docker is required. Install Docker Desktop (Windows/macOS) or Docker Engine + Compose (Linux).' >&2; exit 10; }
 command -v curl >/dev/null 2>&1 || { echo 'curl is required for health checks.' >&2; exit 11; }
@@ -91,4 +91,4 @@ until curl --fail --silent http://localhost:3000/ >/dev/null; do
   fi
   sleep 2
 done
-echo 'Navrylo is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'
+echo 'Fledge is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'
