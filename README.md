@@ -14,7 +14,7 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 </div>
 
-> **Early release · v0.1.0.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.1.0.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 
 ## What is Fledge?
 
