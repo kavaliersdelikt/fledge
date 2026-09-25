@@ -1,5 +1,5 @@
 [Unit]
-Description=Navrylo outbound Docker node agent
+Description=Fledge outbound Docker node agent
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
