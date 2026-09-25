@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($PSScriptRoot)
 
 if (-not (Test-Path -LiteralPath (Join-Path $root 'compose.yaml') -PathType Leaf)) {
-    throw 'compose.yaml was not found. Run this from a Navrylo source checkout.'
+    throw 'compose.yaml was not found. Run this from a Fledge source checkout.'
 }
 if (-not (Test-Path -LiteralPath (Join-Path $root '.env.example') -PathType Leaf)) {
     throw '.env.example was not found.'
@@ -81,4 +81,4 @@ for ($i = 0; $i -lt 60; $i++) {
     try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/' -TimeoutSec 2 | Out-Null; $ready = $true; break } catch { Start-Sleep -Seconds 2 }
 }
 if (-not $ready) { throw 'The panel did not become healthy within 120 seconds. Check docker compose logs web.' }
-Write-Host 'Navrylo is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'
+Write-Host 'Fledge is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'
