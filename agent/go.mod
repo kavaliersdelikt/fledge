@@ -1,6 +1,6 @@
 module fledge-agent
 
-go 1.19
+go 1.22
 
 require (
 	github.com/pkg/sftp v1.13.7
