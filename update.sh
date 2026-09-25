@@ -12,7 +12,7 @@ for arg in "$@"; do
     *) echo "Invalid release version: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
-if [ ! -d .git ]; then echo 'Run the updater from a Git checkout of Navrylo.' >&2; exit 2; fi
+if [ ! -d .git ]; then echo 'Run the updater from a Git checkout of Fledge.' >&2; exit 2; fi
 command -v git >/dev/null 2>&1 || { echo 'Git is required.' >&2; exit 2; }
 command -v docker >/dev/null 2>&1 || { echo 'Docker is required.' >&2; exit 2; }
 docker compose version >/dev/null 2>&1 || { echo 'Docker Compose v2 is required.' >&2; exit 2; }
@@ -74,4 +74,4 @@ if [ "$healthy" -ne 1 ]; then
 fi
 rm -f "$env_backup"
 ls -1t .backups/navrylo-db-*.sql 2>/dev/null | tail -n +8 | while IFS= read -r old_backup; do rm -f "$old_backup"; done
-echo "Navrylo $target is healthy. PostgreSQL backup: $backup"
+echo "Fledge $target is healthy. PostgreSQL backup: $backup"
