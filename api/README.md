@@ -1,4 +1,4 @@
-# Navrylo API + node agent (beta implementation)
+# Fledge API + node agent (beta implementation)
 
 This is a single-process TypeScript/Fastify control plane with PostgreSQL persistence and a polling, outbound-only Go Docker agent. It is **not** a completed commercial release. Do not put paying customers on it without the missing hardening and real-node tests below.
 
