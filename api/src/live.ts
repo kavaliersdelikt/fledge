@@ -69,4 +69,3 @@ export function registerLive(app:FastifyInstance){
  deny(socket,404);
  }catch(e){app.log.error(e,'live upgrade');socket.destroy();}})();});
 }
-

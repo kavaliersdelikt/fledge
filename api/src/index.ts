@@ -42,4 +42,3 @@ async function sweep(){if(sweeping)return;sweeping=true;try{
  }catch(e){app.log.error(e,'sweeper failed');}finally{sweeping=false;}}
 setInterval(sweep,15000).unref();await sweep();
 await app.listen({host:process.env.HOST||'0.0.0.0',port:PORT});
-

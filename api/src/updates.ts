@@ -2,7 +2,7 @@ import type {FastifyInstance} from 'fastify';
 import {admin} from './core.js';
 
 const repository=(process.env.GITHUB_REPOSITORY||'kavaliersdelikt/fledge').trim();
-const currentVersion=(process.env.APP_VERSION||'0.1.0').replace(/^v/i,'');
+const currentVersion=(process.env.APP_VERSION||'0.1.1').replace(/^v/i,'');
 let cached:{at:number;value:any}|undefined;
 const parse=(value:string)=>{const m=/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value);return m?[Number(m[1]),Number(m[2]),Number(m[3]),m[4]||'']:null;};
 const newer=(candidate:string,current:string)=>{const a=parse(candidate),b=parse(current);if(!a||!b)return false;for(let i=0;i<3;i++)if(a[i]!==b[i])return a[i]>b[i];return !a[3]&&!!b[3];};

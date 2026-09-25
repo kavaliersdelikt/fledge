@@ -83,4 +83,3 @@ jobs:
           sh tests/update-smoke.sh
           sh tests/connector-smoke.sh
           sh tests/release-build-smoke.sh
-

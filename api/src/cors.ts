@@ -9,4 +9,3 @@ export async function registerPanelCors(app:FastifyInstance,origin:string){
  if(!['http:','https:'].includes(parsed.protocol)||parsed.origin!==origin)throw new Error('WEB_ORIGIN must be one exact HTTP or HTTPS origin (scheme, host, and optional port only)');
  await app.register(cors,{origin,credentials:true,methods:[...PANEL_CORS_METHODS]});
 }
-

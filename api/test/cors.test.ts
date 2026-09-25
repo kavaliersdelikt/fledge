@@ -33,4 +33,3 @@ test('panel CORS refuses wildcard, null, and non-origin configuration',async()=>
   }
  }finally{await app.close()}
 });
-

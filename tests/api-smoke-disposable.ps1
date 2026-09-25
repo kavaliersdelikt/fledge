@@ -3,7 +3,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $dbName = 'navrylo-smoke-' + [guid]::NewGuid().ToString('N').Substring(0,10)
 $stdout = [IO.Path]::GetTempFileName(); $stderr = [IO.Path]::GetTempFileName()
 $apiProcess = $null; $startedDb = $false
-$envKeys = @('DATABASE_URL','ENCRYPTION_KEY','WEB_ORIGIN','PORT','TEST_API_URL','GITHUB_REPOSITORY','GITHUB_TOKEN','S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','S3_ENDPOINT')
+$envKeys = @('DATABASE_URL','ENCRYPTION_KEY','WEB_ORIGIN','PORT','TEST_API_URL','GITHUB_REPOSITORY','GITHUB_TOKEN','S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','S3_REGION','S3_ENDPOINT','FLEDGE_SMOKE_S3')
 $savedEnv = @{}; foreach ($key in $envKeys) { $savedEnv[$key] = [Environment]::GetEnvironmentVariable($key,'Process') }
 try {
     $dbId = & docker run -d --name $dbName -e POSTGRES_DB=navrylo_ci -e POSTGRES_USER=navrylo_ci -e POSTGRES_PASSWORD=ci_test_password_only -p '127.0.0.1::5432' --health-cmd 'pg_isready -U navrylo_ci -d navrylo_ci' --health-interval 2s --health-timeout 3s --health-retries 30 postgres:16-alpine
@@ -16,7 +16,13 @@ try {
     $env:ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     $env:WEB_ORIGIN = 'http://localhost:3000'; $env:PORT = [string]$apiPort
     $env:TEST_API_URL = "http://127.0.0.1:$apiPort"; $env:GITHUB_REPOSITORY = 'kavaliersdelikt/fledge'; $env:GITHUB_TOKEN = ''
-    foreach ($key in @('S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','S3_ENDPOINT')) { [Environment]::SetEnvironmentVariable($key,'','Process') }
+    if ($env:FLEDGE_SMOKE_S3 -eq 'true') {
+        foreach ($key in @('S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY')) { if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($key,'Process'))) { throw "S3 integration mode requires $key." } }
+        if ([string]::IsNullOrWhiteSpace($env:S3_ENDPOINT)) { throw 'S3 integration mode requires S3_ENDPOINT.' }
+        if (-not $env:S3_REGION) { $env:S3_REGION = 'us-east-1' }
+    } else {
+        foreach ($key in @('S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','S3_ENDPOINT','S3_REGION')) { [Environment]::SetEnvironmentVariable($key,'','Process') }
+    }
     $apiDir = Join-Path $root 'api'; $node = (Get-Command node.exe).Source
     $apiProcess = Start-Process -FilePath $node -ArgumentList @('--import','tsx','src/index.ts') -WorkingDirectory $apiDir -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     $ready = $false

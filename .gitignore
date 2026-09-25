@@ -13,6 +13,7 @@ dist/
 *.tar.gz
 coverage/
 /agent/navrylo-agent
+/agent/fledge-agent
 /release/
 .DS_Store
 .local-dev-credentials.txt

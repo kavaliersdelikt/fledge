@@ -10,11 +10,11 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 [Quick start](#quick-start) · [Connect a node](#connect-a-node) · [Documentation](#documentation) · [Known limits](#known-limits)
 
-<img src="docs/assets/banner2.png" width="100%" alt="Fledge — one panel, many worlds" />
+<img src="docs/assets/fledge-banner.svg" width="100%" alt="Fledge — one panel, many worlds" />
 
 </div>
 
-> **Version v0.1.0.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.1.1.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 
 ## What is Fledge?
 
@@ -53,7 +53,7 @@ git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git 
 git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git fledge; if ($LASTEXITCODE -ne 0) { throw 'Download failed.' }; Set-Location fledge; if (-not $?) { throw 'Could not enter the install folder.' }; powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1; if ($LASTEXITCODE -ne 0) { throw 'Install failed.' }
 ```
 
-The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode. 
+The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode. `/install` inside an already running panel is now an operations guide; it links to node enrollment, updates, and the fresh-host instructions here. It does not generate a second panel install command.
 
 ### Start from a checkout
 
@@ -98,7 +98,7 @@ Backups are not game-aware snapshots. Validate recovery with your game and stora
 
 ## Updating
 
-Administrators can check GitHub releases in **Updates**. On the Compose host, run `./update.sh v0.1.0` (Linux/macOS) or `./update.ps1 -Version v0.1.0` (PowerShell). The updater requires a clean Git checkout, saves a PostgreSQL dump, rebuilds the selected release, and checks health. It reverts application code if those checks fail; it cannot reverse database schema migrations. Keep an independent backup and review the release notes before updating.
+Administrators can check GitHub releases in **Updates**. On the Compose host, run `./update.sh v0.1.1` (Linux/macOS) or `./update.ps1 -Version v0.1.1` (PowerShell). The updater requires a clean Git checkout, saves a PostgreSQL dump, rebuilds the selected release, and checks health. It reverts application code if those checks fail; it cannot reverse database schema migrations. Keep an independent backup and review the release notes before updating.
 
 ## Documentation
 
@@ -110,17 +110,17 @@ Administrators can check GitHub releases in **Updates**. On the Compose host, ru
 
 ## Known limits
 
-- SFTP is exposed as an optional per-server connection flow; validate the node firewall and client access before using it outside local evaluation.
-- Browser file transfers stream through the API and object storage up to 1 GiB; the text editor remains capped at 1 MiB.
-- Disk usage can be reported and logical allowances can be applied, but Docker/filesystem hard quotas are not enforced.
-- Automatic stateful failover and live migration are not implemented.
-- Backup archives are not atomic game-consistent snapshots; scheduled restore checks do not boot a game.
-- Console event routing has not been validated under production multi-replica load.
+- SFTP is implemented with short-lived per-server credentials and confined paths. Enable it explicitly on each Linux agent and restrict its SSH port with the host firewall; it has not been field-tested with third-party clients on a dedicated node.
+- Browser file transfers stream through object storage up to 1 GiB; the text editor remains capped at 1 MiB. The older 8 MiB API transfer routes remain for compatibility.
+- Per-server disk allowances guard panel and SFTP writes, and disk usage is reported, but they are not kernel-enforced filesystem quotas. Game processes can exceed the allowance.
+- Automatic stateful failover and live migration are not implemented. Cross-node recovery is manual: provision a replacement, restore a backup, verify the game, then update network records. Do not attach the same writable server data to two nodes.
+- Backups ask Docker to stop a running game cleanly before archiving and restart it afterward. They are still archives rather than atomic filesystem snapshots; consistency depends on the game handling Docker's stop signal and the host filesystem remaining stable. Scheduled verification checks archive integrity and safe extraction; it does not boot a game.
+- Console events and node ownership are routed through PostgreSQL for multiple API replicas, but a sustained multi-replica load and failover drill has not been run.
 - Pterodactyl conversion covers portable egg fields only; egg install scripts, daemon images, startup interpolation, and stop commands need operator review and are not executed.
-- Real AWS S3 retention, two-host recovery, Valheim boot, and native Windows host behavior need dedicated validation.
-- Production hardening remains: formal security review, broad rate limiting, account recovery operations, observability, upgrade/migration rollback, and rootless agent operation.
+- This checkout was exercised with a real Minecraft Java boot, console command, file listing, Docker resource sample, 108 MiB S3-compatible backup download, and successful restore on Docker Desktop with a WSL2 agent. Real AWS S3 retention, Valheim boot, and a separate two-host recovery drill still need dedicated validation. Windows Docker Desktop is for local Linux-container and WSL2-agent evaluation; native Windows services and Windows containers are unsupported.
+- The API has shared request throttles, one-time account recovery codes, admin-only Prometheus metrics, and an updater that restores application code if its health check fails. These controls do not replace a formal production security review. Database migrations are not automatically reversed; account recovery requires previously saved recovery codes; and the Linux agent still has root-equivalent Docker access. Rootless operation, load testing, external monitoring, and credential-rotation operations remain unvalidated.
 
-See the component READMEs for current detailed limits.
+See [v0.1.1 release notes](docs/releases/v0.1.1.md) and the component READMEs for verification details. Treat this release as an evaluation build until you have tested deployment and recovery on your own infrastructure.
 
 ## Development checks
 
@@ -135,9 +135,8 @@ cd ../web && npm ci && npm run check && npm run build
 cd ../agent && go test ./... && go vet ./... && go build ./...
 ```
 
-The disposable API smoke test is in `tests/api-smoke-disposable.ps1`; it creates and removes a uniquely named PostgreSQL test container/database. Do not point smoke tests at a production database.
+The disposable API smoke test is in `tests/api-smoke-disposable.ps1`; it creates and removes a uniquely named PostgreSQL test container/database. Set `FLEDGE_SMOKE_S3=true` and provide `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, and a host-reachable `S3_ENDPOINT` to include streamed object and retention checks against an S3-compatible test bucket. It writes only unique `smoke/` objects and cleans up its fixtures. Do not point smoke tests at a production database or bucket.
 
 ## Project status
 
 Contributions and issue reports are welcome; please include reproduction steps and redact credentials, enrollment tokens, and backup URLs. A license has not yet been selected.
-

@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.1.0"
+var version = "0.1.1"
 
 const maxTransfer = 8 << 20
 
@@ -58,6 +58,11 @@ func env(k, def string) string {
 	}
 	return def
 }
+func consumeEnrollmentToken() string {
+	secret := os.Getenv("ENROLLMENT_TOKEN")
+	_ = os.Unsetenv("ENROLLMENT_TOKEN")
+	return secret
+}
 func main() {
 	api = strings.TrimRight(os.Getenv("API_URL"), "/")
 	nodeID = os.Getenv("NODE_ID")
@@ -77,7 +82,7 @@ func main() {
 		credential = strings.TrimSpace(string(b))
 	}
 	if credential == "" {
-		secret := os.Getenv("ENROLLMENT_TOKEN")
+		secret := consumeEnrollmentToken()
 		if secret == "" {
 			log.Fatal("ENROLLMENT_TOKEN or saved credential required")
 		}
