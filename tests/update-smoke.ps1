@@ -11,7 +11,7 @@ try {
     Push-Location $repo
     & git init -q
     & git config user.email navrylo-test@example.test
-    & git config user.name Navrylo-Test
+    & git config user.name Fledge-Test
     [IO.File]::WriteAllText((Join-Path $repo 'README.md'),'fixture')
     & git add README.md update.ps1
     & git commit -qm fixture
