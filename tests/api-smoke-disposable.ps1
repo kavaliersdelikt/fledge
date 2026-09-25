@@ -15,7 +15,7 @@ try {
     $env:DATABASE_URL = "postgres://navrylo_ci:ci_test_password_only@127.0.0.1:$dbPort/navrylo_ci"
     $env:ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     $env:WEB_ORIGIN = 'http://localhost:3000'; $env:PORT = [string]$apiPort
-    $env:TEST_API_URL = "http://127.0.0.1:$apiPort"; $env:GITHUB_REPOSITORY = 'kavaliersdelikt/navrylo'; $env:GITHUB_TOKEN = ''
+    $env:TEST_API_URL = "http://127.0.0.1:$apiPort"; $env:GITHUB_REPOSITORY = 'kavaliersdelikt/fledge'; $env:GITHUB_TOKEN = ''
     foreach ($key in @('S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','S3_ENDPOINT')) { [Environment]::SetEnvironmentVariable($key,'','Process') }
     $apiDir = Join-Path $root 'api'; $node = (Get-Command node.exe).Source
     $apiProcess = Start-Process -FilePath $node -ArgumentList @('--import','tsx','src/index.ts') -WorkingDirectory $apiDir -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
