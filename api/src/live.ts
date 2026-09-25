@@ -58,14 +58,15 @@ export function registerLive(app:FastifyInstance){
   if(typeof id!=='string'||!uuid.test(id)||!bearer.startsWith('Bearer ')||!(await nodeAccess(id,bearer.slice(7)))){deny(socket,401);return;}
   peer=upgrade(req,socket,head);if(!peer)return;const old=nodes.get(id);old?.close();nodes.set(id,peer);subscriptions.set(id,new Set());
   await pool.query("INSERT INTO console_nodes(node_id,replica,expires_at) VALUES($1,$2,now()+interval '30 seconds') ON CONFLICT(node_id) DO UPDATE SET replica=excluded.replica,expires_at=excluded.expires_at",[id,replica]);await maintain();for(const [serverId,members] of viewers)if(serverNodes.get(serverId)===id)for(const v of members)v.send({type:'status',connected:true});
-  let pending=0;
-  peer.onMessage=text=>{if(++pending>100){pending--;peer?.close();return;}void (async()=>{let m:Message;try{m=JSON.parse(text);}catch{peer?.close();return;}if(!m||!uuid.test(m.serverId)||!subscriptions.get(id)?.has(m.serverId)||nodes.get(id)!==peer)return;let frame:any;if(m.type==='log'&&validLog(m))frame={type:'log',data:m.data};else if(m.type==='sample'&&validSample(m))frame={type:'sample',cpuPercent:m.cpuPercent,memoryBytes:m.memoryBytes,memoryLimitBytes:m.memoryLimitBytes,sampledAt:new Date().toISOString()};else return;
+  let pending=0,writeQueue=Promise.resolve();
+  peer.onMessage=text=>{if(++pending>100){pending--;peer?.close();return;}writeQueue=writeQueue.then(async()=>{let m:Message;try{m=JSON.parse(text);}catch{peer?.close();return;}if(!m||!uuid.test(m.serverId)||!subscriptions.get(id)?.has(m.serverId)||nodes.get(id)!==peer)return;let frame:any;if(m.type==='log'&&validLog(m))frame={type:'log',data:m.data};else if(m.type==='sample'&&validSample(m))frame={type:'sample',cpuPercent:m.cpuPercent,memoryBytes:m.memoryBytes,memoryLimitBytes:m.memoryLimitBytes,sampledAt:new Date().toISOString()};else return;
   const valid=await pool.query('SELECT 1 FROM servers s JOIN console_nodes n ON n.node_id=s.node_id WHERE s.id=$1 AND s.node_id=$2 AND s.deleted_at IS NULL AND n.replica=$3 AND n.expires_at>now()',[m.serverId,id,replica]);if(!valid.rowCount)return;
   await pool.query('INSERT INTO console_events(server_id,frame) VALUES($1,$2)',[m.serverId,JSON.stringify(frame)]);if(frame.type==='sample')await pool.query('UPDATE servers SET usage=usage||$1::jsonb WHERE id=$2 AND node_id=$3',[JSON.stringify(frame),m.serverId,id]);
-  })().catch(e=>app.log.error(e,'live frame')).finally(()=>{pending--;});};
+  }).catch(e=>app.log.error(e,'live frame')).finally(()=>{pending--;});};
   peer.onClose=()=>{if(nodes.get(id)===peer){nodes.delete(id);subscriptions.delete(id);void pool.query('DELETE FROM console_nodes WHERE node_id=$1 AND replica=$2',[id,replica]).catch(()=>{});for(const [serverId,members] of viewers)if(serverNodes.get(serverId)===id)for(const v of members)v.send({type:'status',connected:false});}};
   const timer=setInterval(()=>{void nodeAccess(id,bearer.slice(7)).then(ok=>{if(!ok)peer?.close();else peer?.socket.write(Buffer.from([0x89,0x00]));}).catch(()=>peer?.close());},20000);timer.unref();socket.on('close',()=>clearInterval(timer));return;
  }
  deny(socket,404);
  }catch(e){app.log.error(e,'live upgrade');socket.destroy();}})();});
 }
+
