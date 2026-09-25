@@ -97,7 +97,9 @@ Backups are not game-aware snapshots. Validate recovery with your game and stora
 
 ## Updating
 
-Administrators can check GitHub releases in **Updates**. On the Compose host, run `./update.sh v0.1.1` (Linux/macOS) or `./update.ps1 -Version v0.1.1` (PowerShell). The updater requires a clean Git checkout, saves a PostgreSQL dump, rebuilds the selected release, and checks health. It reverts application code if those checks fail; it cannot reverse database schema migrations. Keep an independent backup and review the release notes before updating.
+Administrators can check and install the latest GitHub release directly from **Updates**. Select **Update panel** to start the process. The panel creates a PostgreSQL dump in `.backups/`, keeps the Compose database and S3 volumes and the existing `.env`, rebuilds only the API and web services, and checks both services before reporting success. If health checks fail, it restores the previous application revision when possible. Database schema migrations are not reversed automatically, so keep an independent backup and review the release notes before updating.
+
+The in-panel updater runs as a private Compose service and needs access to the Docker Engine socket and the project checkout. Keep the updater service on the internal Compose network; it is not published to the host. This grants the updater host-level control over Docker, so protect access to the Docker daemon and install Fledge only on a host you administer. The existing `update.sh` and `update.ps1` scripts remain available for manual recovery and clean-checkout installs.
 
 ## Documentation
 

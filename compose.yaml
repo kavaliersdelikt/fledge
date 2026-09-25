@@ -37,6 +37,8 @@ services:
       PORT: "4000"
       NODE_ENV: production
       APP_VERSION: ${APP_VERSION:-0.1.1}
+      UPDATER_URL: http://updater:4010
+      UPDATE_TOKEN_FILE: /run/fledge-updater/token
       GITHUB_REPOSITORY: kavaliersdelikt/fledge
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       S3_BUCKET: ${S3_BUCKET:-}
@@ -47,6 +49,23 @@ services:
       ALLOWED_IMAGE_PREFIXES: ${ALLOWED_IMAGE_PREFIXES:-itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:}
     ports:
       - "${API_BIND:-127.0.0.1}:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - update_credentials:/run/fledge-updater
+    restart: unless-stopped
+  updater:
+    build:
+      context: .
+      dockerfile: updater/Dockerfile
+    environment:
+      PORT: "4010"
+      UPDATE_TOKEN_FILE: /run/fledge-updater/token
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - update_credentials:/run/fledge-updater:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,3 +85,4 @@ services:
 volumes:
   postgres_data:
   s3_data:
+  update_credentials:

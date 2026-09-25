@@ -40,11 +40,13 @@ env_backup=".backups/navrylo-env-$stamp"
 env_changed=0
 cleanup(){ rm -f "$partial" "$env_backup.new"; if [ -f "$env_backup" ]; then rm -f "$env_backup"; fi; }
 trap cleanup EXIT HUP INT TERM
+echo 'UPDATE_PROGRESS:backup'
 docker compose exec -T postgres pg_dump -U navrylo -d navrylo > "$partial" || { echo 'Database backup failed; update stopped.' >&2; exit 3; }
 [ -s "$partial" ] || { echo 'Database backup is empty; update stopped.' >&2; exit 3; }
 chmod 600 "$partial"
 mv "$partial" "$backup"
 echo "Database backup saved: $backup"
+echo 'UPDATE_PROGRESS:backup-complete'
 cp -p .env "$env_backup"
 chmod 600 "$env_backup"
 version=${target#v}
@@ -52,14 +54,16 @@ if grep -q '^APP_VERSION=' .env; then sed "s/^APP_VERSION=.*/APP_VERSION=$versio
 chmod 600 "$env_backup.new"
 mv "$env_backup.new" .env
 env_changed=1
-if ! git checkout --detach "$target" || ! docker compose up -d --build; then
+echo 'UPDATE_PROGRESS:installing'
+if ! git checkout --detach "$target" || ! docker compose up -d --build api web; then
   echo 'Update failed. Rebuilding the previous application revision.' >&2
   if [ "$env_changed" -eq 1 ]; then cp -p "$env_backup" .env; fi
-  git checkout --detach "$previous" && docker compose up -d --build || echo 'Automatic code rollback failed; inspect Docker Compose and restore from the database backup if required.' >&2
+  git checkout --detach "$previous" && docker compose up -d --build api web || echo 'Automatic code rollback failed; inspect Docker Compose and restore from the database backup if required.' >&2
   exit 4
 fi
 api_url=${API_HEALTH_URL:-http://127.0.0.1:4000/api/health}
 web_url=${WEB_HEALTH_URL:-http://127.0.0.1:3000/}
+echo 'UPDATE_PROGRESS:checking-health'
 healthy=0
 attempt=0
 while [ "$attempt" -lt 36 ]; do
@@ -69,9 +73,10 @@ done
 if [ "$healthy" -ne 1 ]; then
   echo 'Health checks failed. Rebuilding the previous application revision.' >&2
   if [ "$env_changed" -eq 1 ]; then cp -p "$env_backup" .env; fi
-  git checkout --detach "$previous" && docker compose up -d --build || echo 'Automatic code rollback failed; inspect Docker Compose and restore from the database backup if required.' >&2
+  git checkout --detach "$previous" && docker compose up -d --build api web || echo 'Automatic code rollback failed; inspect Docker Compose and restore from the database backup if required.' >&2
   exit 5
 fi
 rm -f "$env_backup"
 ls -1t .backups/navrylo-db-*.sql 2>/dev/null | tail -n +8 | while IFS= read -r old_backup; do rm -f "$old_backup"; done
 echo "Fledge $target is healthy. PostgreSQL backup: $backup"
+echo 'UPDATE_PROGRESS:complete'
