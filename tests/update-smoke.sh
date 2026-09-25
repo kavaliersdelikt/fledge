@@ -14,7 +14,7 @@ chmod +x "$tmp/mock-bin/docker"
 cd "$tmp/repo"
 git init -q
 git config user.email navrylo-test@example.test
-git config user.name Navrylo-Test
+git config user.name Fledge-Test
 printf 'fixture\n' > README.md
 git add README.md update.sh
 git commit -qm fixture
