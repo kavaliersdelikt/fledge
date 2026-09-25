@@ -35,6 +35,7 @@ trap 'rm -f "`$temporary"' EXIT HUP INT TERM
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error "`$connect_url" -o "`$temporary"
 sudo sh "`$temporary" --api $apiLiteral --node $nodeLiteral --repo $repoLiteral --foreground$allow
 "@
+$linuxScript = $linuxScript.Replace("`r`n", "`n").Replace("`r", '')
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($linuxScript))
 $launcher = "printf '%s' '$encoded' | base64 -d | bash"
 Write-Host "Connecting node $NodeId through WSL distro $Distro. The one-time token will be requested privately in the Linux terminal."

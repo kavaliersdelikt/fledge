@@ -36,7 +36,7 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PORT: "4000"
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:-0.1.1}
+      APP_VERSION: ${APP_VERSION:-0.1.4}
       UPDATER_URL: http://updater:4010
       UPDATE_TOKEN_FILE: /run/fledge-updater/token
       GITHUB_REPOSITORY: kavaliersdelikt/fledge

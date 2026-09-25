@@ -6,6 +6,8 @@ Fledge is the product and release name. Existing installs keep the `navrylo` ser
 
 **Windows is not a native agent target.** The agent uses Linux syscalls (including `/proc` and `statfs`) and the supplied service is a Linux systemd unit. Do not build a Windows `.exe`, install it as a Windows service, or use Windows containers. Docker Desktop on Windows can be used for local development/single-host evaluation only: its Docker engine must be in Linux-container mode, and the agent must be built and run inside a WSL2 Linux distro with Docker Desktop WSL Integration. This WSL2 arrangement is not a supported production node and has not been validated on Windows; use dedicated Linux hosts for production.
 
+If native PowerShell `go build -o fledge-agent .` reports undefined symbols such as `syscall.Stat_t`, `syscall.Openat`, or `syscall.Mkdirat`, that is expected: plain `go build` targets Windows on a Windows host, but this agent targets Linux. The source is not missing those symbols. Build inside Linux or use the WSL helper below. Do not run Linux `curl`, `sudo`, or `&&` examples directly in Windows PowerShell; use the PowerShell connector helper instead.
+
 On Linux, build and install as usual:
 
 ```sh
@@ -55,7 +57,7 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
 
    WSL `localhost`/host networking and Docker Desktop port forwarding vary by Windows/WSL networking mode. The Compose API port is loopback-only by default, so a request via the WSL gateway may not work with the default bind. Only for isolated local development, if necessary, set `API_BIND=0.0.0.0` in the root `.env`, recreate the API (`docker compose up -d --force-recreate api`), and retry using the Windows host address. This can expose the API on Windows interfaces: keep Windows Firewall active, restrict the port to the local/WSL environment, and never forward it to the Internet. Restore loopback binding when no longer needed. If none of these addresses works, do not weaken firewall rules blindly; verify the Windows host IP, Compose port mapping, Docker Desktop state, and Windows Firewall first.
 
-3. From PowerShell in the Windows checkout, build the binary inside WSL (the script stages source under the distro's Linux filesystem, then places the result at `agent\dist\fledge-agent-linux`):
+3. From PowerShell at the repository root (the directory containing `compose.yaml`), build the binary inside WSL. The helper stages source under the distro's Linux filesystem, then places the result at `agent\dist\fledge-agent-linux`:
 
    ```powershell
    .\agent\build-agent-wsl.ps1 -Distro Ubuntu-24.04 -CheckDocker
@@ -70,6 +72,14 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
    ```
 
    The result is an ELF Linux executable, not runnable directly by PowerShell. Do not copy the agent into a Windows service directory or start it from Windows.
+
+   To enroll through the panel instead of manually building and installing, create the node and one-time token in the panel, then run this from PowerShell at the repository root (substitute the node UUID):
+
+   ```powershell
+   .\agent\connect-wsl.ps1 -ApiUrl 'http://localhost:4000' -NodeId '<node-uuid>' -Repository 'kavaliersdelikt/fledge' -AllowInsecureHttp
+   ```
+
+   Use the API URL that is reachable from the selected WSL distro. The helper fetches the Linux connector and asks for the one-time token privately inside WSL. Docker Desktop WSL Integration must be enabled for the selected distro, and docker version inside that distro must show both Client and Server; the connector does not install Docker Engine. Keep the panel API healthy first; the connector cannot enroll against an API that is failing its health check.
 
 4. Run the agent interactively in Ubuntu for local evaluation. Use the node UUID and fresh one-time enrollment token from the UI. Replace the placeholders and API URL with the address that succeeded in step 2:
 

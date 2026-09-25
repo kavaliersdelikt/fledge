@@ -14,6 +14,8 @@ function ConvertTo-BashLiteral([string]$Value) {
 
 function Invoke-WslScript([string]$Distribution, [string]$Script) {
     # Base64 keeps PowerShell's native-argument quoting from altering the bash script.
+    # Here-strings inherit Windows CRLFs, which Bash misreads as part of commands.
+    $Script = $Script.Replace("`r`n", "`n").Replace("`r", '')
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Script))
     $launcher = "printf '%s' '$encoded' | base64 -d | bash"
     & wsl.exe --distribution $Distribution --exec bash -lc $launcher

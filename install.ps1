@@ -71,14 +71,39 @@ if ($NoWait) {
     exit 0
 }
 
-$ready = $false
-for ($i = 0; $i -lt 60; $i++) {
-    try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:4000/api/health' -TimeoutSec 2 | Out-Null; $ready = $true; break } catch { Start-Sleep -Seconds 2 }
+function Test-LocalHttpEndpoint([System.Net.Http.HttpClient]$Client, [string]$Uri) {
+    $response = $null
+    try {
+        $response = $Client.GetAsync($Uri).GetAwaiter().GetResult()
+        return $response.IsSuccessStatusCode
+    } catch {
+        return $false
+    } finally {
+        if ($response) { $response.Dispose() }
+    }
 }
-if (-not $ready) { throw 'The API did not become healthy within 120 seconds. Check docker compose logs api.' }
-$ready = $false
-for ($i = 0; $i -lt 60; $i++) {
-    try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/' -TimeoutSec 2 | Out-Null; $ready = $true; break } catch { Start-Sleep -Seconds 2 }
+
+$handler = [System.Net.Http.HttpClientHandler]::new()
+$handler.UseProxy = $false
+$client = [System.Net.Http.HttpClient]::new($handler)
+$client.Timeout = [TimeSpan]::FromSeconds(2)
+try {
+    $deadline = [DateTime]::UtcNow.AddMinutes(5)
+    while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint $client 'http://localhost:4000/api/health')) {
+        Start-Sleep -Seconds 2
+    }
+    if (-not (Test-LocalHttpEndpoint $client 'http://localhost:4000/api/health')) {
+        throw 'The API did not become healthy within 5 minutes. Check docker compose logs api.'
+    }
+
+    $deadline = [DateTime]::UtcNow.AddMinutes(5)
+    while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint $client 'http://localhost:3000/')) {
+        Start-Sleep -Seconds 2
+    }
+    if (-not (Test-LocalHttpEndpoint $client 'http://localhost:3000/')) {
+        throw 'The panel did not become healthy within 5 minutes. Check docker compose logs web.'
+    }
+} finally {
+    $client.Dispose()
 }
-if (-not $ready) { throw 'The panel did not become healthy within 120 seconds. Check docker compose logs web.' }
 Write-Host 'Fledge is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'

@@ -15,7 +15,7 @@ globalThis.fetch=async(input,init)=>{
 };
 try{
  const denied=await app.inject({method:'GET',url:'/api/updates'});assert.equal(denied.statusCode,403,'release metadata requires an authenticated administrator');
- const first=await app.inject({method:'GET',url:'/api/updates',headers:{authorization:'smoke-admin'}});assert.equal(first.statusCode,200);const result=first.json();assert.equal(result.repository,'kavaliersdelikt/fledge');assert.equal(result.currentVersion,'0.1.1');assert.equal(result.latestVersion,'0.2.0');assert.equal(result.updateAvailable,true);assert.equal(result.body,'Release notes');assert.equal(result.error,null);
+ const first=await app.inject({method:'GET',url:'/api/updates',headers:{authorization:'smoke-admin'}});assert.equal(first.statusCode,200);const result=first.json();assert.equal(result.repository,'kavaliersdelikt/fledge');assert.equal(result.currentVersion,'0.1.4');assert.equal(result.latestVersion,'0.2.0');assert.equal(result.updateAvailable,true);assert.equal(result.body,'Release notes');assert.equal(result.error,null);
  const second=await app.inject({method:'GET',url:'/api/updates',headers:{authorization:'smoke-admin'}});assert.equal(second.statusCode,200);assert.equal(second.json().latestVersion,'0.2.0');assert.equal(calls,1,'successful GitHub release checks should use the five-minute cache');
  console.log('PASS updater API smoke: admin authorization, stable release response, update comparison and caching.');
 }finally{globalThis.fetch=originalFetch;await app.close();}
