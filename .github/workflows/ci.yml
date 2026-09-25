@@ -28,7 +28,9 @@ jobs:
           cache-dependency-path: api/package-lock.json
       - run: npm ci
       - run: npm run check
+      - run: npm run test:cors
       - run: npm run test:updates
+      - run: npm run test:templates
       - name: HTTP and PostgreSQL smoke test (simulated node)
         env:
           DATABASE_URL: postgres://navrylo_ci:ci_test_password_only@localhost:5432/navrylo_ci
@@ -81,3 +83,4 @@ jobs:
           sh tests/update-smoke.sh
           sh tests/connector-smoke.sh
           sh tests/release-build-smoke.sh
+
