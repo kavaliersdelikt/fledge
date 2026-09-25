@@ -25,3 +25,12 @@ test('browser preflights permit server deletion and other API mutations',async()
  }finally{await app.close()}
 });
 
+test('panel CORS refuses wildcard, null, and non-origin configuration',async()=>{
+ const app=Fastify();
+ try{
+  for(const origin of ['*','null','http://localhost:3000/','http://localhost:3000/path','ftp://panel.example']){
+   await assert.rejects(()=>registerPanelCors(app,origin),/WEB_ORIGIN must be one exact HTTP or HTTPS origin/);
+  }
+ }finally{await app.close()}
+});
+
