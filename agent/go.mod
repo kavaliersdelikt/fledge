@@ -1,4 +1,4 @@
-module navrylo-agent
+module fledge-agent
 
 go 1.19
 
