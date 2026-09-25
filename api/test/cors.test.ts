@@ -18,6 +18,10 @@ test('browser preflights permit server deletion and other API mutations',async()
    assert.equal(response.headers['access-control-allow-credentials'],'true');
    assert.ok(response.headers['access-control-allow-methods']?.split(/\s*,\s*/).includes(method),`${method} must be listed in CORS methods`);
   }
+  const hostile=await app.inject({method:'OPTIONS',url:'/api/servers/test?confirm=true',headers:{origin:'https://attacker.example','access-control-request-method':'DELETE'}});
+  assert.equal(hostile.statusCode,204);
+  assert.equal(hostile.headers['access-control-allow-origin'],'http://localhost:3000','CORS must return only the configured origin, never reflect an attacker origin');
+  assert.equal(hostile.headers['access-control-allow-credentials'],'true','credentialed requests remain limited to the configured origin by the exact ACAO value');
  }finally{await app.close()}
 });
 
