@@ -53,7 +53,7 @@ git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git 
 git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git fledge; if ($LASTEXITCODE -ne 0) { throw 'Download failed.' }; Set-Location fledge; if (-not $?) { throw 'Could not enter the install folder.' }; powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1; if ($LASTEXITCODE -ne 0) { throw 'Install failed.' }
 ```
 
-The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode. `/install` inside an already running panel is now an operations guide; it links to node enrollment, updates, and the fresh-host instructions here. It does not generate a second panel install command.
+The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode. 
 
 ### Start from a checkout
 
@@ -120,7 +120,7 @@ Administrators can check GitHub releases in **Updates**. On the Compose host, ru
 - Real AWS S3 retention, two-host recovery, Valheim boot, and native Windows host behavior need dedicated validation.
 - Production hardening remains: formal security review, broad rate limiting, account recovery operations, observability, upgrade/migration rollback, and rootless agent operation.
 
-See the component READMEs for current detailed limits. Treat this release as an evaluation build until the deployment and recovery paths have been tested on your own infrastructure.
+See the component READMEs for current detailed limits.
 
 ## Development checks
 
