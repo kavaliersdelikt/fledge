@@ -10,7 +10,7 @@ FOREGROUND=0
 
 usage() {
   cat <<'EOF'
-Navrylo Linux node connector
+Fledge Linux node connector
 Usage: sudo sh connect.sh --api https://panel.example.com --node NODE_UUID --repo OWNER/REPOSITORY [--allow-insecure-http] [--foreground] [--validate-only]
 
 The one-time enrollment token is requested through a hidden terminal prompt and is never placed in the command line or saved to the service environment.
@@ -51,8 +51,8 @@ if [ "$VALIDATE_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-[ "$(uname -s)" = Linux ] || { echo 'The Navrylo agent requires Linux. On Windows, run this connector through WSL2; macOS nodes are not supported.' >&2; exit 10; }
-case "$(uname -m)" in x86_64|amd64) ASSET=navrylo-agent_linux_amd64 ;; aarch64|arm64) ASSET=navrylo-agent_linux_arm64 ;; *) echo 'Supported Linux architectures are amd64 and arm64.' >&2; exit 11 ;; esac
+[ "$(uname -s)" = Linux ] || { echo 'The Fledge agent requires Linux. On Windows, run this connector through WSL2; macOS nodes are not supported.' >&2; exit 10; }
+case "$(uname -m)" in x86_64|amd64) ASSET=fledge-agent_linux_amd64 ;; aarch64|arm64) ASSET=fledge-agent_linux_arm64 ;; *) echo 'Supported Linux architectures are amd64 and arm64.' >&2; exit 11 ;; esac
 [ "$(id -u)" -eq 0 ] || { echo 'Run with sudo so the agent can install its service and manage Docker-owned server files.' >&2; exit 12; }
 command -v curl >/dev/null 2>&1 || { echo 'curl is required.' >&2; exit 13; }
 command -v docker >/dev/null 2>&1 || { echo 'Docker CLI is required.' >&2; exit 15; }
@@ -71,7 +71,7 @@ cleanup() { if [ "$tty_hidden" -eq 1 ]; then stty echo </dev/tty 2>/dev/null || 
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 release_base="https://github.com/$REPOSITORY/releases/latest/download"
-curl --location --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error "$release_base/$ASSET" -o "$tmp/$ASSET" || { echo 'Could not fetch the latest GitHub agent release. Confirm that a Navrylo release has been published.' >&2; exit 20; }
+curl --location --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error "$release_base/$ASSET" -o "$tmp/$ASSET" || { echo 'Could not fetch the latest GitHub agent release. Confirm that a Fledge release has been published.' >&2; exit 20; }
 curl --location --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error "$release_base/SHA256SUMS" -o "$tmp/SHA256SUMS" || { echo 'The latest release has no downloadable SHA256SUMS file.' >&2; exit 21; }
 checksum_line=$(grep -F "  $ASSET" "$tmp/SHA256SUMS" || true)
 [ -n "$checksum_line" ] && (cd "$tmp" && printf '%s\n' "$checksum_line" | sha256sum --check --status) || { echo 'Agent checksum verification failed; no service was installed.' >&2; exit 22; }
@@ -110,7 +110,7 @@ if [ "$FOREGROUND" -eq 1 ]; then
 fi
 cat > /etc/systemd/system/navrylo-agent.service <<'EOF'
 [Unit]
-Description=Navrylo game server node agent
+Description=Fledge game server node agent
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
