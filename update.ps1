@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 function Invoke-Git([string[]]$GitArgs) { & git @GitArgs; if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed with exit code $LASTEXITCODE" } }
 function Invoke-Compose([string[]]$ComposeArgs) { & docker compose @ComposeArgs; if ($LASTEXITCODE -ne 0) { throw "docker compose $($ComposeArgs -join ' ') failed with exit code $LASTEXITCODE" } }
-if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.git'))) { throw 'Run the updater from a Git checkout of Navrylo.' }
+if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.git'))) { throw 'Run the updater from a Git checkout of Fledge.' }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is required.' }
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker is required.' }
 & docker compose version *> $null; if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 is required.' }
@@ -53,7 +53,7 @@ try {
   if (-not $healthy) { throw 'Health checks failed.' }
   Remove-Item -LiteralPath $envBackup -Force
   Get-ChildItem -LiteralPath $backupDir -File -Filter 'navrylo-db-*.sql' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 7 | Remove-Item -Force
-  Write-Host "Navrylo $Version is healthy. PostgreSQL backup: $backup"
+  Write-Host "Fledge $Version is healthy. PostgreSQL backup: $backup"
 } catch {
   if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Force }
   if (Test-Path -LiteralPath "$partial.stderr") { Remove-Item -LiteralPath "$partial.stderr" -Force }
