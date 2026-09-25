@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
-import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import {pool,WEB_ORIGIN,PORT,authenticate,migrate,safeError} from './core.js';
 import {authRoutes} from './auth.js';
@@ -16,11 +15,12 @@ import {registerOperations} from './operations.js';
 import {registerLive} from './live.js';
 import {sweepBackupRetention} from './backup-maintenance.js';
 import {registerUpdates} from './updates.js';
+import {registerPanelCors} from './cors.js';
 if(!process.env.DATABASE_URL||!process.env.ENCRYPTION_KEY||!/^[a-f0-9]{64}$/i.test(process.env.ENCRYPTION_KEY))throw Error('DATABASE_URL and a random 32-byte hex ENCRYPTION_KEY are required');
 await migrate();
 const app=Fastify({logger:true,bodyLimit:12*1024*1024,trustProxy:process.env.TRUST_PROXY==='true'});
 app.addContentTypeParser('application/octet-stream',(req,payload,done)=>done(null,payload));
-await app.register(cookie);await app.register(cors,{origin:WEB_ORIGIN,credentials:true});await app.register(multipart,{limits:{fileSize:8*1024*1024}});
+await app.register(cookie);await registerPanelCors(app,WEB_ORIGIN);await app.register(multipart,{limits:{fileSize:8*1024*1024}});
 registerOperations(app);
 app.addHook('preHandler',authenticate);
 app.setErrorHandler((err,req,reply)=>{req.log.error(err);const sql=(err as any).code;const code=sql==='23505'||sql==='23503'?409:sql==='22P02'?400:(err as any).statusCode||500;reply.code(code).send({error:(err as any).error||(code===500?'internal_error':'request_failed'),message:code>=500&&code!==502&&code!==503&&code!==504?'Internal server error':safeError(err)});});
@@ -42,3 +42,4 @@ async function sweep(){if(sweeping)return;sweeping=true;try{
  }catch(e){app.log.error(e,'sweeper failed');}finally{sweeping=false;}}
 setInterval(sweep,15000).unref();await sweep();
 await app.listen({host:process.env.HOST||'0.0.0.0',port:PORT});
+
