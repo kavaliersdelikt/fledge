@@ -10,7 +10,7 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 [Quick start](#quick-start) · [Connect a node](#connect-a-node) · [Documentation](#documentation) · [Known limits](#known-limits)
 
-<img src="docs/assets/fledge-banner.svg" width="100%" alt="Fledge — one panel, many worlds" />
+<img src="docs/assets/banner.png" width="100%" alt="Fledge — one panel, many worlds" />
 
 </div>
 
@@ -20,7 +20,6 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 Fledge is a self-hosted control panel for operating game servers across multiple Linux Docker hosts. The web panel and API manage users, templates, server lifecycle, placement, backups, and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port.
 
-The visible product, repository, package names, and release assets use **Fledge**. Version 0.1 retains a few internal `navrylo` identifiers for existing database volumes, database roles, session cookies, Docker labels, and agent paths so an in-place rename does not orphan current data or enrolled nodes.
 
 ```text
  Browser ── Panel ── API ── PostgreSQL
@@ -39,7 +38,7 @@ The visible product, repository, package names, and release assets use **Fledge*
 
 ### Install with one command
 
-Run the matching command on a fresh Docker host. It clones the fixed Fledge repository and starts its installer. The GitHub repository is currently private, so authenticate Git before cloning. Review the scripts before running software with administrator/root access.
+Run the matching command on a fresh Docker host.
 
 **Linux / macOS terminal**
 
@@ -53,7 +52,7 @@ git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git 
 git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git fledge; if ($LASTEXITCODE -ne 0) { throw 'Download failed.' }; Set-Location fledge; if (-not $?) { throw 'Could not enter the install folder.' }; powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1; if ($LASTEXITCODE -ne 0) { throw 'Install failed.' }
 ```
 
-The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode. `/install` inside an already running panel is now an operations guide; it links to node enrollment, updates, and the fresh-host instructions here. It does not generate a second panel install command.
+The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode.
 
 ### Start from a checkout
 
@@ -86,9 +85,9 @@ docker compose down
 3. Run the command on the node. It verifies the agent checksum and installs a systemd service. Windows evaluation uses the Linux agent inside WSL2; native Windows agents and macOS node hosts are not supported.
 4. Confirm the node is connected before placing a server there.
 
-The agent is a high-trust, root-equivalent component because it controls Docker and server files. Install it only on hosts you administer. Use HTTPS outside local development. The generated node command downloads GitHub release assets without embedding a GitHub credential; while the repository is private, those downloads require an authenticated distribution path. Make the repository public before offering that command broadly.
+The agent is a high-trust, root-equivalent component because it controls Docker and server files. Install it only on hosts you administer. Use HTTPS outside local development. 
 
-New game containers keep standard input open. The live console streams Docker logs and resource samples and sends one line to container stdin; game software must support console input this way. Minecraft Java continues to use authenticated RCON. Containers created before this change need a configure/recreate operation before generic stdin input is available. Pterodactyl egg conversion imports environment defaults and editable variables; it does not run install scripts or translate Pterodactyl-specific startup interpolation. Review the generated image, ports, and compatibility warnings before saving.
+New game containers keep standard input open. The live console streams Docker logs and resource samples and sends one line to container stdin; game software must support console input this way. Minecraft Containers are preset to use authenticated RCON. Containers created before this change need a configure/recreate operation before generic stdin input is available. Pterodactyl egg conversion imports environment defaults and editable variables; it does not run install scripts or translate Pterodactyl-specific startup interpolation. Review the generated image, ports, and compatibility warnings before saving.
 
 ## Backups and recovery
 
@@ -139,4 +138,4 @@ The disposable API smoke test is in `tests/api-smoke-disposable.ps1`; it creates
 
 ## Project status
 
-Contributions and issue reports are welcome; please include reproduction steps and redact credentials, enrollment tokens, and backup URLs. A license has not yet been selected.
+Contributions and issue reports are welcome; please include reproduction steps and redact credentials, enrollment tokens, and backup URLs. 
