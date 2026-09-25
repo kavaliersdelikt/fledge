@@ -97,7 +97,7 @@ func main() {
 			log.Fatal(e)
 		}
 	}
-	log.Printf("Navrylo agent %s node %s", version, nodeID)
+	log.Printf("Fledge agent %s node %s", version, nodeID)
 	if e := startSFTP(); e != nil {
 		log.Fatal(e)
 	}
