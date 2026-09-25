@@ -1,4 +1,4 @@
-# Navrylo Web (Beta)
+# Fledge Web (Beta)
 
 Connected Next.js 15/React 19 panel. No mock data, fake API responses, or demo handlers. API failures are shown in context; successful mutations refetch their affected lists.
 
