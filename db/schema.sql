@@ -28,10 +28,11 @@ CREATE TABLE IF NOT EXISTS templates (
 ALTER TABLE templates ADD COLUMN IF NOT EXISTS editable_variables text[] NOT NULL DEFAULT '{}';
 INSERT INTO templates(id,name,image,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,official) VALUES
  ('minecraft-java','Minecraft Java','itzg/minecraft-server:java21-alpine','[{"container":25565,"offset":0,"protocol":"tcp"}]'::jsonb,'{"EULA":"TRUE","TYPE":"VANILLA","VERSION":"1.21.11","ENABLE_RCON":"TRUE"}'::jsonb,2048,100,10240,ARRAY['TYPE','VERSION','DIFFICULTY','MAX_PLAYERS','MOTD'],true),
- ('valheim','Valheim','ghcr.io/lloesche/valheim-server:latest','[{"container":2456,"offset":0,"protocol":"udp"},{"container":2457,"offset":1,"protocol":"udp"},{"container":2458,"offset":2,"protocol":"udp"}]'::jsonb,'{"SERVER_NAME":"Navrylo","WORLD_NAME":"Dedicated"}'::jsonb,4096,200,20480,ARRAY['SERVER_NAME','WORLD_NAME','SERVER_PASS','PUBLIC'],true)
+ ('valheim','Valheim','ghcr.io/lloesche/valheim-server:latest','[{"container":2456,"offset":0,"protocol":"udp"},{"container":2457,"offset":1,"protocol":"udp"},{"container":2458,"offset":2,"protocol":"udp"}]'::jsonb,'{"SERVER_NAME":"Fledge Server","WORLD_NAME":"Dedicated"}'::jsonb,4096,200,20480,ARRAY['SERVER_NAME','WORLD_NAME','SERVER_PASS','PUBLIC'],true)
 ON CONFLICT(id) DO NOTHING;
 UPDATE templates SET image='itzg/minecraft-server:java21-alpine', editable_variables=ARRAY['TYPE','VERSION','DIFFICULTY','MAX_PLAYERS','MOTD'], env=env||'{"VERSION":"1.21.11","ENABLE_RCON":"TRUE"}'::jsonb WHERE id='minecraft-java' AND official;
 UPDATE templates SET editable_variables=ARRAY['SERVER_NAME','WORLD_NAME','SERVER_PASS','PUBLIC'] WHERE id='valheim' AND official AND editable_variables='{}';
+UPDATE templates SET env=env||'{"SERVER_NAME":"Fledge Server"}'::jsonb WHERE id='valheim' AND official AND env->>'SERVER_NAME'='Navrylo';
 CREATE TABLE IF NOT EXISTS servers (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL,
  owner_id uuid NOT NULL REFERENCES users(id), node_id uuid NOT NULL REFERENCES nodes(id),
@@ -95,6 +96,12 @@ CREATE TABLE IF NOT EXISTS request_limits(bucket_hash text PRIMARY KEY, attempts
 INSERT INTO templates(id,name,image,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,official) VALUES
 ('minecraft-paper','Minecraft Paper','itzg/minecraft-server:java21-alpine','[{"container":25565,"offset":0,"protocol":"tcp"}]','{"EULA":"TRUE","TYPE":"PAPER","VERSION":"1.21.11","ENABLE_RCON":"TRUE"}',2048,100,10240,ARRAY['VERSION','DIFFICULTY','MAX_PLAYERS','MOTD'],true),
 ('minecraft-fabric','Minecraft Fabric','itzg/minecraft-server:java21-alpine','[{"container":25565,"offset":0,"protocol":"tcp"}]','{"EULA":"TRUE","TYPE":"FABRIC","VERSION":"1.21.11","ENABLE_RCON":"TRUE"}',3072,150,15360,ARRAY['VERSION','DIFFICULTY','MAX_PLAYERS','MOTD'],true)
+ON CONFLICT(id) DO NOTHING;
+
+-- A minimal import-friendly template matching the portable fields produced by
+-- the Pterodactyl egg converter (Quilt uses the itzg image entrypoint).
+INSERT INTO templates(id,name,image,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,official) VALUES
+('minecraft-quilt','Minecraft Quilt','itzg/minecraft-server:java21-alpine','[{"container":25565,"offset":0,"protocol":"tcp"}]','{"EULA":"TRUE","TYPE":"QUILT","VERSION":"1.21.11","ENABLE_RCON":"TRUE"}',3072,150,15360,ARRAY['VERSION','DIFFICULTY','MAX_PLAYERS','MOTD'],true)
 ON CONFLICT(id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS file_transfers(

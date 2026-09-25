@@ -1,11 +1,20 @@
-export const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+// Local Compose exposes the API on port 4000. Deriving the host from the page
+// works for LAN installs too; public deployments should provide their API URL.
+const defaultApiUrl = typeof window === 'undefined'
+  ? 'http://localhost:4000'
+  : `${window.location.protocol}//${window.location.hostname}:4000`;
+export const API = (process.env.NEXT_PUBLIC_API_URL || defaultApiUrl).replace(/\/$/, '');
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); this.name = 'ApiError'; } }
 export async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   let response: Response;
   try { response = await fetch(`${API}/api${path}`, { credentials: 'include', cache: 'no-store', ...options, headers }); }
-  catch { throw new ApiError(0, 'The API is unreachable. Check your connection and NEXT_PUBLIC_API_URL.'); }
+  catch (cause) {
+    const endpoint = `${API || (typeof window !== 'undefined' ? window.location.origin : '(panel origin)')}/api${path}`;
+    const detail = cause instanceof Error && cause.message ? ` (${cause.message})` : '';
+    throw new ApiError(0, `Could not reach the Fledge API at ${endpoint}${detail}. Check that the panel can reach its API and that NEXT_PUBLIC_API_URL points to a browser-accessible address.`);
+  }
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try { const body = await response.json(); message = body.message || body.error || message; } catch { /* non-JSON error */ }

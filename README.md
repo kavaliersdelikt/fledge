@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/fledge-mark.svg" width="76" alt="Fledge mark" />
+<img src="docs/assets/fledge-symbol.png" width="76" alt="Fledge feather mark" />
 
 # Fledge
 
@@ -8,7 +8,7 @@
 
 Manage customers, servers, templates, and Linux Docker nodes from one self-hosted panel.
 
-[Quick start](#quick-start) · [Install assistant](#install-assistant) · [Documentation](#documentation) · [Known limits](#known-limits)
+[Quick start](#quick-start) · [Connect a node](#connect-a-node) · [Documentation](#documentation) · [Known limits](#known-limits)
 
 <img src="docs/assets/fledge-banner.svg" width="100%" alt="Fledge — one panel, many worlds" />
 
@@ -39,7 +39,21 @@ The visible product, repository, package names, and release assets use **Fledge*
 
 ### Install with one command
 
-Open `/install` on a running panel, choose your operating system, and copy its command. The repository is fixed to `kavaliersdelikt/fledge`; the installer creates random local secrets only when `.env` does not already exist, starts Compose, and waits for health checks. The GitHub repository is currently private, so GitHub authentication is required to clone it. Do not run install commands from a source you do not trust.
+Run the matching command on a fresh Docker host. It clones the fixed Fledge repository and starts its installer. The GitHub repository is currently private, so authenticate Git before cloning. Review the scripts before running software with administrator/root access.
+
+**Linux / macOS terminal**
+
+```sh
+git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git fledge && cd fledge && sh ./install.sh
+```
+
+**Windows PowerShell**
+
+```powershell
+git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git fledge; if ($LASTEXITCODE -ne 0) { throw 'Download failed.' }; Set-Location fledge; if (-not $?) { throw 'Could not enter the install folder.' }; powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1; if ($LASTEXITCODE -ne 0) { throw 'Install failed.' }
+```
+
+The installer preserves an existing `.env`, generates private local secrets when creating one, starts Docker Compose, and waits for health checks. Windows runs the panel stack in Docker Desktop Linux-container mode. `/install` inside an already running panel is now an operations guide; it links to node enrollment, updates, and the fresh-host instructions here. It does not generate a second panel install command.
 
 ### Start from a checkout
 
@@ -72,7 +86,9 @@ docker compose down
 3. Run the command on the node. It verifies the agent checksum and installs a systemd service. Windows evaluation uses the Linux agent inside WSL2; native Windows agents and macOS node hosts are not supported.
 4. Confirm the node is connected before placing a server there.
 
-The agent is a high-trust, root-equivalent component because it controls Docker and server files. Install it only on hosts you administer. Use HTTPS outside local development. The generated node command downloads public GitHub assets without an embedded GitHub credential; while the repository is private, those downloads require an authenticated distribution path. Make the repository public before offering that command broadly.
+The agent is a high-trust, root-equivalent component because it controls Docker and server files. Install it only on hosts you administer. Use HTTPS outside local development. The generated node command downloads GitHub release assets without embedding a GitHub credential; while the repository is private, those downloads require an authenticated distribution path. Make the repository public before offering that command broadly.
+
+New game containers keep standard input open. The live console streams Docker logs and resource samples and sends one line to container stdin; game software must support console input this way. Minecraft Java continues to use authenticated RCON. Containers created before this change need a configure/recreate operation before generic stdin input is available. Pterodactyl egg conversion imports environment defaults and editable variables; it does not run install scripts or translate Pterodactyl-specific startup interpolation. Review the generated image, ports, and compatibility warnings before saving.
 
 ## Backups and recovery
 
@@ -94,12 +110,13 @@ Administrators can check GitHub releases in **Updates**. On the Compose host, ru
 
 ## Known limits
 
-- SFTP support is optional and requires operator-managed SSH access; it is not enabled by default.
-- Browser transfers are bounded and do not provide general-purpose large-file streaming.
+- SFTP is exposed as an optional per-server connection flow; validate the node firewall and client access before using it outside local evaluation.
+- Browser file transfers stream through the API and object storage up to 1 GiB; the text editor remains capped at 1 MiB.
 - Disk usage can be reported and logical allowances can be applied, but Docker/filesystem hard quotas are not enforced.
 - Automatic stateful failover and live migration are not implemented.
 - Backup archives are not atomic game-consistent snapshots; scheduled restore checks do not boot a game.
 - Console event routing has not been validated under production multi-replica load.
+- Pterodactyl conversion covers portable egg fields only; egg install scripts, daemon images, startup interpolation, and stop commands need operator review and are not executed.
 - Real AWS S3 retention, two-host recovery, Valheim boot, and native Windows host behavior need dedicated validation.
 - Production hardening remains: formal security review, broad rate limiting, account recovery operations, observability, upgrade/migration rollback, and rootless agent operation.
 
@@ -109,7 +126,7 @@ See the component READMEs for current detailed limits. Treat this release as an 
 
 ```sh
 # API
-cd api && npm ci && npm run check && npm run test:updates
+cd api && npm ci && npm run check && npm run test:updates && npm run test:templates
 
 # Web
 cd ../web && npm ci && npm run check && npm run build

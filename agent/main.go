@@ -21,6 +21,7 @@ import (
 )
 
 var version = "0.1.0"
+
 const maxTransfer = 8 << 20
 
 var api, nodeID, dataRoot, credentialFile, credential string
@@ -365,7 +366,7 @@ func execute(j *job) (interface{}, error) {
 		if s.TemplateID == "valheim" {
 			mount = "/config"
 		}
-		args := []string{"run", "-d", "--name", n, "--label", "navrylo.server=" + s.ID, "--memory", strconv.Itoa(s.MemoryMB) + "m", "--cpus", fmt.Sprintf("%.2f", float64(s.CPUPercent)/100), "--pids-limit", "512", "--security-opt", "no-new-privileges", "--restart", "no", "-v", root + ":" + mount}
+		args := []string{"run", "-d", "-i", "--name", n, "--label", "navrylo.server=" + s.ID, "--memory", strconv.Itoa(s.MemoryMB) + "m", "--cpus", fmt.Sprintf("%.2f", float64(s.CPUPercent)/100), "--pids-limit", "512", "--security-opt", "no-new-privileges", "--restart", "no", "-v", root + ":" + mount}
 		for _, p := range s.InternalPorts {
 			args = append(args, "-p", fmt.Sprintf("%d:%d/%s", s.Port+p.Offset, p.Container, p.Protocol))
 		}
@@ -418,16 +419,17 @@ func execute(j *job) (interface{}, error) {
 		}
 		return map[string]string{"output": out}, e
 	case "command":
-		if !strings.HasPrefix(s.Image, "itzg/minecraft-server:") {
-			return nil, errors.New("remote console commands are only supported for Minecraft Java")
-		}
 		cmd, e := value(j, "command")
 		if e != nil {
 			return nil, e
 		}
-		// Force IPv4 loopback: on Alpine-based server images localhost may resolve
-		// to ::1 while the Minecraft RCON listener is bound to 0.0.0.0.
-		out, e := docker("exec", n, "rcon-cli", "--host", "127.0.0.1", cmd)
+		if strings.HasPrefix(s.Image, "itzg/minecraft-server:") {
+			// Force IPv4 loopback: on Alpine-based server images localhost may resolve
+			// to ::1 while the Minecraft RCON listener is bound to 0.0.0.0.
+			out, e := docker("exec", n, "rcon-cli", "--host", "127.0.0.1", cmd)
+			return map[string]string{"output": out}, e
+		}
+		out, e := writeConsoleInput(n, cmd)
 		return map[string]string{"output": out}, e
 	case "backup":
 		u, e := value(j, "url")

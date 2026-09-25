@@ -2,14 +2,16 @@
 
 The agent is a **Linux** Go program. It requires Linux, Go 1.19+ to build, Docker Engine and the `docker` CLI on each node. It does not listen on a port. It polls the control plane over HTTPS for durable jobs, heartbeats every 10 seconds, and initiates an authenticated outbound WebSocket for on-demand Docker logs and CPU/RAM samples. It executes leased jobs with the local Docker CLI and stores successful destructive-job receipts in `DATA_ROOT/.jobs` for idempotent replay after network loss. It stores its node credential in a mode-0600 file. The Docker socket is **root-equivalent**. The supplied systemd unit runs as root so the agent can read/write game files after images change bind-mount ownership; protect the host, restrict network egress, and rotate enrollment credentials when compromised. A non-root Docker-group or rootless setup is possible only after testing image UID/GID and volume permissions on your nodes; it is not validated here.
 
+Fledge is the product and release name. Existing installs keep the `navrylo` service, credential, and data paths for upgrade compatibility; do not rename those paths by hand.
+
 **Windows is not a native agent target.** The agent uses Linux syscalls (including `/proc` and `statfs`) and the supplied service is a Linux systemd unit. Do not build a Windows `.exe`, install it as a Windows service, or use Windows containers. Docker Desktop on Windows can be used for local development/single-host evaluation only: its Docker engine must be in Linux-container mode, and the agent must be built and run inside a WSL2 Linux distro with Docker Desktop WSL Integration. This WSL2 arrangement is not a supported production node and has not been validated on Windows; use dedicated Linux hosts for production.
 
 On Linux, build and install as usual:
 
 ```sh
 cd agent
-go build -o navrylo-agent .
-# Install securely as /usr/local/bin/navrylo-agent and provision writable /var/lib/navrylo.
+go build -o fledge-agent .
+# The generated service still uses the legacy /usr/local/bin/navrylo-agent path for upgrades.
 ```
 
 ## WSL2 development node on Windows
@@ -53,7 +55,7 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
 
    WSL `localhost`/host networking and Docker Desktop port forwarding vary by Windows/WSL networking mode. The Compose API port is loopback-only by default, so a request via the WSL gateway may not work with the default bind. Only for isolated local development, if necessary, set `API_BIND=0.0.0.0` in the root `.env`, recreate the API (`docker compose up -d --force-recreate api`), and retry using the Windows host address. This can expose the API on Windows interfaces: keep Windows Firewall active, restrict the port to the local/WSL environment, and never forward it to the Internet. Restore loopback binding when no longer needed. If none of these addresses works, do not weaken firewall rules blindly; verify the Windows host IP, Compose port mapping, Docker Desktop state, and Windows Firewall first.
 
-3. From PowerShell in the Windows checkout, build the binary inside WSL (the script stages source under the distro's Linux filesystem, then places the result at `agent\dist\navrylo-agent-linux`):
+3. From PowerShell in the Windows checkout, build the binary inside WSL (the script stages source under the distro's Linux filesystem, then places the result at `agent\dist\fledge-agent-linux`):
 
    ```powershell
    .\agent\build-agent-wsl.ps1 -Distro Ubuntu-24.04 -CheckDocker
@@ -64,7 +66,7 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
    From an Ubuntu shell, install the output into that same distro; replace the example checkout path with the real Windows checkout:
 
    ```sh
-   sudo install -m 0755 "$(wslpath -u 'C:\path\to\navrylo\agent\dist\navrylo-agent-linux')" /usr/local/bin/navrylo-agent
+   sudo install -m 0755 "$(wslpath -u 'C:\path\to\fledge\agent\dist\fledge-agent-linux')" /usr/local/bin/navrylo-agent
    ```
 
    The result is an ELF Linux executable, not runnable directly by PowerShell. Do not copy the agent into a Windows service directory or start it from Windows.
@@ -108,13 +110,13 @@ Run `navrylo-agent` once to exchange the token and save the credential. Future r
 
 ### One-line panel connector
 
-The admin **Nodes → Connect a node** assistant can generate a platform command after you register node capacity. It shows the short-lived enrollment token separately; paste it only when the connector asks in a hidden terminal prompt. The token is not placed in shell history, command arguments, or the service environment. The connector downloads the latest GitHub release for Linux `amd64` or `arm64`, checks it against that release's `SHA256SUMS`, exchanges the token, and stores the resulting node credential in a mode-0600 file. A public GitHub repo and a published `v*` release are required; this source checkout has no configured remote, so enter the actual `owner/repository` in the panel.
+The admin **Nodes → Connect a node** assistant uses the fixed `kavaliersdelikt/fledge` repository. It shows the short-lived enrollment token separately; paste it only when the connector asks in a hidden terminal prompt. The token is not placed in shell history, command arguments, or the service environment. The connector downloads the matching GitHub release for Linux `amd64` or `arm64`, checks it against that release's `SHA256SUMS`, exchanges the token, and stores the resulting node credential in a mode-0600 file. A published `v*` release with both assets is required. The repository must be public (or the node needs an authenticated distribution path) for the unauthenticated one-line command to download its script and release assets.
 
 On dedicated Linux hosts it installs `/usr/local/bin/navrylo-agent` and a systemd service. On Windows, the generated PowerShell helper forwards the operation into a selected WSL2 distro and runs the Linux agent in the foreground. Install Docker Desktop's WSL integration first and make sure the API URL is reachable from that distro. Closing the WSL terminal stops the evaluation agent. This does not install a native Windows service. macOS is supported for running the panel stack but not as a node host.
 
-Each server gets a Docker container named `nvr-<uuid>` and local data directory `DATA_ROOT/<uuid>`. Minecraft mounts that directory at `/data`; Valheim at `/config`. Docker memory/CPU/PID limits and no-new-privileges are set (Docker's default capabilities remain so official images can initialize and chown their mounted data); Docker's own `-p` publishes the required TCP/UDP ports. **Disk reservations are not enforced quotas.** Backups stage a tar.gz file under `DATA_ROOT` then upload it to S3, so budget disk headroom at least as large as the compressed archive. Valheim password is generated per server by the API and visible to the server owner via server detail. Console commands are implemented only for Minecraft through `rcon-cli`; Valheim has logs but not remote command input. Custom template startup commands run via `/bin/sh -c` inside the image and require an image with a shell. Ensure trusted image prefixes match on API and agent; unknown images are rejected.
+Each server gets a Docker container named `nvr-<uuid>` and local data directory `DATA_ROOT/<uuid>`. Minecraft mounts that directory at `/data`; Valheim at `/config`. New containers keep standard input open. Minecraft commands use `rcon-cli`; other console input is sent over one persistent Docker attachment to container stdin. Game software must read stdin for those lines to act on them. Older containers need a configure/recreate after a backup before they can receive stdin. Docker memory/CPU/PID limits and no-new-privileges are set (Docker's default capabilities remain so official images can initialize and chown their mounted data); Docker's own `-p` publishes the required TCP/UDP ports. **Disk reservations are not enforced quotas.** Backups stage a tar.gz file under `DATA_ROOT` then upload it to S3, so budget disk headroom at least as large as the compressed archive. Valheim password is generated per server by the API and visible to the server owner via server detail. Custom template startup commands run via `/bin/sh -c` inside the image and require an image with a shell. Ensure trusted image prefixes match on API and agent; unknown images are rejected.
 
-`go test ./...` exercises path confinement/ZIP traversal and a local HTTP backup/restore round trip. There is **no end-to-end real-Docker or S3 test in this repository**. Validate both official templates and recovery on two real nodes before production use. Recovery after a lost node is manual: create a new server elsewhere, restore its S3 backup, and adjust DNS/ports. Existing containers keep running while the control plane is down; jobs wait.
+`go test ./...` exercises path confinement/ZIP traversal and a local HTTP backup/restore round trip. To run the additional live stdin check against an image already installed on the local Docker engine, set `FLEDGE_DOCKER_TEST_IMAGE=postgres:16-alpine` before the Go test; it creates a uniquely named, labeled test container and verifies that a line reaches its stdin. This does not validate a full Minecraft or Valheim boot, real S3, or two-host recovery. Recovery after a lost node is manual: create a new server elsewhere, restore its S3 backup, and adjust DNS/ports. Existing containers keep running while the control plane is down; jobs wait.
 
 
 ## Optional SFTP

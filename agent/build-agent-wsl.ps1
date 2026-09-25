@@ -24,7 +24,7 @@ function Invoke-WslScript([string]$Distribution, [string]$Script) {
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $PSScriptRoot 'dist/navrylo-agent-linux'
+    $OutputPath = Join-Path $PSScriptRoot 'dist/fledge-agent-linux'
 }
 $outputFullPath = [IO.Path]::GetFullPath($OutputPath)
 $outputParent = Split-Path -Parent $outputFullPath
@@ -81,12 +81,12 @@ out=$outputLiteral
 arch=$archLiteral
 mkdir -p "`$HOME/.cache" "`$(dirname "`$out")"
 test -f "`$repo/agent/go.mod" || { echo 'Agent source not found under the translated repository path.' >&2; exit 13; }
-stage=`$(mktemp -d "`$HOME/.cache/navrylo-agent-build.XXXXXX")
+stage=`$(mktemp -d "`$HOME/.cache/fledge-agent-build.XXXXXX")
 trap 'rm -rf "`$stage"' EXIT
 cp -a "`$repo/agent/." "`$stage/"
 cd "`$stage"
-GOOS=linux GOARCH="`$arch" CGO_ENABLED=0 go build -trimpath -o "`$stage/navrylo-agent" .
-install -m 0755 "`$stage/navrylo-agent" "`$out"
+GOOS=linux GOARCH="`$arch" CGO_ENABLED=0 go build -trimpath -o "`$stage/fledge-agent" .
+install -m 0755 "`$stage/fledge-agent" "`$out"
 printf 'Built Linux/%s agent at %s\n' "`$arch" "`$out"
 "@
 

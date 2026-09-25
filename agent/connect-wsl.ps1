@@ -30,7 +30,7 @@ $linuxScript = @"
 set -eu
 command -v curl >/dev/null 2>&1 || { echo 'Install curl inside the selected WSL distro first.' >&2; exit 10; }
 connect_url="https://raw.githubusercontent.com/$Repository/main/agent/connect.sh"
-temporary="`$(mktemp "`$HOME/navrylo-connect.XXXXXX")"
+temporary="`$(mktemp "`$HOME/fledge-connect.XXXXXX")"
 trap 'rm -f "`$temporary"' EXIT HUP INT TERM
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error "`$connect_url" -o "`$temporary"
 sudo sh "`$temporary" --api $apiLiteral --node $nodeLiteral --repo $repoLiteral --foreground$allow
