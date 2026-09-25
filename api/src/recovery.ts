@@ -1,0 +1,11 @@
+import type {FastifyInstance} from 'fastify';
+import {pool,hash,token,fail,passwordCheck,passwordHash,checkTotp,decrypt,audit} from './core.js';
+export function recoveryRoutes(app:FastifyInstance){
+ app.post('/api/auth/recovery-codes',async(req)=>{
+  if(req.actor?.tokenScopes)fail(403,'Browser session required');const b=req.body as any,u=(await pool.query('SELECT * FROM users WHERE id=$1',[req.actor!.id])).rows[0];
+  if(!await passwordCheck(String(b?.password||''),u.password_hash)||u.totp_secret&&!checkTotp(decrypt(u.totp_secret),String(b?.code||'')))fail(401,'Confirm your password and authenticator code');
+  const codes=Array.from({length:8},()=>token()),c=await pool.connect();try{await c.query('BEGIN');await c.query('DELETE FROM recovery_codes WHERE user_id=$1',[u.id]);for(const code of codes)await c.query('INSERT INTO recovery_codes(user_id,code_hash) VALUES($1,$2)',[u.id,hash(code)]);await c.query('COMMIT');}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+  await audit(u.id,'recovery_codes.rotate','user',u.id);return {codes};
+ });
+ app.post('/api/auth/recover',async(req)=>{const b=req.body as any;if(typeof b?.password!=='string'||b.password.length<12||b.password.length>1024)fail(400,'Password must be 12–1024 characters');const next=await passwordHash(b.password),c=await pool.connect();let id:string;try{await c.query('BEGIN');const u=(await c.query('SELECT id FROM users WHERE email=$1 AND NOT disabled FOR UPDATE',[String(b?.email||'').trim().toLowerCase()])).rows[0];if(!u)fail(401,'Recovery details are invalid');const used=await c.query('DELETE FROM recovery_codes WHERE user_id=$1 AND code_hash=$2 RETURNING code_hash',[u.id,hash(String(b?.recoveryCode||'').trim())]);if(!used.rowCount)fail(401,'Recovery details are invalid');id=u.id;await c.query('UPDATE users SET password_hash=$1,totp_secret=NULL,totp_pending=NULL WHERE id=$2',[next,id]);await c.query('DELETE FROM sessions WHERE user_id=$1',[id]);await c.query('DELETE FROM auth_challenges WHERE user_id=$1',[id]);await c.query('DELETE FROM sftp_tokens WHERE user_id=$1',[id]);await c.query('DELETE FROM api_tokens WHERE user_id=$1',[id]);await c.query('DELETE FROM recovery_codes WHERE user_id=$1',[id]);await c.query('COMMIT');}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}await audit(id!,'account.recover','user',id!);return {ok:true};});
+}

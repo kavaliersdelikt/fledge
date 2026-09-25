@@ -1,0 +1,83 @@
+name: Checks
+on:
+  push:
+  pull_request:
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: navrylo_ci
+          POSTGRES_USER: navrylo_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U navrylo_ci -d navrylo_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:updates
+      - name: HTTP and PostgreSQL smoke test (simulated node)
+        env:
+          DATABASE_URL: postgres://navrylo_ci:ci_test_password_only@localhost:5432/navrylo_ci
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          WEB_ORIGIN: http://localhost:3000
+          PORT: '4172'
+        run: |
+          npm start > /tmp/navrylo-api-ci.log 2>&1 &
+          for i in $(seq 1 50); do
+            if curl --fail --silent http://localhost:4172/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail http://localhost:4172/api/health
+          node test/smoke.mjs
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+      - run: go test ./...
+      - run: go build ./...
+      - name: Validate installer and node connector scripts
+        working-directory: ${{ github.workspace }}
+        run: |
+          sh -n install.sh update.sh agent/connect.sh tests/install-smoke.sh tests/connector-smoke.sh tests/update-smoke.sh
+          sh tests/install-smoke.sh
+          sh tests/update-smoke.sh
+          sh tests/connector-smoke.sh
+          sh tests/release-build-smoke.sh

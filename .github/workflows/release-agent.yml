@@ -1,0 +1,31 @@
+name: Release Linux node agent
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+      - name: Build supported Linux agents and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          version="${GITHUB_REF_NAME#v}"
+          for arch in amd64 arm64; do
+            (cd agent && GOOS=linux GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "../release/navrylo-agent_linux_$arch" .)
+          done
+          cd release
+          sha256sum navrylo-agent_linux_amd64 navrylo-agent_linux_arm64 > SHA256SUMS
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --title "Navrylo $GITHUB_REF_NAME" --generate-notes

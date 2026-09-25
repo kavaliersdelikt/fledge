@@ -1,0 +1,24 @@
+[Unit]
+Description=Navrylo outbound Docker node agent
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/navrylo-agent.env
+ExecStart=/usr/local/bin/navrylo-agent
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/navrylo
+StateDirectory=navrylo
+UMask=0077
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

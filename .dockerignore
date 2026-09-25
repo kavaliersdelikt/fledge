@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/.gocache
+**/.gopath
+**/.gomodcache
+**/.env
+**/.env.*.local
+.git
+**/*.log
+**/coverage
+**/.DS_Store

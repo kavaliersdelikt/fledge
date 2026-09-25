@@ -30,7 +30,7 @@ To publish one-line node connectors, push a version tag such as `v0.1.0`. The `r
 
 ### Panel updater
 
-Administrators can open **Updates** in the panel to check the latest stable GitHub release, view its notes, and copy the host update command. For a public repository, the API checks GitHub anonymously. For a private repository, configure `GITHUB_TOKEN` in the API environment with a fine-grained, read-only token for repository contents/metadata; keep it server-side and never put it in the web build. The API caches successful checks for five minutes. The panel does not execute host commands: Docker Compose must be updated by a host operator.
+Administrators can open **Updates** in the panel to check the latest stable GitHub release, view its notes, and copy the host update command. For a public repository, the API checks GitHub anonymously. For a private repository, configure `GITHUB_TOKEN` in the API environment with a fine-grained, read-only token for repository contents/metadata; keep it server-side and never put it in the web build. The API caches results for five minutes and limits manual refresh to once per minute. The panel does not execute host commands: Docker Compose must be updated by a host operator.
 
 From a clean Git checkout on the Compose host, run `sh ./update.sh` on Linux/macOS or `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update.ps1` on Windows. An optional version argument pins a tag (for example `sh ./update.sh v0.1.0`). The script fetches stable version tags, writes a restricted PostgreSQL SQL backup under `.backups/`, records the target version in `.env`, checks out that version, rebuilds the Compose services, and checks the API and panel. It keeps the seven most recent database dumps. If the new code fails health checks, it restores the prior `.env` version, checks out the previous code, and rebuilds it. Schema migrations run during API startup and are not automatically reversed; verify the SQL backup before deploying upgrades. Set `API_HEALTH_URL` and `WEB_HEALTH_URL` if the local health URLs differ. Run with `--check` / `-CheckOnly` for a non-mutating prerequisites check.
 
@@ -121,7 +121,5 @@ This repository contains ignored secrets, lockfiles, example configuration, cont
 - `compose.yaml` — local evaluation stack only
 - `update.sh`, `update.ps1` — host-side, backup-first tagged release updater
 - `.env.example` — configuration template; copy to untracked `.env`
-
-No license has been selected. Add the license you want **before** publishing or accepting external contributions.
 
 
