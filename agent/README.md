@@ -1,4 +1,4 @@
-# Navrylo outbound Docker node agent
+# Fledge outbound Docker node agent
 
 The agent is a **Linux** Go program. It requires Linux, Go 1.19+ to build, Docker Engine and the `docker` CLI on each node. It does not listen on a port. It polls the control plane over HTTPS for durable jobs, heartbeats every 10 seconds, and initiates an authenticated outbound WebSocket for on-demand Docker logs and CPU/RAM samples. It executes leased jobs with the local Docker CLI and stores successful destructive-job receipts in `DATA_ROOT/.jobs` for idempotent replay after network loss. It stores its node credential in a mode-0600 file. The Docker socket is **root-equivalent**. The supplied systemd unit runs as root so the agent can read/write game files after images change bind-mount ownership; protect the host, restrict network egress, and rotate enrollment credentials when compromised. A non-root Docker-group or rootless setup is possible only after testing image UID/GID and volume permissions on your nodes; it is not validated here.
 
