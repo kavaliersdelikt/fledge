@@ -10,7 +10,7 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 [Quick start](#quick-start) · [Connect a node](#connect-a-node) · [Documentation](#documentation) · [Known limits](#known-limits)
 
-<img src="docs/assets/banner.png" width="100%" alt="Fledge — one panel, many worlds" />
+<img src="docs/assets/banner2.png" width="100%" alt="Fledge — one panel, many worlds" />
 
 </div>
 
