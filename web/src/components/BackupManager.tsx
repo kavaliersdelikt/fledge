@@ -1,24 +1,295 @@
-'use client';
-import {useCallback,useEffect,useState,type FormEvent} from 'react';
-import {API,request,json,fmtDate,fmtSize} from '@/lib/api';
+"use client";
+import { API,fmtDate,fmtSize,json,request } from "@/lib/api";
+import { useCallback,useEffect,useState,type FormEvent } from "react";
+import { Notice } from "./shared";
 
-type Backup={id:string;state:string;sizeBytes:number|null;error?:string;createdAt:string};
-type Policy={retentionDays:number};
-/** Standalone backup panel. Parent can replace the old Backups tab with this. */
-export default function BackupManager({id,canManage,canRestore}:{id:string;canManage:boolean;canRestore:boolean}){
- const [backups,setBackups]=useState<Backup[]>([]),[policy,setPolicy]=useState<Policy|null>(null),[days,setDays]=useState(0);
- const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[verification,setVerification]=useState<{intervalHours:number;latest?:{state:string;error?:string}}|null>(null);
- const reload=useCallback(async()=>{try{const [list,p]=await Promise.all([request<Backup[]>(`/servers/${id}/backups`),request<Policy>(`/servers/${id}/backups/policy`)]);setVerification(await request(`/servers/${id}/verification`));setBackups(list);setPolicy(p);setDays(p.retentionDays);setError('')}catch(e){setError((e as Error).message)}},[id]);
- useEffect(()=>{reload();const timer=setInterval(reload,12000);return()=>clearInterval(timer)},[reload]);
- async function run(task:()=>Promise<unknown>,message:string){setBusy(true);setError('');setNotice('');try{await task();setNotice(message);await reload()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- async function savePolicy(e:FormEvent){e.preventDefault();if(!Number.isInteger(days)||days<0||days>3650){setError('Enter a value from 0 to 3650 days.');return}await run(()=>json('PATCH',`/servers/${id}/backups/policy`,{retentionDays:days}),'Retention policy saved.')}
- return <section className="section"><div className="section-title"><div><h2>Backups</h2><p className="muted">The game stops cleanly while its files are archived, then restarts. Forced shutdowns abort the backup.</p></div><button className="btn primary" disabled={busy} onClick={()=>run(()=>json('POST',`/servers/${id}/backups`),'Backup job queued.')}>Create backup</button></div>
- {policy&&<div className="notice"><strong>Automatic retention:</strong> {policy.retentionDays===0?'Off (default)':`${policy.retentionDays} days`}. The latest successful backup is never deleted automatically. Expired objects and metadata are removed in the background.</div>}
- {canManage&&<form className="form" onSubmit={savePolicy}><label className="field"><span>Automatically delete backups after this many days (0 = off)</span><input type="number" min="0" max="3650" value={days} onChange={e=>setDays(Number(e.target.value))} required/></label><div className="form-actions"><button className="btn" disabled={busy||!policy} type="submit">Save retention policy</button></div></form>}
- {canManage&&<div className="notice"><strong>Restore verification</strong><p>Periodically restore the latest backup into a temporary directory and validate its contents. Your live server stays untouched. This does not test game boot.</p><button className="btn" disabled={busy} onClick={()=>run(()=>json('PATCH',`/servers/${id}/verification`,{intervalHours:verification?.intervalHours?0:24}),'Verification schedule saved.')}>{verification?.intervalHours?'Disable daily verification':'Enable daily verification'}</button>{verification?.latest&&<p className="small">Last job: {verification.latest.state}{verification.latest.error?` · ${verification.latest.error}`:''}</p>}</div>}
- {error&&<div role="alert" className="notice error">{error}</div>}{notice&&<div role="status" className="notice">{notice}</div>}
- <div className="section-title"><h3>Saved backups</h3><button className="btn" onClick={reload} disabled={busy}>Refresh</button></div>
- {!backups.length?<div className="empty">No backups found.</div>:<div className="table-wrap"><table><thead><tr><th>Created</th><th>Status</th><th>Size</th><th>Actions</th></tr></thead><tbody>{backups.map(b=><tr key={b.id}><td>{fmtDate(b.createdAt)}<div className="muted small mono">{b.id}</div></td><td>{b.state}{b.error&&<div className="danger-text small">{b.error}</div>}</td><td>{fmtSize(b.sizeBytes??undefined)}</td><td className="row-actions">{b.state==='succeeded'&&<><a className="btn" href={`${API}/api/servers/${id}/backups/${b.id}/download`} target="_blank" rel="noreferrer">Download</a><button className="btn" disabled={busy} onClick={()=>run(()=>json('POST',`/servers/${id}/backups/${b.id}/verify`),'Restore verification queued.')}>Verify restore</button>{canRestore&&<button className="btn" disabled={busy} onClick={()=>{if(confirm('Restore replaces all files on the target server. Continue?'))run(()=>json('POST',`/servers/${id}/actions`,{action:'restore',backupId:b.id,confirm:true}),'Restore job queued.')}}>Restore</button>}</>}{['succeeded','failed'].includes(b.state)&&<button className="btn subtle-danger" disabled={busy} onClick={()=>{if(confirm('Permanently delete this backup? The latest successful backup is protected.'))run(()=>request(`/servers/${id}/backups/${b.id}`,{method:'DELETE'}),'Backup deleted.')}}>Delete</button>}</td></tr>)}</tbody></table></div>}
- </section>
+import { useConfirm } from "./feedback";
+
+type Backup = {
+  id: string;
+  state: string;
+  sizeBytes: number | null;
+  error?: string;
+  createdAt: string;
+};
+type Policy = { retentionDays: number };
+
+export default function BackupManager({
+  id,
+  canManage,
+  canRestore,
+}: {
+  id: string;
+  canManage: boolean;
+  canRestore: boolean;
+}) {
+  const confirm = useConfirm();
+  const [backups, setBackups] = useState<Backup[]>([]),
+    [policy, setPolicy] = useState<Policy | null>(null),
+    [days, setDays] = useState(0);
+  const [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [busy, setBusy] = useState(false),
+    [verification, setVerification] = useState<{
+      intervalHours: number;
+      latest?: { state: string; error?: string };
+    } | null>(null);
+  const reload = useCallback(async () => {
+    try {
+      const [list, p] = await Promise.all([
+        request<Backup[]>(`/servers/${id}/backups`),
+        request<Policy>(`/servers/${id}/backups/policy`),
+      ]);
+      setVerification(await request(`/servers/${id}/verification`));
+      setBackups(list);
+      setPolicy(p);
+      setDays(p.retentionDays);
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [id]);
+  useEffect(() => {
+    reload();
+    const timer = setInterval(reload, 12000);
+    return () => clearInterval(timer);
+  }, [reload]);
+  async function run(task: () => Promise<unknown>, message: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await task();
+      setNotice(message);
+      await reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function savePolicy(e: FormEvent) {
+    e.preventDefault();
+    if (!Number.isInteger(days) || days < 0 || days > 3650) {
+      setError("Enter a value from 0 to 3650 days.");
+      return;
+    }
+    await run(
+      () =>
+        json("PATCH", `/servers/${id}/backups/policy`, { retentionDays: days }),
+      "Retention policy saved.",
+    );
+  }
+  return (
+    <section className="section">
+      <div className="section-title">
+        <div>
+          <h2>Backups</h2>
+          <p className="muted">
+            The game stops cleanly while its files are archived, then restarts.
+            Forced shutdowns abort the backup.
+          </p>
+        </div>
+        <button
+          className="btn primary"
+          disabled={busy}
+          onClick={() =>
+            run(
+              () => json("POST", `/servers/${id}/backups`),
+              "Backup job queued.",
+            )
+          }
+        >
+          Create backup
+        </button>
+      </div>
+      <details className="backup-policy">
+        <summary>Retention & restore verification</summary>
+        {policy && (
+          <Notice status="accent" title="Automatic retention">
+            {policy.retentionDays === 0
+              ? "Off (default)"
+              : `${policy.retentionDays} days`}
+            . The latest successful backup is never deleted automatically.
+            Expired objects and metadata are removed in the background.
+          </Notice>
+        )}
+        {canManage && (
+          <form className="form" onSubmit={savePolicy}>
+            <label className="field">
+              <span>
+                Automatically delete backups after this many days (0 = off)
+              </span>
+              <input
+                type="number"
+                min="0"
+                max="3650"
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value))}
+                required
+              />
+            </label>
+            <div className="form-actions">
+              <button className="btn" disabled={busy || !policy} type="submit">
+                Save retention policy
+              </button>
+            </div>
+          </form>
+        )}
+        {canManage && (
+          <Notice status="default" title="Restore verification">
+            <p>
+              Periodically restore the latest backup into a temporary directory
+              and validate its contents. Your live server stays untouched. This
+              does not test game boot.
+            </p>
+            <button
+              className="btn"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () =>
+                    json("PATCH", `/servers/${id}/verification`, {
+                      intervalHours: verification?.intervalHours ? 0 : 24,
+                    }),
+                  "Verification schedule saved.",
+                )
+              }
+            >
+              {verification?.intervalHours
+                ? "Disable daily verification"
+                : "Enable daily verification"}
+            </button>
+            {verification?.latest && (
+              <p className="small">
+                Last job: {verification.latest.state}
+                {verification.latest.error
+                  ? ` · ${verification.latest.error}`
+                  : ""}
+              </p>
+            )}
+          </Notice>
+        )}
+      </details>
+      {error && <Notice status="danger">{error}</Notice>}
+      {notice && (
+        <Notice status="success">{notice}</Notice>
+      )}
+      <div className="section-title">
+        <h3>Saved backups</h3>
+        <button className="btn" onClick={reload} disabled={busy}>
+          Refresh
+        </button>
+      </div>
+      {!backups.length ? (
+        <div className="empty">No backups found.</div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Status</th>
+                <th>Size</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {backups.map((b) => (
+                <tr key={b.id}>
+                  <td>
+                    {fmtDate(b.createdAt)}
+                    <div className="muted small mono">{b.id}</div>
+                  </td>
+                  <td>
+                    {b.state}
+                    {b.error && (
+                      <div className="danger-text small">{b.error}</div>
+                    )}
+                  </td>
+                  <td>{fmtSize(b.sizeBytes ?? undefined)}</td>
+                  <td className="row-actions">
+                    {b.state === "succeeded" && (
+                      <>
+                        <a
+                          className="btn"
+                          href={`${API}/api/servers/${id}/backups/${b.id}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Download
+                        </a>
+                        <button
+                          className="btn"
+                          disabled={busy}
+                          onClick={() =>
+                            run(
+                              () =>
+                                json(
+                                  "POST",
+                                  `/servers/${id}/backups/${b.id}/verify`,
+                                ),
+                              "Restore verification queued.",
+                            )
+                          }
+                        >
+                          Verify restore
+                        </button>
+                        {canRestore && (
+                          <button
+                            className="btn"
+                            disabled={busy}
+                            onClick={async () => {
+                              if (
+                                await confirm(
+                                  "Restore replaces all files on the target server. Continue?",
+                                )
+                              )
+                                run(
+                                  () =>
+                                    json("POST", `/servers/${id}/actions`, {
+                                      action: "restore",
+                                      backupId: b.id,
+                                      confirm: true,
+                                    }),
+                                  "Restore job queued.",
+                                );
+                            }}
+                          >
+                            Restore
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {["succeeded", "failed"].includes(b.state) && (
+                      <button
+                        className="btn subtle-danger"
+                        disabled={busy}
+                        onClick={async () => {
+                          if (
+                            await confirm(
+                              "Permanently delete this backup? The latest successful backup is protected.",
+                            )
+                          )
+                            run(
+                              () =>
+                                request(`/servers/${id}/backups/${b.id}`, {
+                                  method: "DELETE",
+                                }),
+                              "Backup deleted.",
+                            );
+                        }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
-
