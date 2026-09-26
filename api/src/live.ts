@@ -30,14 +30,17 @@ const nodes=new Map<string,Peer>();const viewers=new Map<string,Set<Peer>>();con
 async function panelAccess(id:string,session:string){const r=await pool.query(`SELECT s.node_id FROM sessions ss JOIN users u ON ss.user_id=u.id JOIN servers s ON s.id=$2 LEFT JOIN collaborators c ON c.user_id=u.id AND c.server_id=s.id WHERE ss.token_hash=$1 AND ss.expires_at>now() AND NOT u.disabled AND (u.role<>'admin' OR u.totp_secret IS NOT NULL) AND s.deleted_at IS NULL AND (u.role='admin' OR u.id=s.owner_id OR c.permissions && ARRAY['console','manage']::text[])`,[hash(session),id]);return r.rows[0] as {node_id:string}|undefined;}
 async function nodeAccess(id:string,credential:string){return !!(await pool.query('SELECT 1 FROM nodes WHERE id=$1 AND credential_hash=$2 AND deleted_at IS NULL',[id,hash(credential)])).rowCount;}
 export function registerLive(app:FastifyInstance){
- const replica=crypto.randomUUID(),subscriptions=new Map<string,Set<string>>();let cursor='0',polling=false,maintaining=false,ready=false;
+ const replica=crypto.randomUUID(),subscriptions=new Map<string,Set<string>>();let cursor='0',polling=false,ready=false,maintenanceQueue=Promise.resolve();
  const initialize=pool.query('SELECT coalesce(max(id),0)::text AS id FROM console_events').then(r=>{cursor=r.rows[0].id;ready=true;});
  const pump=setInterval(()=>{if(polling||!ready)return;polling=true;void (async()=>{const rows=(await pool.query('SELECT id::text,server_id,frame FROM console_events WHERE id>$1 ORDER BY id LIMIT 200',[cursor])).rows;for(const row of rows){cursor=row.id;for(const v of viewers.get(row.server_id)||[])v.send(row.frame);}})().catch(e=>app.log.error(e,'console relay')).finally(()=>{polling=false;});},250);pump.unref();
- async function maintain(){if(maintaining)return;maintaining=true;try{
+ function maintain(){
+  const run=async()=>{
   for(const id of viewers.keys())await pool.query("INSERT INTO console_interests(replica,server_id,expires_at) VALUES($1,$2,now()+interval '30 seconds') ON CONFLICT(replica,server_id) DO UPDATE SET expires_at=excluded.expires_at",[replica,id]);
   for(const [id,peer] of nodes){const lease=await pool.query("UPDATE console_nodes SET expires_at=now()+interval '30 seconds' WHERE node_id=$1 AND replica=$2 RETURNING node_id",[id,replica]);if(!lease.rowCount){peer.close();continue;}const wanted=new Set<string>((await pool.query('SELECT DISTINCT i.server_id FROM console_interests i JOIN servers s ON s.id=i.server_id WHERE i.expires_at>now() AND s.node_id=$1 AND s.deleted_at IS NULL',[id])).rows.map(r=>r.server_id));const prior=subscriptions.get(id)||new Set<string>();for(const serverId of wanted)if(!prior.has(serverId))peer.send({type:'subscribe',serverId});for(const serverId of prior)if(!wanted.has(serverId))peer.send({type:'unsubscribe',serverId});subscriptions.set(id,wanted);}
   await pool.query("DELETE FROM console_events WHERE created_at<now()-interval '2 minutes'");await pool.query('DELETE FROM console_interests WHERE expires_at<now()');await pool.query('DELETE FROM console_nodes WHERE expires_at<now()');
- }finally{maintaining=false;}}
+  };
+  const next=maintenanceQueue.then(run,run);maintenanceQueue=next.then(()=>undefined,()=>undefined);return next;
+ }
  const maintenance=setInterval(()=>{void maintain().catch(e=>app.log.error(e,'console leases'));},5000);maintenance.unref();
  const connected=async(node:string)=>!!(await pool.query('SELECT 1 FROM console_nodes WHERE node_id=$1 AND expires_at>now()',[node])).rowCount;
  app.addHook('onClose',async()=>{clearInterval(pump);clearInterval(maintenance);for(const p of nodes.values())p.close();for(const set of viewers.values())for(const p of set)p.close();await pool.query('DELETE FROM console_interests WHERE replica=$1',[replica]);await pool.query('DELETE FROM console_nodes WHERE replica=$1',[replica]);});
@@ -56,8 +59,8 @@ export function registerLive(app:FastifyInstance){
  if(path==='/api/agent/stream'){
   const id=req.headers['x-node-id'],bearer=req.headers.authorization||'';
   if(typeof id!=='string'||!uuid.test(id)||!bearer.startsWith('Bearer ')||!(await nodeAccess(id,bearer.slice(7)))){deny(socket,401);return;}
-  peer=upgrade(req,socket,head);if(!peer)return;const old=nodes.get(id);old?.close();nodes.set(id,peer);subscriptions.set(id,new Set());
-  await pool.query("INSERT INTO console_nodes(node_id,replica,expires_at) VALUES($1,$2,now()+interval '30 seconds') ON CONFLICT(node_id) DO UPDATE SET replica=excluded.replica,expires_at=excluded.expires_at",[id,replica]);await maintain();for(const [serverId,members] of viewers)if(serverNodes.get(serverId)===id)for(const v of members)v.send({type:'status',connected:true});
+  peer=upgrade(req,socket,head);if(!peer)return;const old=nodes.get(id);if(old){nodes.delete(id);subscriptions.delete(id);old.close();}
+  await pool.query("INSERT INTO console_nodes(node_id,replica,expires_at) VALUES($1,$2,now()+interval '30 seconds') ON CONFLICT(node_id) DO UPDATE SET replica=excluded.replica,expires_at=excluded.expires_at",[id,replica]);nodes.set(id,peer);subscriptions.set(id,new Set());await maintain();for(const [serverId,members] of viewers)if(serverNodes.get(serverId)===id)for(const v of members)v.send({type:'status',connected:true});
   let pending=0,writeQueue=Promise.resolve();
   peer.onMessage=text=>{if(++pending>100){pending--;peer?.close();return;}writeQueue=writeQueue.then(async()=>{let m:Message;try{m=JSON.parse(text);}catch{peer?.close();return;}if(!m||!uuid.test(m.serverId)||!subscriptions.get(id)?.has(m.serverId)||nodes.get(id)!==peer)return;let frame:any;if(m.type==='log'&&validLog(m))frame={type:'log',data:m.data};else if(m.type==='sample'&&validSample(m))frame={type:'sample',cpuPercent:m.cpuPercent,memoryBytes:m.memoryBytes,memoryLimitBytes:m.memoryLimitBytes,sampledAt:new Date().toISOString()};else return;
   const valid=await pool.query('SELECT 1 FROM servers s JOIN console_nodes n ON n.node_id=s.node_id WHERE s.id=$1 AND s.node_id=$2 AND s.deleted_at IS NULL AND n.replica=$3 AND n.expires_at>now()',[m.serverId,id,replica]);if(!valid.rowCount)return;
