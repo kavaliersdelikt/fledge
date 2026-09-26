@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-usage(){ echo 'Usage: sh ./update.sh [vX.Y.Z] [--check]'; }
+usage(){ echo 'Usage: sh ./update.sh [vX.Y.Z[.N]] [--check]'; }
 target=
 check_only=0
 for arg in "$@"; do
@@ -23,11 +23,11 @@ origin=$(git remote get-url origin 2>/dev/null || true)
 [ -n "$origin" ] || { echo 'Git remote "origin" is required.' >&2; exit 2; }
 if [ -z "$target" ]; then
   git fetch --tags origin
-  target=$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+  target=$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n 1 || true)
 else
   git fetch --tags origin
 fi
-printf '%s\n' "$target" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$' || { echo 'No valid versioned release tag was found.' >&2; exit 2; }
+printf '%s\n' "$target" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.-]+)?$' || { echo 'No valid versioned release tag was found.' >&2; exit 2; }
 git rev-parse --verify "refs/tags/$target" >/dev/null 2>&1 || { echo "Release tag $target was not fetched." >&2; exit 2; }
 if [ "$(git rev-parse "refs/tags/$target^{commit}")" = "$previous" ]; then echo "Already running $target."; exit 0; fi
 [ -f .env ] || { echo 'The Compose .env file is missing; run the installer first.' >&2; exit 2; }

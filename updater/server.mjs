@@ -69,7 +69,7 @@ createServer(async(req,res)=>{
   if(raw.length>2048){launching=false;respond(res,413,{error:'Request too large'});return;}
   let body;try{body=JSON.parse(raw||'{}');}catch{launching=false;respond(res,400,{error:'Invalid JSON'});return;}
   const version=typeof body.version==='string'?body.version.replace(/^v/i,''):'';
-  if(!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)){launching=false;respond(res,400,{error:'A valid release version is required.'});return;}
+  if(!/^\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?$/.test(version)){launching=false;respond(res,400,{error:'A valid release version is required.'});return;}
   launch(version);launching=false;respond(res,state.state==='running'?202:503,safeState());return;
  }
  respond(res,404,{error:'Not found'});
