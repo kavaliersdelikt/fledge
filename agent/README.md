@@ -29,7 +29,11 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
    wsl --list --verbose
    ```
 
-   Install Docker Desktop for Windows. In **Settings → General**, turn on **Use the WSL 2 based engine**. In **Settings → Resources → WSL Integration**, enable the distro you will use (for example, Ubuntu-24.04), then restart Docker Desktop and the distro. Ensure Docker Desktop is running in **Linux containers** mode. In that distro, install Go 1.19+ and basic tools if needed:
+   Install Docker Desktop for Windows. In **Settings → General**, turn on **Use the WSL 2 based engine**. In **Settings → Resources → WSL Integration**, enable the distro you will use (for example, Ubuntu-24.04), then restart Docker Desktop and the distro. Ensure Docker Desktop is running in **Linux containers** mode.
+
+   The PowerShell connector installs the agent as a background systemd service by default. Enable systemd in the selected distro: open `/etc/wsl.conf` with `sudo nano /etc/wsl.conf`, preserve existing settings, and add `systemd=true` under a `[boot]` section (create `[boot]` if needed). Save it, exit the distro, then run `wsl --shutdown` in PowerShell and reopen Ubuntu. Confirm PID 1 is systemd with `ps -p 1 -o comm=`. The password requested by `sudo` is the Linux password for your WSL user, not your Windows password; input is hidden while typing. If forgotten, Microsoft documents how to reset it in the [WSL setup guide](https://learn.microsoft.com/en-us/windows/wsl/setup/environment).
+
+   In that distro, install Go 1.19+ and basic tools if needed:
 
    ```sh
    sudo apt update
@@ -79,9 +83,9 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
    .\agent\connect-wsl.ps1 -ApiUrl 'http://localhost:4000' -NodeId '<node-uuid>' -Repository 'kavaliersdelikt/fledge' -AllowInsecureHttp
    ```
 
-   Use the API URL that is reachable from the selected WSL distro. The helper fetches the Linux connector and asks for the one-time token privately inside WSL. Docker Desktop WSL Integration must be enabled for the selected distro, and docker version inside that distro must show both Client and Server; the connector does not install Docker Engine. Keep the panel API healthy first; the connector cannot enroll against an API that is failing its health check.
+   Use the API URL that is reachable from the selected WSL distro. The helper fetches the Linux connector and asks for the one-time token privately inside WSL. By default, it installs and starts `fledge-agent.service`, then returns to PowerShell while the agent runs in the background. Check it with `wsl -d Ubuntu-24.04 -u root -- systemctl status fledge-agent`; stop/start it with `systemctl stop fledge-agent` / `systemctl start fledge-agent`. Add `-Foreground` to the helper only when you want the agent tied to the current terminal. Docker Desktop WSL Integration must be enabled for the selected distro, and docker version inside that distro must show both Client and Server; the connector does not install Docker Engine. Keep the panel API healthy first; the connector cannot enroll against an API that is failing its health check.
 
-4. Run the agent interactively in Ubuntu for local evaluation. Use the node UUID and fresh one-time enrollment token from the UI. Replace the placeholders and API URL with the address that succeeded in step 2:
+4. To run the agent temporarily in the foreground instead of installing the service, use the Linux connector with `--foreground`. Use the node UUID and fresh one-time enrollment token from the UI. Replace the placeholders and API URL with the address that succeeded in step 2:
 
    ```sh
    sudo env \
@@ -95,7 +99,7 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
      /usr/local/bin/fledge-agent
    ```
 
-   If you use the Windows host IP instead, put that full URL in `API_URL`. `ALLOW_INSECURE_HTTP=true` is only for this local HTTP evaluation; deployment requires HTTPS. The service runs in the foreground and stops with Ctrl+C. On successful enrollment the agent stores its reusable credential in the protected credential file and clears the one-time token from its process environment. Do not configure `ENROLLMENT_TOKEN` for later restarts or put reusable credentials in source control. Since the supplied Linux systemd unit is not a Windows service, this example does not install or promise automatic startup in WSL.
+   If you use the Windows host IP instead, put that full URL in `API_URL`. `ALLOW_INSECURE_HTTP=true` is only for this local HTTP evaluation; deployment requires HTTPS. Foreground mode stops with Ctrl+C. On successful enrollment the agent stores its reusable credential in the protected credential file and clears the one-time token from its process environment. Do not configure `ENROLLMENT_TOKEN` for later restarts or put reusable credentials in source control.
 
    Running as root matches the supplied Linux service's ability to manage container-owned files, but first make sure `sudo docker version` reaches the same Docker Desktop engine. If only the normal WSL user can access Docker, you may run the binary as that user with a data root in the distro's home directory for a disposable test; image ownership changes may then cause file-access failures. Do not make the Docker socket world-writable to work around this. Validate server creation, file operations, restart, and deletion before using any WSL node for anything important.
 

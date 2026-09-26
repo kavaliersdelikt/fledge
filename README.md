@@ -14,7 +14,7 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 </div>
 
-> **Version v0.1.5.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.1.7.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 
 ## What is Fledge?
 
@@ -82,13 +82,13 @@ docker compose down
 
 Prepare the node host **before** registering it in the panel. A node needs a supported Linux system with `systemd`, Docker Engine, and the Docker CLI already installed. Follow Docker's [official Engine installation guide](https://docs.docker.com/engine/install/) for your Linux distribution, then verify `sudo docker version` shows both a Client and Server. The Fledge connector installs the agent; it does not install Docker Engine.
 
-For a local Windows evaluation, use a WSL2 Linux distro with Docker Desktop's WSL Integration enabled for that distro (Settings → Resources → WSL Integration) and Linux containers selected. Inside the distro, confirm docker version shows both Client and Server before connecting. Do not build or run the node agent in native PowerShell: it relies on Linux system calls. See the [WSL2 node setup and PowerShell commands](agent/README.md#wsl2-development-node-on-windows). Native Windows nodes, Windows containers, and macOS node hosts are not supported.
+For a local Windows evaluation, use a WSL2 Linux distro with Docker Desktop's WSL Integration enabled for that distro (Settings → Resources → WSL Integration), Linux containers selected, and systemd enabled in the distro. The PowerShell connector installs and starts the agent as a background systemd service by default; add `-Foreground` only for a temporary session. Inside the distro, confirm docker version shows both Client and Server before connecting. Do not build or run the node agent in native PowerShell: it relies on Linux system calls. See the [WSL2 node setup and PowerShell commands](agent/README.md#wsl2-development-node-on-windows). Native Windows nodes, Windows containers, and macOS node hosts are not supported.
 
 Once Docker is installed and reachable on the node:
 
 1. In **Nodes**, register the node's capacity and location.
 2. Use **Connect a node** to create a one-time enrollment token and copy the generated connector command. Tokens expire after ten minutes and are shown once.
-3. Run the connector on the node. It verifies the agent checksum, enrolls the agent, and installs a systemd service. For Windows/WSL2 evaluation, run the PowerShell helper from the repository root as shown in the agent guide; do not paste Linux `curl`/`sudo` commands into PowerShell.
+3. Run the connector on the node. It verifies the agent checksum, enrolls the agent, and installs a systemd service. For Windows/WSL2 evaluation, enable systemd first and run the PowerShell helper from the repository root as shown in the agent guide; it returns after starting the background service. Do not paste Linux `curl`/`sudo` commands into PowerShell.
 4. Confirm the node is connected before placing a server there.
 
 The agent is a high-trust, root-equivalent component because it controls Docker and server files. Install it only on hosts you administer. Use HTTPS outside local development. 
@@ -127,7 +127,7 @@ The in-panel updater runs as a private Compose service and needs access to the D
 - This checkout was exercised with a real Minecraft Java boot, console command, file listing, Docker resource sample, 108 MiB S3-compatible backup download, and successful restore on Docker Desktop with a WSL2 agent. Real AWS S3 retention, Valheim boot, and a separate two-host recovery drill still need dedicated validation. Windows Docker Desktop is for local Linux-container and WSL2-agent evaluation; native Windows services and Windows containers are unsupported.
 - The API has shared request throttles, one-time account recovery codes, admin-only Prometheus metrics, and an updater that restores application code if its health check fails. These controls do not replace a formal production security review. Database migrations are not automatically reversed; account recovery requires previously saved recovery codes; and the Linux agent still has root-equivalent Docker access. Rootless operation, load testing, external monitoring, and credential-rotation operations remain unvalidated.
 
-See [v0.1.5 release notes](docs/releases/v0.1.5.md) and the component READMEs for verification details. Treat this release as an evaluation build until you have tested deployment and recovery on your own infrastructure.
+See [v0.1.7 release notes](docs/releases/v0.1.7.md) and the component READMEs for verification details. Treat this release as an evaluation build until you have tested deployment and recovery on your own infrastructure.
 
 ## Development checks
 

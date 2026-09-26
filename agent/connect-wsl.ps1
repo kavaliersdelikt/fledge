@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Repository,
     [string]$Distro = 'Ubuntu-24.04',
     [switch]$AllowInsecureHttp,
+    [switch]$Foreground,
     [switch]$ValidateOnly
 )
 
@@ -26,6 +27,7 @@ $repoLiteral = ConvertTo-BashLiteral $Repository
 $apiLiteral = ConvertTo-BashLiteral $ApiUrl.TrimEnd('/')
 $nodeLiteral = ConvertTo-BashLiteral $NodeId
 $allow = if ($AllowInsecureHttp) { ' --allow-insecure-http' } else { '' }
+$mode = if ($Foreground) { ' --foreground' } else { '' }
 $linuxScript = @"
 set -eu
 command -v curl >/dev/null 2>&1 || { echo 'Install curl inside the selected WSL distro first.' >&2; exit 10; }
@@ -33,11 +35,11 @@ connect_url="https://raw.githubusercontent.com/$Repository/main/agent/connect.sh
 temporary="`$(mktemp "`$HOME/fledge-connect.XXXXXX")"
 trap 'rm -f "`$temporary"' EXIT HUP INT TERM
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error "`$connect_url" -o "`$temporary"
-sudo sh "`$temporary" --api $apiLiteral --node $nodeLiteral --repo $repoLiteral --foreground$allow
+sudo sh "`$temporary" --api $apiLiteral --node $nodeLiteral --repo $repoLiteral$allow$mode
 "@
 $linuxScript = $linuxScript.Replace("`r`n", "`n").Replace("`r", '')
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($linuxScript))
 $launcher = "printf '%s' '$encoded' | base64 -d | bash"
 Write-Host "Connecting node $NodeId through WSL distro $Distro. The one-time token will be requested privately in the Linux terminal."
 & wsl.exe --distribution $Distro --exec bash -lc $launcher
-if ($LASTEXITCODE -ne 0) { throw "WSL connector failed (exit code $LASTEXITCODE). Check Docker Desktop WSL integration and the API URL reachable from WSL." }
+if ($LASTEXITCODE -ne 0) { throw "WSL connector failed (exit code $LASTEXITCODE). Check Docker Desktop WSL integration, API reachability, and that systemd is enabled for background service mode. Use -Foreground only for a temporary session." }

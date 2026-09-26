@@ -5,7 +5,7 @@ import {dirname} from 'node:path';
 import {admin} from './core.js';
 
 const repository=(process.env.GITHUB_REPOSITORY||'kavaliersdelikt/fledge').trim();
-const currentVersion=()=> (process.env.APP_VERSION||'0.1.5').replace(/^v/i,'');
+const currentVersion=()=> (process.env.APP_VERSION||'0.1.7').replace(/^v/i,'');
 const updater=(process.env.UPDATER_URL||'').replace(/\/$/,'');
 const tokenFile=process.env.UPDATE_TOKEN_FILE||'/run/fledge-updater/token';
 let cached:{at:number;value:any}|undefined;

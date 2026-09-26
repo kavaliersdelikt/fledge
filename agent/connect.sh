@@ -60,8 +60,8 @@ command -v sha256sum >/dev/null 2>&1 || { echo 'sha256sum is required to verify 
 command -v stty >/dev/null 2>&1 || { echo 'stty is required to securely prompt for the one-time token.' >&2; exit 17; }
 docker info >/dev/null 2>&1 || { echo 'Docker is not reachable. Start Docker Engine and retry.' >&2; exit 18; }
 if [ "$FOREGROUND" -eq 0 ]; then
-  command -v systemctl >/dev/null 2>&1 || { echo 'systemd is required for service installation. On WSL2, use the foreground connector instead.' >&2; exit 16; }
-  systemctl show-environment >/dev/null 2>&1 || { echo 'systemd is not running. Use --foreground for a local WSL2 evaluation or run on a supported Linux host.' >&2; exit 19; }
+  command -v systemctl >/dev/null 2>&1 || { echo 'systemd is required for background service installation. On WSL2, enable systemd in /etc/wsl.conf or use --foreground for a temporary session.' >&2; exit 16; }
+  systemctl show-environment >/dev/null 2>&1 || { echo 'systemd is not running. Enable it in /etc/wsl.conf and restart WSL, or use --foreground for a temporary session.' >&2; exit 19; }
 fi
 
 API_URL=${API_URL%/}
