@@ -42,7 +42,9 @@ function launch(version){
  try{project=projectName();}
  catch(error){state.state='failed';state.phase='failed';state.error=error.message;state.finishedAt=new Date().toISOString();return;}
  const env={...process.env,COMPOSE_PROJECT_NAME:project,COMPOSE_FILE:`${workspace}/compose.yaml`,API_HEALTH_URL:'http://api:4000/api/health',WEB_HEALTH_URL:'http://web:3000/'};
- child=spawn('sh',[`${workspace}/update.sh`,`v${version}`],{cwd:workspace,env,stdio:['ignore','pipe','pipe']});
+ const scriptPath=`${workspace}/update.sh`;
+ const normalizeAndRun='set -eu; temp=$(mktemp); trap \'rm -f "$temp"\' EXIT; tr -d "\\r" < "$1" > "$temp"; sh "$temp" "$2"';
+ child=spawn('sh',['-c',normalizeAndRun,'fledge-updater',scriptPath,`v${version}`],{cwd:workspace,env,stdio:['ignore','pipe','pipe']});
  let buffers={stdout:'',stderr:''};
  for(const channel of ['stdout','stderr'])child[channel].on('data',chunk=>{
   buffers[channel]+=chunk.toString();const lines=buffers[channel].split(/\r?\n/);buffers[channel]=lines.pop()||'';for(const line of lines)logLine(line);
