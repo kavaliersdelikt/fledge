@@ -30,14 +30,14 @@ if ($env:OS -eq 'Windows_NT') {
   }
   Set-Acl -LiteralPath $backupDir -AclObject $acl
 }
-$stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'); $backup = Join-Path $backupDir "navrylo-db-$stamp.sql"; $partial = "$backup.partial"
-$envBackup = Join-Path $backupDir "navrylo-env-$stamp"; $envChanged = $false
+$stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'); $backup = Join-Path $backupDir "fledge-db-$stamp.sql"; $partial = "$backup.partial"
+$envBackup = Join-Path $backupDir "fledge-env-$stamp"; $envChanged = $false
 Copy-Item -LiteralPath $envPath -Destination $envBackup
 if ($env:OS -eq 'Windows_NT') { $envAcl=Get-Acl -LiteralPath $envBackup; $envAcl.SetAccessRuleProtection($true,$false); foreach ($identity in @([Security.Principal.WindowsIdentity]::GetCurrent().Name,'NT AUTHORITY\SYSTEM','BUILTIN\Administrators')) { $rule=[Security.AccessControl.FileSystemAccessRule]::new($identity,'FullControl','Allow'); [void]$envAcl.AddAccessRule($rule) }; Set-Acl -LiteralPath $envBackup -AclObject $envAcl }
 try {
   $errorFile = "$partial.stderr"
   Write-Output 'UPDATE_PROGRESS:backup'
-  $process = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'compose exec -T postgres pg_dump -U navrylo -d navrylo' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $partial -RedirectStandardError $errorFile
+  $process = Start-Process -FilePath (Get-Command docker).Source -ArgumentList 'compose exec -T postgres pg_dump -U fledge -d fledge' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $partial -RedirectStandardError $errorFile
   if ($process.ExitCode -ne 0) { throw 'Database backup failed; update stopped.' }
   if (Test-Path -LiteralPath $errorFile) { Remove-Item -LiteralPath $errorFile -Force }
   if ((Get-Item -LiteralPath $partial).Length -eq 0) { throw 'Database backup is empty; update stopped.' }
@@ -56,7 +56,7 @@ try {
   for ($i=0; $i -lt 36; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri $apiUrl -TimeoutSec 3 | Out-Null; Invoke-WebRequest -UseBasicParsing -Uri $webUrl -TimeoutSec 3 | Out-Null; $healthy=$true; break } catch { Start-Sleep -Seconds 5 } }
   if (-not $healthy) { throw 'Health checks failed.' }
   Remove-Item -LiteralPath $envBackup -Force
-  Get-ChildItem -LiteralPath $backupDir -File -Filter 'navrylo-db-*.sql' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 7 | Remove-Item -Force
+  Get-ChildItem -LiteralPath $backupDir -File -Filter 'fledge-db-*.sql' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 7 | Remove-Item -Force
   Write-Host "Fledge $Version is healthy. PostgreSQL backup: $backup"
   Write-Output 'UPDATE_PROGRESS:complete'
 } catch {

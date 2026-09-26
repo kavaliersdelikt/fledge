@@ -8,7 +8,7 @@ Requires Node.js 20+, PostgreSQL 15+ (database/user allowed to create tables), a
 
 ```sh
 npm ci
-export DATABASE_URL='postgres://navrylo:YOUR_PASSWORD@localhost:5432/navrylo'
+export DATABASE_URL='postgres://fledge:YOUR_PASSWORD@localhost:5432/fledge'
 export ENCRYPTION_KEY="$(openssl rand -hex 32)" # persist in a secret manager; never regenerate after 2FA enrollment
 export WEB_ORIGIN='http://localhost:3000'
 export PORT=4000

@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$temp = Join-Path ([IO.Path]::GetTempPath()) ("navrylo-installer-test-" + [guid]::NewGuid().ToString('N'))
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("fledge-installer-test-" + [guid]::NewGuid().ToString('N'))
 $project = Join-Path $temp 'project'
 $mock = Join-Path $temp 'mock-bin'
 New-Item -ItemType Directory -Force -Path $project,$mock | Out-Null

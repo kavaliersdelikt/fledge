@@ -189,7 +189,7 @@ func writeSafeStream(root, p string, src io.Reader, size int64) error {
 	if _, e = rand.Read(random); e != nil {
 		return e
 	}
-	tmp := fmt.Sprintf(".navrylo-tmp-%x", random)
+	tmp := fmt.Sprintf(".fledge-tmp-%x", random)
 	fd, e := syscall.Openat(int(d.Fd()), tmp, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
 	if e != nil {
 		return e

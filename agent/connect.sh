@@ -86,13 +86,13 @@ tty_hidden=0
 printf '\n' >/dev/tty
 case "$ENROLLMENT_TOKEN" in ''|*[!A-Za-z0-9_-]*) echo 'Enrollment token is empty or has invalid characters.' >&2; exit 24 ;; esac
 
-install -d -m 0755 /usr/local/bin /etc/navrylo /var/lib/navrylo /var/lib/navrylo/servers
-install -m 0755 "$tmp/$ASSET" /usr/local/bin/navrylo-agent
+install -d -m 0755 /usr/local/bin /etc/fledge /var/lib/fledge /var/lib/fledge/servers
+install -m 0755 "$tmp/$ASSET" /usr/local/bin/fledge-agent
 umask 077
-credential_file=/etc/navrylo/agent.credential
-env_file=/etc/navrylo/agent.env
+credential_file=/etc/fledge/agent.credential
+env_file=/etc/fledge/agent.env
 if [ "$ALLOW_HTTP" -eq 1 ]; then ALLOW_LINE='ALLOW_INSECURE_HTTP=true'; else ALLOW_LINE=''; fi
-printf 'API_URL=%s\nNODE_ID=%s\nDATA_ROOT=/var/lib/navrylo/servers\nCREDENTIAL_FILE=%s\n%s\n' "$API_URL" "$NODE_ID" "$credential_file" "$ALLOW_LINE" > "$env_file"
+printf 'API_URL=%s\nNODE_ID=%s\nDATA_ROOT=/var/lib/fledge/servers\nCREDENTIAL_FILE=%s\n%s\n' "$API_URL" "$NODE_ID" "$credential_file" "$ALLOW_LINE" > "$env_file"
 chmod 600 "$env_file"
 payload=$(printf '{"nodeId":"%s","token":"%s"}' "$NODE_ID" "$ENROLLMENT_TOKEN")
 unset ENROLLMENT_TOKEN
@@ -107,10 +107,10 @@ unset credential payload
 if [ "$FOREGROUND" -eq 1 ]; then
   echo 'Node enrolled. The agent is running in this terminal; press Ctrl+C to stop it.'
   if [ "$ALLOW_HTTP" -eq 1 ]; then export ALLOW_INSECURE_HTTP=true; fi
-  export API_URL NODE_ID DATA_ROOT=/var/lib/navrylo/servers CREDENTIAL_FILE="$credential_file"
-  exec /usr/local/bin/navrylo-agent
+  export API_URL NODE_ID DATA_ROOT=/var/lib/fledge/servers CREDENTIAL_FILE="$credential_file"
+  exec /usr/local/bin/fledge-agent
 fi
-cat > /etc/systemd/system/navrylo-agent.service <<'EOF'
+cat > /etc/systemd/system/fledge-agent.service <<'EOF'
 [Unit]
 Description=Fledge game server node agent
 After=network-online.target docker.service
@@ -119,8 +119,8 @@ Requires=docker.service
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/navrylo/agent.env
-ExecStart=/usr/local/bin/navrylo-agent
+EnvironmentFile=/etc/fledge/agent.env
+ExecStart=/usr/local/bin/fledge-agent
 Restart=always
 RestartSec=5
 UMask=0077
@@ -129,5 +129,5 @@ UMask=0077
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
-systemctl enable --now navrylo-agent.service
-echo 'Node enrolled and navrylo-agent.service is running. The one-time token was not saved.'
+systemctl enable --now fledge-agent.service
+echo 'Node enrolled and fledge-agent.service is running. The one-time token was not saved.'

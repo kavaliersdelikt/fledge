@@ -34,14 +34,14 @@ if [ "$(git rev-parse "refs/tags/$target^{commit}")" = "$previous" ]; then echo 
 mkdir -p .backups
 chmod 700 .backups
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-backup=".backups/navrylo-db-$stamp.sql"
+backup=".backups/fledge-db-$stamp.sql"
 partial="$backup.partial"
-env_backup=".backups/navrylo-env-$stamp"
+env_backup=".backups/fledge-env-$stamp"
 env_changed=0
 cleanup(){ rm -f "$partial" "$env_backup.new"; if [ -f "$env_backup" ]; then rm -f "$env_backup"; fi; }
 trap cleanup EXIT HUP INT TERM
 echo 'UPDATE_PROGRESS:backup'
-docker compose exec -T postgres pg_dump -U navrylo -d navrylo > "$partial" || { echo 'Database backup failed; update stopped.' >&2; exit 3; }
+docker compose exec -T postgres pg_dump -U fledge -d fledge > "$partial" || { echo 'Database backup failed; update stopped.' >&2; exit 3; }
 [ -s "$partial" ] || { echo 'Database backup is empty; update stopped.' >&2; exit 3; }
 chmod 600 "$partial"
 mv "$partial" "$backup"
@@ -77,6 +77,6 @@ if [ "$healthy" -ne 1 ]; then
   exit 5
 fi
 rm -f "$env_backup"
-ls -1t .backups/navrylo-db-*.sql 2>/dev/null | tail -n +8 | while IFS= read -r old_backup; do rm -f "$old_backup"; done
+ls -1t .backups/fledge-db-*.sql 2>/dev/null | tail -n +8 | while IFS= read -r old_backup; do rm -f "$old_backup"; done
 echo "Fledge $target is healthy. PostgreSQL backup: $backup"
 echo 'UPDATE_PROGRESS:complete'

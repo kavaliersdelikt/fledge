@@ -18,6 +18,6 @@ export function registerOperations(app:FastifyInstance){
   const [nodes,jobs,servers]=await Promise.all([pool.query("SELECT status,count(*)::int AS n FROM nodes WHERE deleted_at IS NULL GROUP BY status"),pool.query('SELECT state,count(*)::int AS n FROM jobs GROUP BY state'),pool.query("SELECT observed_status AS status,count(*)::int AS n FROM servers WHERE deleted_at IS NULL GROUP BY observed_status")]);
   const label=(s:string)=>JSON.stringify(s).replace(/\\r/g,'');
   reply.type('text/plain; version=0.0.4');
-  return '# HELP navrylo_nodes Registered nodes by connection state\n# TYPE navrylo_nodes gauge\n'+nodes.rows.map(r=>`navrylo_nodes{status=${label(r.status)}} ${r.n}`).join('\n')+'\n# TYPE navrylo_jobs gauge\n'+jobs.rows.map(r=>`navrylo_jobs{state=${label(r.state)}} ${r.n}`).join('\n')+'\n# TYPE navrylo_servers gauge\n'+servers.rows.map(r=>`navrylo_servers{status=${label(r.status)}} ${r.n}`).join('\n')+'\n';
+  return '# HELP fledge_nodes Registered nodes by connection state\n# TYPE fledge_nodes gauge\n'+nodes.rows.map(r=>`fledge_nodes{status=${label(r.status)}} ${r.n}`).join('\n')+'\n# TYPE fledge_jobs gauge\n'+jobs.rows.map(r=>`fledge_jobs{state=${label(r.state)}} ${r.n}`).join('\n')+'\n# TYPE fledge_servers gauge\n'+servers.rows.map(r=>`fledge_servers{status=${label(r.status)}} ${r.n}`).join('\n')+'\n';
  });
 }

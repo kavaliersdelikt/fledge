@@ -9,12 +9,12 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: navrylo_ci
-          POSTGRES_USER: navrylo_ci
+          POSTGRES_DB: fledge_ci
+          POSTGRES_USER: fledge_ci
           POSTGRES_PASSWORD: ci_test_password_only
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U navrylo_ci -d navrylo_ci"
+          --health-cmd "pg_isready -U fledge_ci -d fledge_ci"
           --health-interval 5s --health-timeout 5s --health-retries 15
     defaults:
       run:
@@ -33,12 +33,12 @@ jobs:
       - run: npm run test:templates
       - name: HTTP and PostgreSQL smoke test (simulated node)
         env:
-          DATABASE_URL: postgres://navrylo_ci:ci_test_password_only@localhost:5432/navrylo_ci
+          DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
           ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           WEB_ORIGIN: http://localhost:3000
           PORT: '4172'
         run: |
-          npm start > /tmp/navrylo-api-ci.log 2>&1 &
+          npm start > /tmp/fledge-api-ci.log 2>&1 &
           for i in $(seq 1 50); do
             if curl --fail --silent http://localhost:4172/api/health > /dev/null; then break; fi
             sleep 1

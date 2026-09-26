@@ -46,7 +46,7 @@ export function registerLive(app:FastifyInstance){
  const path=(req.url||'').split('?')[0],panel=/^\/api\/servers\/([a-f\d-]+)\/live$/.exec(path);let peer:Peer|null=null;
  if(panel&&uuid.test(panel[1])){
   if(req.headers.origin!==WEB_ORIGIN||req.headers.authorization){deny(socket,403);return;}
-  const session=/(?:^|;\s*)navrylo_session=([^;]+)/.exec(req.headers.cookie||'')?.[1];const access=session&&await panelAccess(panel[1],decodeURIComponent(session));if(!access){deny(socket,403);return;}
+  const session=/(?:^|;\s*)fledge_session=([^;]+)/.exec(req.headers.cookie||'')?.[1];const access=session&&await panelAccess(panel[1],decodeURIComponent(session));if(!access){deny(socket,403);return;}
   peer=upgrade(req,socket,head);if(!peer)return;const serverId=panel[1],nodeId=access.node_id;let set=viewers.get(serverId);if(!set){set=new Set();viewers.set(serverId,set);}set.add(peer);serverNodes.set(serverId,nodeId);
   peer.onClose=()=>{const members=viewers.get(serverId);members?.delete(peer!);if(!members?.size){viewers.delete(serverId);serverNodes.delete(serverId);void pool.query('DELETE FROM console_interests WHERE replica=$1 AND server_id=$2',[replica,serverId]).catch(()=>{});}};
   peer.send({type:'status',connected:await connected(nodeId)});await maintain();

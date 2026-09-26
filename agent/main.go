@@ -66,8 +66,8 @@ func consumeEnrollmentToken() string {
 func main() {
 	api = strings.TrimRight(os.Getenv("API_URL"), "/")
 	nodeID = os.Getenv("NODE_ID")
-	dataRoot = env("DATA_ROOT", "/var/lib/navrylo/servers")
-	credentialFile = env("CREDENTIAL_FILE", "/var/lib/navrylo/agent.credential")
+	dataRoot = env("DATA_ROOT", "/var/lib/fledge/servers")
+	credentialFile = env("CREDENTIAL_FILE", "/var/lib/fledge/agent.credential")
 	if api == "" || nodeID == "" {
 		log.Fatal("API_URL and NODE_ID required")
 	}
@@ -220,7 +220,7 @@ func heartbeat() error {
 	status := []map[string]interface{}{}
 	running := []string{}
 	entries := map[string]map[string]interface{}{}
-	names, e := docker("ps", "-a", "--filter", "label=navrylo.server", "--format", "{{.Names}}|{{.Status}}")
+	names, e := docker("ps", "-a", "--filter", "label=fledge.server", "--format", "{{.Names}}|{{.Status}}")
 	if e == nil {
 		for _, line := range strings.Split(names, "\n") {
 			f := strings.SplitN(line, "|", 2)
@@ -371,7 +371,7 @@ func execute(j *job) (interface{}, error) {
 		if s.TemplateID == "valheim" {
 			mount = "/config"
 		}
-		args := []string{"run", "-d", "-i", "--name", n, "--label", "navrylo.server=" + s.ID, "--memory", strconv.Itoa(s.MemoryMB) + "m", "--cpus", fmt.Sprintf("%.2f", float64(s.CPUPercent)/100), "--pids-limit", "512", "--security-opt", "no-new-privileges", "--restart", "no", "-v", root + ":" + mount}
+		args := []string{"run", "-d", "-i", "--name", n, "--label", "fledge.server=" + s.ID, "--memory", strconv.Itoa(s.MemoryMB) + "m", "--cpus", fmt.Sprintf("%.2f", float64(s.CPUPercent)/100), "--pids-limit", "512", "--security-opt", "no-new-privileges", "--restart", "no", "-v", root + ":" + mount}
 		for _, p := range s.InternalPorts {
 			args = append(args, "-p", fmt.Sprintf("%d:%d/%s", s.Port+p.Offset, p.Container, p.Protocol))
 		}

@@ -33,7 +33,7 @@ export const passwordCheck=(s:string,h:string)=>bcrypt.compare(s,h);
 export async function migrate(){const schema=readFileSync(fileURLToPath(new URL('../../db/schema.sql',import.meta.url)),'utf8');await pool.query(schema);}
 export async function authenticate(req:FastifyRequest,reply:FastifyReply){
  const url=req.url.split('?')[0];if(url==='/api/health'||['/api/auth/bootstrap','/api/auth/status','/api/auth/login','/api/auth/challenge','/api/auth/recover'].includes(url)||url.startsWith('/api/agent/'))return;
- const cookie=(req.cookies as any)?.navrylo_session; const auth=req.headers.authorization;const bearer=auth?.startsWith('Bearer ');
+ const cookie=(req.cookies as any)?.fledge_session; const auth=req.headers.authorization;const bearer=auth?.startsWith('Bearer ');
  // An explicit bearer token must never silently inherit a browser cookie's
  // broader permissions (including secret-bearing admin detail responses).
  if(cookie && !bearer && ['POST','PUT','PATCH','DELETE'].includes(req.method)) {const origin=req.headers.origin;if(origin && origin!==WEB_ORIGIN) fail(403,'Invalid Origin');}
