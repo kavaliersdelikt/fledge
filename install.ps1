@@ -71,39 +71,37 @@ if ($NoWait) {
     exit 0
 }
 
-function Test-LocalHttpEndpoint([System.Net.Http.HttpClient]$Client, [string]$Uri) {
+function Test-LocalHttpEndpoint([string]$Uri) {
+    $request = $null
     $response = $null
     try {
-        $response = $Client.GetAsync($Uri).GetAwaiter().GetResult()
-        return $response.IsSuccessStatusCode
+        $request = [System.Net.HttpWebRequest]::Create($Uri)
+        $request.Proxy = $null
+        $request.Timeout = 2000
+        $request.ReadWriteTimeout = 2000
+        $response = $request.GetResponse()
+        return [int]$response.StatusCode -ge 200 -and [int]$response.StatusCode -lt 300
     } catch {
+        if ($_.Exception.Response) { $_.Exception.Response.Close() }
         return $false
     } finally {
-        if ($response) { $response.Dispose() }
+        if ($response) { $response.Close() }
     }
 }
 
-$handler = [System.Net.Http.HttpClientHandler]::new()
-$handler.UseProxy = $false
-$client = [System.Net.Http.HttpClient]::new($handler)
-$client.Timeout = [TimeSpan]::FromSeconds(2)
-try {
-    $deadline = [DateTime]::UtcNow.AddMinutes(5)
-    while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint $client 'http://localhost:4000/api/health')) {
-        Start-Sleep -Seconds 2
-    }
-    if (-not (Test-LocalHttpEndpoint $client 'http://localhost:4000/api/health')) {
-        throw 'The API did not become healthy within 5 minutes. Check docker compose logs api.'
-    }
+$deadline = [DateTime]::UtcNow.AddMinutes(5)
+while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint 'http://localhost:4000/api/health')) {
+    Start-Sleep -Seconds 2
+}
+if (-not (Test-LocalHttpEndpoint 'http://localhost:4000/api/health')) {
+    throw 'The API did not become healthy within 5 minutes. Check docker compose logs api.'
+}
 
-    $deadline = [DateTime]::UtcNow.AddMinutes(5)
-    while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint $client 'http://localhost:3000/')) {
-        Start-Sleep -Seconds 2
-    }
-    if (-not (Test-LocalHttpEndpoint $client 'http://localhost:3000/')) {
-        throw 'The panel did not become healthy within 5 minutes. Check docker compose logs web.'
-    }
-} finally {
-    $client.Dispose()
+$deadline = [DateTime]::UtcNow.AddMinutes(5)
+while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint 'http://localhost:3000/')) {
+    Start-Sleep -Seconds 2
+}
+if (-not (Test-LocalHttpEndpoint 'http://localhost:3000/')) {
+    throw 'The panel did not become healthy within 5 minutes. Check docker compose logs web.'
 }
 Write-Host 'Fledge is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'
