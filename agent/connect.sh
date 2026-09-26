@@ -96,7 +96,9 @@ printf 'API_URL=%s\nNODE_ID=%s\nDATA_ROOT=/var/lib/navrylo/servers\nCREDENTIAL_F
 chmod 600 "$env_file"
 payload=$(printf '{"nodeId":"%s","token":"%s"}' "$NODE_ID" "$ENROLLMENT_TOKEN")
 unset ENROLLMENT_TOKEN
-printf '%s' "$payload" | curl --proto '=https' --tlsv1.2 --fail --silent --show-error -H 'Content-Type: application/json' --data-binary @- "$API_URL/api/agent/enroll" -o "$tmp/enrollment.json" || { echo 'Enrollment failed. The token may have expired or already been used; generate a fresh token in the panel.' >&2; rm -f "$env_file"; exit 25; }
+enrollment_protocol='=https'
+if [ "$ALLOW_HTTP" -eq 1 ]; then enrollment_protocol='=https,http'; fi
+printf '%s' "$payload" | curl --proto "$enrollment_protocol" --tlsv1.2 --fail --silent --show-error -H 'Content-Type: application/json' --data-binary @- "$API_URL/api/agent/enroll" -o "$tmp/enrollment.json" || { echo 'Enrollment failed. The token may have expired or already been used; generate a fresh token in the panel.' >&2; rm -f "$env_file"; exit 25; }
 credential=$(sed -n 's/.*"credential"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_-][A-Za-z0-9_-]*\)".*/\1/p' "$tmp/enrollment.json")
 [ -n "$credential" ] || { echo 'Enrollment response did not contain a credential.' >&2; rm -f "$env_file"; exit 26; }
 printf '%s\n' "$credential" > "$credential_file"

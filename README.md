@@ -14,7 +14,7 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 </div>
 
-> **Version v0.1.4.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.1.5.** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 
 ## What is Fledge?
 
@@ -127,7 +127,7 @@ The in-panel updater runs as a private Compose service and needs access to the D
 - This checkout was exercised with a real Minecraft Java boot, console command, file listing, Docker resource sample, 108 MiB S3-compatible backup download, and successful restore on Docker Desktop with a WSL2 agent. Real AWS S3 retention, Valheim boot, and a separate two-host recovery drill still need dedicated validation. Windows Docker Desktop is for local Linux-container and WSL2-agent evaluation; native Windows services and Windows containers are unsupported.
 - The API has shared request throttles, one-time account recovery codes, admin-only Prometheus metrics, and an updater that restores application code if its health check fails. These controls do not replace a formal production security review. Database migrations are not automatically reversed; account recovery requires previously saved recovery codes; and the Linux agent still has root-equivalent Docker access. Rootless operation, load testing, external monitoring, and credential-rotation operations remain unvalidated.
 
-See [v0.1.4 release notes](docs/releases/v0.1.4.md) and the component READMEs for verification details. Treat this release as an evaluation build until you have tested deployment and recovery on your own infrastructure.
+See [v0.1.5 release notes](docs/releases/v0.1.5.md) and the component READMEs for verification details. Treat this release as an evaluation build until you have tested deployment and recovery on your own infrastructure.
 
 ## Development checks
 
