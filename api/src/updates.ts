@@ -9,8 +9,8 @@ const currentVersion=()=> (process.env.APP_VERSION||'0.1.7').replace(/^v/i,'');
 const updater=(process.env.UPDATER_URL||'').replace(/\/$/,'');
 const tokenFile=process.env.UPDATE_TOKEN_FILE||'/run/fledge-updater/token';
 let cached:{at:number;value:any}|undefined;
-const parse=(value:string)=>{const m=/^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value);return m?[Number(m[1]),Number(m[2]),Number(m[3]),m[4]||'']:null;};
-const newer=(candidate:string,current:string)=>{const a=parse(candidate),b=parse(current);if(!a||!b)return false;for(let i=0;i<3;i++)if(a[i]!==b[i])return a[i]>b[i];return !a[3]&&!!b[3];};
+const parse=(value:string):[number,number,number,number,string]|null=>{const m=/^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$/.exec(value);return m?[Number(m[1]),Number(m[2]),Number(m[3]),Number(m[4]||0),m[5]||'']:null;};
+const newer=(candidate:string,current:string)=>{const a=parse(candidate),b=parse(current);if(!a||!b)return false;for(let i=0;i<4;i++)if(a[i]!==b[i])return a[i]>b[i];return !a[4]&&!!b[4];};
 
 async function getRelease(force=false){
  if(!force&&cached&&Date.now()-cached.at<5*60_000)return cached.value;
@@ -30,7 +30,7 @@ async function getRelease(force=false){
    if(!tagsResponse.ok)throw Object.assign(new Error('github-http'),{status:tagsResponse.status});
    const tags:any=await tagsResponse.json();
    if(!Array.isArray(tags))throw new Error('github-invalid-response');
-   const stable=tags.filter((tag:any)=>typeof tag?.name==='string'&&parse(tag.name)&&!parse(tag.name)?.[3]);
+   const stable=tags.filter((tag:any)=>typeof tag?.name==='string'&&parse(tag.name)&&!parse(tag.name)?.[4]);
    stable.sort((a:any,b:any)=>newer(a.name,b.name)?-1:newer(b.name,a.name)?1:0);
    release=stable[0];
    if(!release)throw Object.assign(new Error('release-not-found'),{status:404});
