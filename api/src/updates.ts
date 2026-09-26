@@ -18,15 +18,39 @@ async function getRelease(force=false){
  try{
   const headers:Record<string,string>={accept:'application/vnd.github+json','user-agent':'Fledge-update-check'};
   if(process.env.GITHUB_TOKEN)headers.authorization=`Bearer ${process.env.GITHUB_TOKEN}`;
-  const response=await fetch(`https://api.github.com/repos/${repository}/releases/latest`,{headers,signal:AbortSignal.timeout(6000)});
-  if(!response.ok)throw new Error(response.status===404?'release-not-found':'github-unavailable');
-  const release:any=await response.json();
-  const version=typeof release.tag_name==='string'?release.tag_name.replace(/^v/i,''):'';
-  if(!parse(version))throw new Error('invalid-release');
+  const request={headers,signal:AbortSignal.timeout(6000)};
+  const response=await fetch(`https://api.github.com/repos/${repository}/releases/latest`,request);
+  let release:any;
+  if(response.ok)release=await response.json();
+  else if(response.status===404){
+   // Tags are sufficient for the updater, which installs versioned Git tags.
+   // This also supports repositories where a tag was pushed but no GitHub
+   // Release was published for it.
+   const tagsResponse=await fetch(`https://api.github.com/repos/${repository}/tags?per_page=100`,request);
+   if(!tagsResponse.ok)throw Object.assign(new Error('github-http'),{status:tagsResponse.status});
+   const tags:any=await tagsResponse.json();
+   if(!Array.isArray(tags))throw new Error('github-invalid-response');
+   const stable=tags.filter((tag:any)=>typeof tag?.name==='string'&&parse(tag.name)&&!parse(tag.name)?.[3]);
+   stable.sort((a:any,b:any)=>newer(a.name,b.name)?-1:newer(b.name,a.name)?1:0);
+   release=stable[0];
+   if(!release)throw Object.assign(new Error('release-not-found'),{status:404});
+   release={...release,html_url:`https://github.com/${repository}/releases/tag/${encodeURIComponent(release.name)}`,published_at:release.commit?.commit?.author?.date||null};
+  }else throw Object.assign(new Error('github-http'),{status:response.status});
+  const tag=typeof release.tag_name==='string'?release.tag_name:release.name;
+  const version=typeof tag==='string'?tag.replace(/^v/i,''):'';
+  if(!parse(version))throw new Error('github-invalid-response');
   const value={repository,currentVersion:currentVersion(),latestVersion:version,updateAvailable:newer(version,currentVersion()),releaseName:typeof release.name==='string'&&release.name?release.name:`Fledge v${version}`,releaseUrl:typeof release.html_url==='string'?release.html_url:releaseUrl,body:typeof release.body==='string'?release.body.slice(0,12000):'',publishedAt:typeof release.published_at==='string'?release.published_at:null,checkedAt:new Date().toISOString(),error:null};
   cached={at:Date.now(),value};return value;
- }catch{
-  const value={repository,currentVersion:currentVersion(),latestVersion:null,updateAvailable:false,releaseName:null,releaseUrl,body:'',publishedAt:null,checkedAt:new Date().toISOString(),error:process.env.GITHUB_TOKEN?'GitHub release lookup failed. Check the repository and GitHub token.':'GitHub release lookup failed. The repository may be private or no release may have been published; configure GITHUB_TOKEN on the API for a private repository.'};
+ }catch(error:any){
+  const status=error?.status;
+  const errorMessage=status===401||status===404
+   ?'GitHub could not find a published release or version tag. Confirm the repository name and publish a versioned tag; private repositories also need a valid GITHUB_TOKEN.'
+   :status===403||status===429
+    ?'GitHub rate-limited or denied the release check. Wait a few minutes or configure a GitHub token on the API.'
+    :status>=500
+     ?'GitHub is temporarily unavailable. Try checking for updates again shortly.'
+     :'Could not reach GitHub to check for updates. Check the API container’s internet and DNS connectivity.';
+  const value={repository,currentVersion:currentVersion(),latestVersion:null,updateAvailable:false,releaseName:null,releaseUrl,body:'',publishedAt:null,checkedAt:new Date().toISOString(),error:errorMessage};
   cached={at:Date.now(),value};return value;
  }
 }
