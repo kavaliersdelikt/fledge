@@ -12,6 +12,8 @@ export const PORT = Number(process.env.PORT || 4000);
 export const SESSION_DAYS = 7;
 export const imageAllowed=(image:string)=>{const prefixes=(process.env.ALLOWED_IMAGE_PREFIXES||'itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:').split(',').map(s=>s.trim()).filter(Boolean);return prefixes.some(prefix=>image.startsWith(prefix));};
 export const hash = (s:string)=>createHash('sha256').update(s).digest('hex');
+export const hashPassword = async (password:string)=>bcrypt.hash(password, 12);
+export const verifyPassword = async (password:string, hashed:string)=>bcrypt.compare(password, hashed);
 export const token = ()=>randomBytes(32).toString('base64url');
 export const fail = (code:number,message:string):never => {throw Object.assign(new Error(message),{statusCode:code,error:code===403?'forbidden':code===404?'not_found':code===409?'conflict':'bad_request'});};
 export const asId=(s:any)=>{if(typeof s!=='string'||!/^[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(s)) fail(400,'Invalid identifier');return s as string;};
