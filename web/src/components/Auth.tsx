@@ -2,7 +2,7 @@
 import { json,request,type User } from "@/lib/api";
 import { ArrowUpRight,LoaderCircle,ShieldCheck,X } from "lucide-react";
 import { useEffect,useRef,useState,type FormEvent } from "react";
-import { Notice } from "./shared";
+import { Button as SharedButton, Notice } from "./shared";
 
 export default function Auth({
   existing,
@@ -136,9 +136,9 @@ export default function Auth({
               <LoaderCircle className="spin" />
               <span>{error || "Opening your workspace…"}</span>
               {error && (
-                <button className="btn" onClick={() => location.reload()}>
+                <SharedButton variant="outline" onClick={() => location.reload()}>
                   Retry
-                </button>
+                </SharedButton>
               )}
             </div>
           ) : (
@@ -205,8 +205,9 @@ export default function Auth({
                 </>
               )}
               {error && !challenge && <Notice status="danger">{error}</Notice>}
-              <button
-                className="btn primary auth-submit"
+              <SharedButton
+                variant="default"
+                className="auth-submit"
                 disabled={busy || (mode === "setup" && !secret)}
               >
                 {busy ? <LoaderCircle size={18} className="spin" /> : null}
@@ -218,7 +219,7 @@ export default function Auth({
                       ? "Enable protection"
                       : "Continue"}
                 <ArrowUpRight size={18} />
-              </button>
+              </SharedButton>
               <div className="auth-secure">
                 <ShieldCheck size={14} />{" "}
                 {mode === "login"
@@ -304,10 +305,10 @@ export default function Auth({
             />
           </label>
           {error && <Notice status="danger">{error}</Notice>}
-          <button className="btn primary" disabled={busy}>
+          <SharedButton variant="default" disabled={busy}>
             {busy ? <LoaderCircle size={16} className="spin" /> : null}Verify
             and sign in
-          </button>
+          </SharedButton>
         </form>
       </dialog>
     </main>

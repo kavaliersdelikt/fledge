@@ -26,6 +26,7 @@ Square,
 Upload
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
 useCallback,
 useEffect,
@@ -35,7 +36,9 @@ type FormEvent,
 type ReactNode,
 } from "react";
 import { CopyButton,Modal,useConfirm } from "./feedback";
-import { Notice } from "./shared";
+import { Button as SharedButton, Notice } from "./shared";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DataTable, { type DataColumn } from "./DataTable";
 function Err({ text }: { text: string }) {
   return text ? <Notice status="danger">{text}</Notice> : null;
 }
@@ -43,11 +46,7 @@ function Btn({
   children,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button {...props} className={`btn ${props.className || ""}`}>
-      {children}
-    </button>
-  );
+  return <SharedButton {...props}>{children}</SharedButton>;
 }
 function useData<T>(path: string | null, interval = 0) {
   const [data, setData] = useState<T | null>(null),
@@ -153,6 +152,7 @@ export default function ServerDetail({
   actorId: string;
   tab: string;
 }) {
+  const router = useRouter();
   const confirm = useConfirm();
   const {
     data: s,
@@ -332,19 +332,16 @@ export default function ServerDetail({
               <strong>{s.status}</strong>
             </div>
           </div>
-          <nav className="tabs" aria-label="Server sections">
-            {visibleTabs.map(({ key, label }) => (
-              <Link
-                key={key}
-                href={`/servers/${id}?tab=${key}`}
-                className={activeTab === key ? "selected" : ""}
-                aria-current={activeTab === key ? "page" : undefined}
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-          <div className="tab-panel">
+          {activeTab ? (
+          <Tabs
+            value={activeTab}
+            onValueChange={(value: string) => router.replace(`/servers/${id}?tab=${value}`, { scroll: false })}
+            className="detail-tabs"
+          >
+            <TabsList aria-label="Server sections">
+              {visibleTabs.map(({ key, label }) => <TabsTrigger key={key} value={key}>{label}</TabsTrigger>)}
+            </TabsList>
+            <TabsContent value={activeTab} className="tab-panel">
             {activeTab === "files" ? (
               <Files id={id} />
             ) : activeTab === "backups" ? (
@@ -377,7 +374,9 @@ export default function ServerDetail({
                 backups, or management require the corresponding permission.
               </Notice>
             )}
-          </div>
+            </TabsContent>
+          </Tabs>
+          ) : <Notice status="warning">This server is available in read-only mode. Console, files, backups, or management require the corresponding permission.</Notice>}
           <details className="section jobs-disclosure">
             <summary>
               Recent jobs{" "}
@@ -479,6 +478,7 @@ function Files({ id }: { id: string }) {
   }
   const parent =
     path === "/" ? "/" : path.slice(0, path.lastIndexOf("/")) || "/";
+  const pathSegments = path.split("/").filter(Boolean);
   return (
     <section className="section">
       <div className="section-title">
@@ -527,16 +527,14 @@ function Files({ id }: { id: string }) {
         </Modal>
       </div>
       <div className="breadcrumbs">
-        <Btn
-          disabled={path === "/"}
-          onClick={() => {
-            setPath(parent);
-            setSelected("");
-          }}
-        >
-          ↰ Back
-        </Btn>
-        <span className="mono">{path}</span>
+        <nav aria-label="File path" className="file-breadcrumbs">
+          <button type="button" aria-current={path === "/" ? "page" : undefined} onClick={() => { setPath("/"); setSelected(""); }}>Root</button>
+          {pathSegments.map((segment, index) => {
+            const segmentPath = `/${pathSegments.slice(0, index + 1).join("/")}`;
+            return <span className="file-breadcrumb-part" key={segmentPath}><span aria-hidden="true">/</span><button type="button" aria-current={index === pathSegments.length - 1 ? "page" : undefined} onClick={() => { setPath(segmentPath); setSelected(""); }}>{segment}</button></span>;
+          })}
+        </nav>
+        {path !== "/" && <Btn onClick={() => { setPath(parent); setSelected(""); }}><ArrowLeft size={14} /> Parent folder</Btn>}
       </div>
       <Err text={error || opError} />
       {message && <Notice status="success">{message}</Notice>}
@@ -656,12 +654,11 @@ function Files({ id }: { id: string }) {
                 setUploading(false);
               }}
             >
-              <input
-                aria-label="Choose file"
-                type="file"
-                name="file"
-                required
-              />
+              <label className="upload-dropzone">
+                <Upload size={19} />
+                <span><strong>Choose a file to upload</strong><small>Up to 1 GiB · saved to this folder</small></span>
+                <input aria-label="Choose file" type="file" name="file" required />
+              </label>
               <Btn disabled={uploading} type="submit">
                 <Upload size={15} /> {uploading ? "Uploading…" : "Upload file"}
               </Btn>
@@ -796,50 +793,16 @@ function Schedules({ id, minecraft }: { id: string; minecraft: boolean }) {
       ) : error ? null : !items(data).length ? (
         <div className="empty">No schedules found.</div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Interval</th>
-                <th>Next run</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items(data).map((t) => (
-                <tr key={t.id}>
-                  <td>
-                    {t.kind}
-                    {t.command && (
-                      <div className="muted small mono">{t.command}</div>
-                    )}
-                  </td>
-                  <td>{t.interval_minutes} min</td>
-                  <td>{fmtDate(t.next_run_at)}</td>
-                  <td>
-                    <Btn
-                      className="subtle-danger"
-                      onClick={async () => {
-                        if (!(await confirm("Delete this schedule?"))) return;
-                        try {
-                          await request(`/servers/${id}/schedules/${t.id}`, {
-                            method: "DELETE",
-                          });
-                          reload();
-                        } catch (e) {
-                          setOpError((e as Error).message);
-                        }
-                      }}
-                    >
-                      Remove
-                    </Btn>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={items(data)}
+          rowKey={(schedule) => String(schedule.id)}
+          columns={[
+            { id: "kind", header: "Type", value: (schedule) => schedule.kind || "", render: (schedule) => <span>{schedule.kind}{schedule.command && <small className="table-subline mono">{schedule.command}</small>}</span> },
+            { id: "interval", header: "Interval", value: (schedule) => schedule.interval_minutes || 0, render: (schedule) => `${schedule.interval_minutes} min` },
+            { id: "next", header: "Next run", value: (schedule) => schedule.next_run_at || "", render: (schedule) => fmtDate(schedule.next_run_at) },
+            { id: "actions", header: "Actions", value: () => "", sortable: false, render: (schedule) => <Btn className="subtle-danger" onClick={async () => { if (!(await confirm("Delete this schedule?"))) return; try { await request(`/servers/${id}/schedules/${schedule.id}`, { method: "DELETE" }); reload(); } catch (error) { setOpError((error as Error).message); } }}>Remove</Btn> },
+          ] as DataColumn<Record<string, any>>[]}
+        />
       )}
     </section>
   );
@@ -909,45 +872,15 @@ function Access({ id }: { id: string }) {
       ) : error ? null : !items(data).length ? (
         <div className="empty">No collaborators added yet.</div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Permissions</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items(data).map((c) => (
-                <tr key={c.userId}>
-                  <td>{c.email}</td>
-                  <td>{c.permissions.join(", ")}</td>
-                  <td>
-                    <Btn
-                      className="subtle-danger"
-                      onClick={async () => {
-                        if (!(await confirm(`Remove access for ${c.email}?`)))
-                          return;
-                        try {
-                          await request(
-                            `/servers/${id}/collaborators/${c.userId}`,
-                            { method: "DELETE" },
-                          );
-                          reload();
-                        } catch (e) {
-                          setOpError((e as Error).message);
-                        }
-                      }}
-                    >
-                      Remove
-                    </Btn>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={items(data)}
+          rowKey={(collaborator) => String(collaborator.userId)}
+          columns={[
+            { id: "email", header: "Customer", value: (collaborator) => collaborator.email || "", render: (collaborator) => <strong className="table-primary-text">{collaborator.email}</strong> },
+            { id: "permissions", header: "Permissions", value: (collaborator) => (collaborator.permissions || []).join(", ") },
+            { id: "actions", header: "Actions", value: () => "", sortable: false, render: (collaborator) => <Btn className="subtle-danger" onClick={async () => { if (!(await confirm(`Remove access for ${collaborator.email}?`))) return; try { await request(`/servers/${id}/collaborators/${collaborator.userId}`, { method: "DELETE" }); reload(); } catch (error) { setOpError((error as Error).message); } }}>Remove</Btn> },
+          ] as DataColumn<Record<string, any>>[]}
+        />
       )}
     </section>
   );

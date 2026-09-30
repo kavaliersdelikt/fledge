@@ -14,7 +14,15 @@ import {
 useState
 } from "react";
 
-import { Modal } from "./feedback";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
+import { Card } from "@/components/ui/card";
 import NodeConnector from "./NodeConnector";
 import { Notice } from "./shared";
 import {
@@ -52,20 +60,21 @@ export default function Nodes() {
           </div>
         }
       />
-      <Modal
+      <Sheet
         open={enroll}
         onOpenChange={setEnroll}
-        title="Connect an agent"
-        description="Enroll a registered host into your infrastructure."
       >
-        <NodeConnector />
-      </Modal>
-      <Modal
+        <SheetContent className="form-sheet" side="right">
+          <SheetHeader><SheetTitle>Connect an agent</SheetTitle><SheetDescription>Enroll a registered host into your infrastructure.</SheetDescription></SheetHeader>
+          <NodeConnector />
+        </SheetContent>
+      </Sheet>
+      <Sheet
         open={register}
         onOpenChange={setRegister}
-        title="Register a node"
-        description="Set the host capacity, then connect its agent."
       >
+        <SheetContent className="form-sheet" side="right">
+          <SheetHeader><SheetTitle>Register a node</SheetTitle><SheetDescription>Set host capacity, then connect its agent.</SheetDescription></SheetHeader>
         <Form
           submit="Register node"
           onSubmit={async (v) => {
@@ -116,7 +125,8 @@ export default function Nodes() {
             />
           </div>
         </Form>
-      </Modal>
+        </SheetContent>
+      </Sheet>
       {token && (
         <Notice status="warning" className="token-notice" title={`Token for ${token.nodeId} · copy now; shown once`}>
           <code>{token.token}</code>
@@ -127,6 +137,11 @@ export default function Nodes() {
           <Button onClick={() => setToken(null)}>Close</Button>
         </Notice>
       )}
+      <div className="summary-strip" aria-label="Node totals">
+        <div><span>Registered hosts</span><strong>{items(data).length}</strong></div>
+        <div><span>Connected</span><strong>{items(data).filter((node) => node.status === "connected").length}</strong></div>
+        <div><span>Placement paused</span><strong>{items(data).filter((node) => node.draining).length}</strong></div>
+      </div>
       <Section
         title="Registered nodes"
         action={
@@ -151,7 +166,7 @@ export default function Nodes() {
                     .includes(filter.toLowerCase()),
                 )
                 .map((n) => (
-                  <article className="node-card" key={n.id}>
+                  <Card role="article" className="node-card" key={n.id}>
                     <div className="node-head">
                       <div className="node-icon">
                         <HardDrive size={20} />
@@ -163,24 +178,17 @@ export default function Nodes() {
                       {n.location} · Last seen: {fmtDate(n.lastSeenAt)}
                     </p>
                     <div className="node-metrics">
-                      <div>
-                        <span>RAM</span>
-                        <strong>
-                          {n.reserved.memoryMb} / {n.capacity.memoryMb} MB
-                        </strong>
-                      </div>
-                      <div>
-                        <span>CPU</span>
-                        <strong>
-                          {n.reserved.cpuPercent} / {n.capacity.cpuPercent}%
-                        </strong>
-                      </div>
-                      <div>
-                        <span>Disk</span>
-                        <strong>
-                          {n.reserved.diskMb} / {n.capacity.diskMb} MB
-                        </strong>
-                      </div>
+                      {([
+                        { label: "Memory reserved", used: n.reserved.memoryMb, total: n.capacity.memoryMb, suffix: "MB" },
+                        { label: "CPU reserved", used: n.reserved.cpuPercent, total: n.capacity.cpuPercent, suffix: "%" },
+                        { label: "Disk reserved", used: n.reserved.diskMb, total: n.capacity.diskMb, suffix: "MB" },
+                      ]).map((metric) => {
+                        const percent = metric.total > 0 ? Math.min(100, Math.round(metric.used / metric.total * 100)) : 0;
+                        return <div className="node-metric" key={metric.label}>
+                          <div><span>{metric.label}</span><strong>{metric.used.toLocaleString()} / {metric.total.toLocaleString()} {metric.suffix}</strong></div>
+                          <Progress value={percent} max={100} aria-label={`${metric.label}: ${percent}%`} />
+                        </div>;
+                      })}
                     </div>
                     <p className="muted small">
                       Agent: {n.version || "Version not reported"} · Reserved
@@ -259,7 +267,7 @@ export default function Nodes() {
                         Remove
                       </Confirm>
                     </div>
-                  </article>
+                  </Card>
                 ))}
             </div>
           )}

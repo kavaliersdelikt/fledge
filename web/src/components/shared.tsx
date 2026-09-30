@@ -1,7 +1,6 @@
 "use client";
 import { request } from "@/lib/api";
 import { RefreshCw } from "lucide-react";
-import { Alert } from "@heroui/react";
 import {
 useCallback,
 useEffect,
@@ -11,6 +10,8 @@ type FormEvent,
 type ReactNode,
 } from "react";
 import { useConfirm } from "./feedback";
+import { Button as PrimitiveButton } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 export type Row = Record<string, any>;
 export type NoticeStatus = "default" | "accent" | "success" | "warning" | "danger";
 
@@ -28,14 +29,9 @@ export function Notice({
   role?: "alert" | "status";
 }) {
   return (
-    <Alert status={status} className={`fledge-alert ${className}`} role={role}>
-      <Alert.Indicator />
-      <Alert.Content>
-        {title ? <Alert.Title>{title}</Alert.Title> : null}
-        <Alert.Description className="alert__description">
-          {children}
-        </Alert.Description>
-      </Alert.Content>
+    <Alert className={`fledge-alert alert--${status} ${className}`} role={role}>
+      {title ? <AlertTitle>{title}</AlertTitle> : null}
+      <AlertDescription className="alert__description">{children}</AlertDescription>
     </Alert>
   );
 }
@@ -44,22 +40,35 @@ export function ErrorBox({ message }: { message: string }) {
   return <Notice status="danger" title="Something went wrong">{message}</Notice>;
 }
 export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
+  return <div className="empty-state">{children}</div>;
 }
 export function Button({
   children,
   busy = false,
+  variant,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { busy?: boolean }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  busy?: boolean;
+  variant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "link";
+}) {
+  const oldClassName = props.className || "";
+  const resolvedVariant = variant || (
+    oldClassName.includes("primary") ? "default" :
+    oldClassName.includes("danger") ? "destructive" :
+    oldClassName.includes("subtle") ? "ghost" : "outline"
+  );
+  const className = oldClassName.replace(/\b(primary|danger|subtle-danger)\b/g, "");
+  const toneClass = resolvedVariant === "default" ? "primary" : resolvedVariant === "destructive" ? "danger" : oldClassName.includes("subtle-danger") ? "subtle-danger" : "";
   return (
-    <button
+    <PrimitiveButton
       {...props}
       disabled={busy || props.disabled}
-      className={`btn ${props.className || ""}`}
+      variant={resolvedVariant}
+      className={`btn ${toneClass} ${className}`}
     >
       {busy ? <RefreshCw size={15} className="spin" /> : null}
       {children}
-    </button>
+    </PrimitiveButton>
   );
 }
 export function Field({
@@ -124,7 +133,7 @@ export function Badge({ value }: { value?: string }) {
       ? "bad"
       : "neutral";
   return (
-    <span className={`badge ${tone}`}>
+    <span className={`badge ${tone}`} role="status">
       <span className="dot" />
       {(
         {

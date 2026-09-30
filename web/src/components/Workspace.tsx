@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, ChevronRight, Command, Search } from "lucide-react";
+import { ArrowUpRight, Command, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -13,6 +13,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { type User } from "@/lib/api";
 import { AppSidebar, destinations } from "./app-sidebar";
 import { Modal } from "./feedback";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 export default function Workspace({
   user,
@@ -27,6 +35,7 @@ export default function Workspace({
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [activeResult, setActiveResult] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
@@ -55,7 +64,12 @@ export default function Workspace({
     : destinations.find((d) => d.url === pathname)?.title || "Workspace";
   const openSearch = () => {
     setSearch("");
+    setActiveResult(0);
     setSearchOpen(true);
+  };
+  const openDestination = (url: string) => {
+    setSearchOpen(false);
+    router.push(url);
   };
 
   return (
@@ -78,13 +92,15 @@ export default function Workspace({
           <header className="workspace-topbar">
             <SidebarTrigger />
             <span className="topbar-divider" />
-            <nav aria-label="Breadcrumb" className="workspace-crumb">
-              <Link href={user.role === "admin" ? "/" : "/servers"}>
-                Workspace
-              </Link>
-              <ChevronRight size={13} />
-              <span>{title}</span>
-            </nav>
+            <Breadcrumb className="workspace-crumb">
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink render={<Link href={user.role === "admin" ? "/" : "/servers"} />}>Workspace</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem><BreadcrumbPage>{title}</BreadcrumbPage></BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
             <button className="quick-search" onClick={openSearch}>
               <Search size={15} />
               <span>Go to…</span>
@@ -112,19 +128,36 @@ export default function Workspace({
               aria-label="Find a page"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setActiveResult((current) => links.length ? (current + 1) % links.length : 0);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActiveResult((current) => links.length ? (current - 1 + links.length) % links.length : 0);
+                } else if (e.key === "Enter" && links[activeResult]) {
+                  e.preventDefault();
+                  openDestination(links[activeResult].url);
+                }
+              }}
               placeholder="Search pages…"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="workspace-command-results"
+              aria-activedescendant={links[activeResult] ? `workspace-command-${activeResult}` : undefined}
               autoFocus
             />
           </div>
-          <div className="command-results">
+          <div className="command-results" id="workspace-command-results" role="listbox" aria-label="Workspace destinations">
             {links.length ? (
-              links.map((d) => (
+              links.map((d, index) => (
                 <button
                   key={d.url}
-                  onClick={() => {
-                    setSearchOpen(false);
-                    router.push(d.url);
-                  }}
+                  id={`workspace-command-${index}`}
+                  role="option"
+                  aria-selected={index === activeResult}
+                  onMouseEnter={() => setActiveResult(index)}
+                  onClick={() => openDestination(d.url)}
                 >
                   <d.icon size={18} />
                   <span>

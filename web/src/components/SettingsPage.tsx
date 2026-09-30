@@ -1,204 +1,92 @@
 "use client";
-import {
-fmtDate,
-items,
-json,
-request,
-type User
-} from "@/lib/api";
-import {
-useState
-} from "react";
 
-import { CopyButton,Modal } from "./feedback";
+import { fmtDate, items, json, request, type User } from "@/lib/api";
+import { useState } from "react";
+import DataTable, { type DataColumn } from "./DataTable";
+import { CopyButton, Modal } from "./feedback";
 import { Notice } from "./shared";
-import {
-Badge,
-Confirm,
-Empty,
-Field,
-Form,
-Heading,
-Row,
-Section,
-Select,
-State,
-useLoad
-} from "./shared";
+import { Badge, Confirm, Empty, Field, Form, Heading, Row, Section, Select, State, useLoad } from "./shared";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 export default function SettingsPage({ user }: { user: User }) {
-  const { data, error, loading, reload } = useLoad<Row[]>(
-    user.role === "admin" ? "/tokens" : null,
-  );
-  const [secret, setSecret] = useState(""),
-    [recovery, setRecovery] = useState<string[]>([]),
-    [section, setSection] = useState("account");
+  const { data, error, loading, reload } = useLoad<Row[]>(user.role === "admin" ? "/tokens" : null);
+  const [secret, setSecret] = useState("");
+  const [recovery, setRecovery] = useState<string[]>([]);
+  const [section, setSection] = useState("account");
+  const tokenColumns: DataColumn<Row>[] = [
+    { id: "name", header: "Name", value: (token) => token.name || "", render: (token) => <strong className="table-primary-text">{token.name}</strong> },
+    { id: "scopes", header: "Scopes", value: (token) => (token.scopes || []).join(", ") },
+    { id: "created", header: "Created", value: (token) => token.createdAt || token.created_at || "", render: (token) => fmtDate(token.createdAt || token.created_at) },
+    { id: "actions", header: "Actions", value: () => "", sortable: false, render: (token) => <Confirm text={`Token ${token.name} revoke?`} onConfirm={async () => { await request(`/tokens/${token.id}`, { method: "DELETE" }); reload(); }}>Revoke</Confirm> },
+  ];
+
   return (
     <>
-      <Heading
-        eyebrow="Workspace / Settings"
-        title="Settings"
-        subtitle="Account access and integrations."
-      />
-      <div className="filter-toolbar">
-        <div className="segmented" aria-label="Settings sections">
-          {[
-            "account",
-            "security",
-            ...(user.role === "admin" ? ["tokens"] : []),
-          ].map((value) => (
-            <button
-              key={value}
-              aria-pressed={section === value}
-              onClick={() => setSection(value)}
-            >
-              {value === "tokens" ? "API tokens" : value}
-            </button>
-          ))}
-        </div>
-      </div>
-      {section === "account" && (
-        <Section title="Account">
-          <div className="kv">
-            <span>Email</span>
-            <strong>{user.email}</strong>
-            <span>Role</span>
-            <strong>
-              {user.role === "admin" ? "Administrator" : "Customer"}
-            </strong>
-            <span>Two-factor authentication</span>
-            <Badge value={user.has2fa ? "active" : "not configured"} />
-          </div>
-        </Section>
-      )}
-      {section === "security" && (
-        <Section
-          title="Account recovery"
-          description="Generate recovery codes and store them somewhere safe. A code resets your password and two-factor setup, and signs out every session."
-        >
-          <Form
-            submit="Generate recovery codes"
-            onSubmit={async (v) => {
-              const r = await json("POST", "/auth/recovery-codes", {
-                password: v.password,
-                code: v.code,
-              });
-              setRecovery(r.codes);
-            }}
-          >
-            <div className="form-grid">
-              <Field
-                label="Current password"
-                name="password"
-                type="password"
-                required
-              />
-              {user.has2fa && (
-                <Field label="Authenticator code" name="code" required />
-              )}
+      <Heading eyebrow="Workspace / Settings" title="Settings" subtitle="Account access, recovery, and integrations." />
+      <Tabs value={section} onValueChange={(value: string) => setSection(value)} className="settings-tabs">
+        <TabsList aria-label="Settings sections">
+          <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          {user.role === "admin" && <TabsTrigger value="tokens">API tokens</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="account">
+          <Section title="Account" description="Your identity and access level in this Fledge workspace.">
+            <div className="account-summary">
+              <div><span>Email</span><strong>{user.email}</strong></div>
+              <div><span>Role</span><strong>{user.role === "admin" ? "Administrator" : "Customer"}</strong></div>
+              <div><span>Two-factor authentication</span><Badge value={user.has2fa ? "active" : "not configured"} /></div>
             </div>
-          </Form>
-          <Modal
-            compact
-            open={recovery.length > 0}
-            onOpenChange={(open) => {
-              if (!open) setRecovery([]);
-            }}
-            title="Save your recovery codes"
-            description="Shown only once. Store them somewhere safe. Previous recovery codes are now invalid."
-          >
-            <Notice status="warning" title="Save your recovery codes" className="token-notice">
-              {recovery.map((c) => (
-                <code key={c}>{c}</code>
-              ))}
-            </Notice>
-            <CopyButton value={recovery.join("\n")} label="Copy all codes" />
-          </Modal>
-        </Section>
-      )}
-      {user.role === "admin" && section === "tokens" && (
-        <Section
-          title="API tokens"
-          description="For narrowly scoped read, provisioning, and suspension actions. Token is shown only once."
-        >
-          <Form
-            submit="Create token"
-            onSubmit={async (v) => {
-              const r = (await json("POST", "/tokens", {
-                name: v.name,
-                scopes: v.scopes
-                  .toString()
-                  .split(",")
-                  .map((s: string) => s.trim())
-                  .filter(Boolean),
-              })) as Row;
-              setSecret(r.token || r.secret || "");
-              reload();
-            }}
-          >
-            <Field label="Name" name="name" required />
-            <Select label="Permissions" name="scopes">
-              <option value="read">Read</option>
-              <option value="read,provision">Read + Provision</option>
-              <option value="read,suspend">Read + Suspend</option>
-              <option value="read,provision,suspend">
-                All API permissions
-              </option>
-            </Select>
-          </Form>
-          <Modal
-            compact
-            open={!!secret}
-            onOpenChange={(open) => {
-              if (!open) setSecret("");
-            }}
-            title="Save your API token"
-            description="This token is shown only once. Copy it before closing this window."
-          >
-            <code className="secret-value">{secret}</code>
-            <CopyButton value={secret} />
-          </Modal>
-          <State loading={loading} error={error}>
-            {!items(data).length ? (
-              <Empty>No tokens created.</Empty>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Scopes</th>
-                      <th>Created</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items(data).map((t) => (
-                      <tr key={t.id}>
-                        <td>{t.name}</td>
-                        <td>{(t.scopes || []).join(", ")}</td>
-                        <td>{fmtDate(t.createdAt || t.created_at)}</td>
-                        <td>
-                          <Confirm
-                            text={`Token ${t.name} revoke?`}
-                            onConfirm={async () => {
-                              await request(`/tokens/${t.id}`, {
-                                method: "DELETE",
-                              });
-                              reload();
-                            }}
-                          >
-                            Revoke
-                          </Confirm>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          </Section>
+        </TabsContent>
+        <TabsContent value="security">
+          <Section title="Account recovery" description="Generate recovery codes and store them somewhere safe. A code resets your password and two-factor setup, and signs out every session.">
+            <Form submit="Generate recovery codes" onSubmit={async (values) => {
+              const result = await json("POST", "/auth/recovery-codes", { password: values.password, code: values.code });
+              setRecovery(result.codes);
+            }}>
+              <div className="form-grid">
+                <Field label="Current password" name="password" type="password" required />
+                {user.has2fa && <Field label="Authenticator code" name="code" required />}
               </div>
-            )}
-          </State>
-        </Section>
-      )}
+            </Form>
+            <Modal compact open={recovery.length > 0} onOpenChange={(open) => { if (!open) setRecovery([]); }} title="Save your recovery codes" description="Shown only once. Store them somewhere safe. Previous recovery codes are now invalid.">
+              <Notice status="warning" title="Save your recovery codes" className="token-notice">{recovery.map((code) => <code key={code}>{code}</code>)}</Notice>
+              <CopyButton value={recovery.join("\n")} label="Copy all codes" />
+            </Modal>
+          </Section>
+        </TabsContent>
+        {user.role === "admin" && <TabsContent value="tokens">
+          <Section title="API tokens" description="Create narrowly scoped tokens for read, provisioning, and suspension actions. A token is shown only once.">
+            <Form submit="Create token" onSubmit={async (values) => {
+              const result = await json("POST", "/tokens", {
+                name: values.name,
+                scopes: values.scopes.toString().split(",").map((scope: string) => scope.trim()).filter(Boolean),
+              }) as Row;
+              setSecret(result.token || result.secret || "");
+              reload();
+            }}>
+              <div className="form-grid">
+                <Field label="Token name" name="name" required />
+                <Select label="Permissions" name="scopes">
+                  <option value="read">Read</option>
+                  <option value="read,provision">Read + Provision</option>
+                  <option value="read,suspend">Read + Suspend</option>
+                  <option value="read,provision,suspend">All API permissions</option>
+                </Select>
+              </div>
+            </Form>
+            <Modal compact open={!!secret} onOpenChange={(open) => { if (!open) setSecret(""); }} title="Save your API token" description="This token is shown only once. Copy it before closing this window.">
+              <code className="secret-value">{secret}</code><CopyButton value={secret} />
+            </Modal>
+            <div className="settings-subsection">
+              <h3>Existing tokens</h3>
+              <State loading={loading} error={error}>
+                {items(data).length ? <DataTable data={items(data)} rowKey={(token) => token.id} columns={tokenColumns} /> : <Empty>No tokens created.</Empty>}
+              </State>
+            </div>
+          </Section>
+        </TabsContent>}
+      </Tabs>
     </>
   );
 }

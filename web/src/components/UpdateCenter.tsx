@@ -2,7 +2,8 @@
 import {request} from "@/lib/api";
 import {Check, ExternalLink, RefreshCw, ShieldCheck, Sparkles} from "lucide-react";
 import {useCallback, useEffect, useRef, useState} from "react";
-import {Notice} from "./shared";
+import {Button as SharedButton, Heading, Notice} from "./shared";
+import {Progress} from "@/components/ui/progress";
 
 type UpdateInfo={repository:string;currentVersion:string;latestVersion:string|null;updateAvailable:boolean;releaseName:string|null;releaseUrl:string;body:string;publishedAt:string|null;checkedAt:string;error:string|null;oneClickEnabled:boolean};
 type UpdateStatus={state:"idle"|"running"|"succeeded"|"failed"|"unavailable";phase:string;version?:string|null;logs:string[];startedAt?:string|null;finishedAt?:string|null;error?:string|null};
@@ -60,10 +61,7 @@ export default function UpdateCenter(){
  const percent=running?({starting:6,preparing:12,backup:34,"backup-complete":45,installing:62,"checking-health":84,complete:100,restarting:84} as Record<string,number>)[status?.phase||""]||8:status?.state==="succeeded"?100:0;
 
  return <>
-  <div className="heading">
-   <div><div className="eyebrow">Workspace / Updates</div><h1>Updates</h1><p className="muted">Keep the panel current while its data and settings stay in place.</p></div>
-   <button className="btn" onClick={()=>void load(true)} disabled={loading||checking||running}><RefreshCw size={15} className={checking?"spin":""}/> Check for updates</button>
-  </div>
+  <Heading eyebrow="Workspace / Updates" title="Updates" subtitle="Keep the panel current while its data and settings stay in place." action={<SharedButton variant="outline" onClick={()=>void load(true)} disabled={loading||checking||running}><RefreshCw size={15} className={checking?"spin":""}/> Check for updates</SharedButton>} />
 
   <section className="update-status">
    <div className="update-mark" aria-hidden="true"><RefreshCw size={17} className={running?"spin":""}/></div>
@@ -77,7 +75,7 @@ export default function UpdateCenter(){
 
   <section className={`section updater-action ${running?"is-running":""}`}>
    <div className="section-title"><div><span className="eyebrow">Panel maintenance</span><h2>{running?"Update in progress":status?.state==="succeeded"?"Panel updated":status?.state==="failed"?"Update needs attention":"Install the latest release"}</h2><p className="muted">{running?"Keep this page open to follow each step. The panel may briefly reconnect while its services restart.":"One click backs up PostgreSQL, installs the release, and checks the panel before reporting success."}</p></div>
-    {info?.updateAvailable&&info.oneClickEnabled&&status?.state!=="running"&&<button className="btn primary" onClick={()=>void startUpdate()} disabled={starting||loading}><Sparkles size={15}/>{starting?"Starting…":"Update panel"}</button>}
+    {info?.updateAvailable&&info.oneClickEnabled&&status?.state!=="running"&&<SharedButton variant="default" onClick={()=>void startUpdate()} disabled={starting||loading}><Sparkles size={15}/>{starting?"Starting…":"Update panel"}</SharedButton>}
    </div>
 
    {info?.updateAvailable&&!info.oneClickEnabled&&<Notice status="warning" title="One-click updates are not enabled">This installation needs the updater service added to its Docker Compose configuration before updates can run here.</Notice>}
@@ -85,7 +83,7 @@ export default function UpdateCenter(){
 
    {running&&<div className="update-progress" role="status" aria-live="polite">
     <div className="update-progress-heading"><span><span className="update-live-dot"/>{phaseCopy[status?.phase||""]||"Updating the panel"}</span><span>{progressStep>=0?`Step ${progressStep+1} of 4`:"Starting"}</span></div>
-    <div className="update-progress-track"><span style={{width:`${percent}%`}}/></div>
+    <Progress className="update-progress-track" value={percent} max={100} aria-label={`Update progress: ${percent}%`} />
     <ol className="update-steps">{[["preparing","Preparing"],["backup","Database backup"],["installing","Installing"],["checking-health","Health check"]].map(([key,label],index)=>{const done=progressStep>index||status?.phase==="backup-complete"&&index===1;const current=progressPhase===key;return <li key={key} className={`${done?"done":""} ${current?"current":""}`}><span>{done?<Check size={12}/>:index+1}</span>{label}</li>;})}</ol>
    </div>}
 

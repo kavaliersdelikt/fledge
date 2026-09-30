@@ -3,8 +3,14 @@ import { json,request } from "@/lib/api";
 import { convertPterodactylEgg } from "@/lib/pterodactyl";
 import { Box,Copy,FileInput,LoaderCircle,Plus } from "lucide-react";
 import { useEffect,useState,type FormEvent } from "react";
-import { Modal } from "./feedback";
-import { Notice } from "./shared";
+import { Notice, Heading, Button as SharedButton } from "./shared";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 type Template = {
   id: string;
@@ -41,7 +47,8 @@ export default function Templates() {
     [image, setImage] = useState("itzg/minecraft-server:java21-alpine"),
     [port, setPort] = useState("25565"),
     [protocol, setProtocol] = useState<"tcp" | "udp">("tcp"),
-    [warnings, setWarnings] = useState<string[]>([]);
+    [warnings, setWarnings] = useState<string[]>([]),
+    [filter, setFilter] = useState("");
   async function load() {
     try {
       setTemplates(await request("/templates"));
@@ -88,35 +95,33 @@ export default function Templates() {
   }
   return (
     <>
-      <div className="heading">
-        <div>
-          <div className="eyebrow">Workspace / Templates</div>
-          <h1>Game templates</h1>
-          <p className="muted">
-            Reusable game configurations for every node in your fleet.
-          </p>
-        </div>
+      <Heading eyebrow="Workspace / Templates" title="Game templates" subtitle="Reusable game configurations for every node in your fleet." action={
         <div className="template-actions">
-          <button className="btn" onClick={() => setShowConverter((v) => !v)}>
+          <SharedButton variant="outline" onClick={() => setShowConverter((v) => !v)}>
             <FileInput size={15} />
             Convert Pterodactyl egg
-          </button>
-          <button
-            className="btn primary"
+          </SharedButton>
+          <SharedButton
+            variant="default"
             onClick={() => setEditor(JSON.stringify(blank, null, 2))}
           >
             <Plus size={15} />
             Create template
-          </button>
+          </SharedButton>
         </div>
+      } />
+      <div className="summary-strip" aria-label="Template totals">
+        <div><span>Available templates</span><strong>{templates.length}</strong></div>
+        <div><span>Included</span><strong>{templates.filter((template) => template.official).length}</strong></div>
+        <div><span>Custom</span><strong>{templates.filter((template) => !template.official).length}</strong></div>
       </div>
       {error && <Notice status="danger">{error}</Notice>}
-      <Modal
+      <Sheet
         open={showConverter}
         onOpenChange={setShowConverter}
-        title="Import a Pterodactyl egg"
-        description="Convert portable settings, then review the resulting template before saving."
       >
+        <SheetContent className="form-sheet form-sheet--wide" side="right">
+        <SheetHeader><SheetTitle>Import a Pterodactyl egg</SheetTitle><SheetDescription>Convert portable settings, then review the resulting template before saving.</SheetDescription></SheetHeader>
         {error && <Notice status="danger">{error}</Notice>}
         <div className="section-title">
           <div>
@@ -175,10 +180,11 @@ export default function Templates() {
           />
         </label>
         <div className="form-actions">
-          <button className="btn primary" type="button" onClick={convert}>
+          <SharedButton variant="default" type="button" onClick={convert}>
             Convert to Fledge JSON
-          </button>
-          <button
+          </SharedButton>
+          <SharedButton
+            variant="outline"
             className="btn"
             type="button"
             onClick={() => {
@@ -188,22 +194,23 @@ export default function Templates() {
             }}
           >
             Cancel
-          </button>
+          </SharedButton>
         </div>
-      </Modal>
+        </SheetContent>
+      </Sheet>
       {warnings.length > 0 && (
         <Notice status="warning" className="converter-warnings" title="Review before saving">
           <ul>{warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>
         </Notice>
       )}
-      <Modal
+      <Sheet
         open={!!editor}
         onOpenChange={(open) => {
           if (!open) setEditor("");
         }}
-        title="Template editor"
-        description="Review the configuration and use a unique template ID."
       >
+        <SheetContent className="form-sheet form-sheet--wide" side="right">
+        <SheetHeader><SheetTitle>Template editor</SheetTitle><SheetDescription>Review the configuration and use a unique template ID.</SheetDescription></SheetHeader>
         {error && <Notice status="danger">{error}</Notice>}
         {warnings.length > 0 && (
           <Notice status="warning" title="Compatibility notes">
@@ -231,20 +238,25 @@ export default function Templates() {
             />
           </label>
           <div className="form-actions">
-            <button className="btn primary" disabled={busy}>
+            <SharedButton variant="default" disabled={busy}>
               {busy && <LoaderCircle size={14} className="spin" />}Save template
-            </button>
-            <button type="button" className="btn" onClick={() => setEditor("")}>
+            </SharedButton>
+            <SharedButton variant="outline" type="button" onClick={() => setEditor("")}>
               Cancel
-            </button>
+            </SharedButton>
           </div>
         </form>
-      </Modal>
+        </SheetContent>
+      </Sheet>
+      <div className="template-toolbar">
+        <div><h2>Template catalog</h2><p className="muted small">Search by game, template ID, or container image.</p></div>
+        <input className="search" aria-label="Search templates" placeholder="Search templates…" value={filter} onChange={(event) => setFilter(event.target.value)} />
+      </div>
       {loading ? (
         <div className="skeleton" />
       ) : (
         <div className="template-grid">
-          {templates.map((t) => (
+          {templates.filter((template) => `${template.id} ${template.name} ${template.image}`.toLowerCase().includes(filter.toLowerCase())).map((t) => (
             <article className="template-card" key={t.id}>
               <div className="template-top">
                 <Box size={21} />
@@ -287,6 +299,7 @@ export default function Templates() {
               </button>
             </article>
           ))}
+          {!templates.some((template) => `${template.id} ${template.name} ${template.image}`.toLowerCase().includes(filter.toLowerCase())) && <div className="empty-state">No templates match this search.</div>}
         </div>
       )}
     </>

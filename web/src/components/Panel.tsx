@@ -1,6 +1,7 @@
 "use client";
 import { ApiError,json,request,type User } from "@/lib/api";
-import { Notice } from "./shared";
+import { Button as SharedButton, Notice } from "./shared";
+import { buttonVariants } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { usePathname,useRouter,useSearchParams } from "next/navigation";
@@ -55,9 +56,9 @@ export default function Panel() {
         <div className="connection-error">
           <h1>Connection unavailable</h1>
           <Notice status="danger">{error}</Notice>
-          <button className="btn primary" onClick={() => location.reload()}>
+          <SharedButton variant="default" onClick={() => location.reload()}>
             Try again
-          </button>
+          </SharedButton>
         </div>
       </div>
     );
@@ -85,7 +86,7 @@ export default function Panel() {
         <p className="muted">
           This section is available to workspace administrators.
         </p>
-        <Link href="/servers" className="btn primary">
+        <Link href="/servers" className={`${buttonVariants({ variant: "default" })} btn primary`}>
           Back to your servers
         </Link>
       </div>
@@ -145,7 +146,7 @@ export default function Panel() {
             <p className="muted">
               Return to your servers to pick up where you left off.
             </p>
-            <Link href="/servers" className="btn primary">
+            <Link href="/servers" className={`${buttonVariants({ variant: "default" })} btn primary`}>
               View servers
             </Link>
           </div>

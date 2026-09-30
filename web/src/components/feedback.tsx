@@ -16,6 +16,7 @@ AlertDialogDescription,
 AlertDialogHeader,
 AlertDialogTitle,
 } from "./ui/alert-dialog";
+import { Button as UiButton } from "./ui/button";
 import {
 Dialog,
 DialogContent,
@@ -99,12 +100,12 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
             <AlertDialogDescription>{message}</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="form-actions dialog-actions">
-            <button className="btn" autoFocus onClick={() => finish(false)}>
+            <UiButton variant="outline" className="btn" autoFocus onClick={() => finish(false)}>
               Cancel
-            </button>
-            <button className="btn danger" onClick={() => finish(true)}>
+            </UiButton>
+            <UiButton variant="destructive" className="btn danger" onClick={() => finish(true)}>
               Confirm action
-            </button>
+            </UiButton>
           </div>
         </AlertDialogContent>
       </AlertDialog>
@@ -128,7 +129,8 @@ export function CopyButton({
   }, [copied]);
   return (
     <>
-      <button
+      <UiButton
+        variant="outline"
         className="btn"
         type="button"
         onClick={async () => {
@@ -143,7 +145,7 @@ export function CopyButton({
       >
         {copied ? <Check size={14} /> : <Copy size={14} />}{" "}
         {copied ? "Copied" : label}
-      </button>
+      </UiButton>
       {failed && (
         <span role="status" className="muted small">
           Select the text and copy it manually.

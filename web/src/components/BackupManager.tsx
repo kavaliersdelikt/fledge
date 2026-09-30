@@ -1,9 +1,10 @@
 "use client";
 import { API,fmtDate,fmtSize,json,request } from "@/lib/api";
 import { useCallback,useEffect,useState,type FormEvent } from "react";
-import { Notice } from "./shared";
+import { Button as SharedButton, Notice } from "./shared";
 
 import { useConfirm } from "./feedback";
+import DataTable, { type DataColumn } from "./DataTable";
 
 type Backup = {
   id: string;
@@ -90,8 +91,8 @@ export default function BackupManager({
             Forced shutdowns abort the backup.
           </p>
         </div>
-        <button
-          className="btn primary"
+        <SharedButton
+          variant="default"
           disabled={busy}
           onClick={() =>
             run(
@@ -101,7 +102,7 @@ export default function BackupManager({
           }
         >
           Create backup
-        </button>
+        </SharedButton>
       </div>
       <details className="backup-policy">
         <summary>Retention & restore verification</summary>
@@ -130,9 +131,9 @@ export default function BackupManager({
               />
             </label>
             <div className="form-actions">
-              <button className="btn" disabled={busy || !policy} type="submit">
+              <SharedButton variant="outline" disabled={busy || !policy} type="submit">
                 Save retention policy
-              </button>
+              </SharedButton>
             </div>
           </form>
         )}
@@ -143,8 +144,8 @@ export default function BackupManager({
               and validate its contents. Your live server stays untouched. This
               does not test game boot.
             </p>
-            <button
-              className="btn"
+            <SharedButton
+              variant="outline"
               disabled={busy}
               onClick={() =>
                 run(
@@ -159,7 +160,7 @@ export default function BackupManager({
               {verification?.intervalHours
                 ? "Disable daily verification"
                 : "Enable daily verification"}
-            </button>
+            </SharedButton>
             {verification?.latest && (
               <p className="small">
                 Last job: {verification.latest.state}
@@ -177,118 +178,30 @@ export default function BackupManager({
       )}
       <div className="section-title">
         <h3>Saved backups</h3>
-        <button className="btn" onClick={reload} disabled={busy}>
+        <SharedButton variant="outline" onClick={reload} disabled={busy}>
           Refresh
-        </button>
+        </SharedButton>
       </div>
       {!backups.length ? (
         <div className="empty">No backups found.</div>
       ) : (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Created</th>
-                <th>Status</th>
-                <th>Size</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {backups.map((b) => (
-                <tr key={b.id}>
-                  <td>
-                    {fmtDate(b.createdAt)}
-                    <div className="muted small mono">{b.id}</div>
-                  </td>
-                  <td>
-                    {b.state}
-                    {b.error && (
-                      <div className="danger-text small">{b.error}</div>
-                    )}
-                  </td>
-                  <td>{fmtSize(b.sizeBytes ?? undefined)}</td>
-                  <td className="row-actions">
-                    {b.state === "succeeded" && (
-                      <>
-                        <a
-                          className="btn"
-                          href={`${API}/api/servers/${id}/backups/${b.id}/download`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Download
-                        </a>
-                        <button
-                          className="btn"
-                          disabled={busy}
-                          onClick={() =>
-                            run(
-                              () =>
-                                json(
-                                  "POST",
-                                  `/servers/${id}/backups/${b.id}/verify`,
-                                ),
-                              "Restore verification queued.",
-                            )
-                          }
-                        >
-                          Verify restore
-                        </button>
-                        {canRestore && (
-                          <button
-                            className="btn"
-                            disabled={busy}
-                            onClick={async () => {
-                              if (
-                                await confirm(
-                                  "Restore replaces all files on the target server. Continue?",
-                                )
-                              )
-                                run(
-                                  () =>
-                                    json("POST", `/servers/${id}/actions`, {
-                                      action: "restore",
-                                      backupId: b.id,
-                                      confirm: true,
-                                    }),
-                                  "Restore job queued.",
-                                );
-                            }}
-                          >
-                            Restore
-                          </button>
-                        )}
-                      </>
-                    )}
-                    {["succeeded", "failed"].includes(b.state) && (
-                      <button
-                        className="btn subtle-danger"
-                        disabled={busy}
-                        onClick={async () => {
-                          if (
-                            await confirm(
-                              "Permanently delete this backup? The latest successful backup is protected.",
-                            )
-                          )
-                            run(
-                              () =>
-                                request(`/servers/${id}/backups/${b.id}`, {
-                                  method: "DELETE",
-                                }),
-                              "Backup deleted.",
-                            );
-                        }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={backups}
+          rowKey={(backup) => backup.id}
+          columns={[
+            { id: "created", header: "Created", value: (backup) => backup.createdAt, render: (backup) => <div>{fmtDate(backup.createdAt)}<small className="table-subline mono">{backup.id}</small></div> },
+            { id: "state", header: "Status", value: (backup) => backup.state, render: (backup) => <div className={`backup-state backup-state--${backup.state}`}>{backup.state}{backup.error && <small className="table-subline danger-text">{backup.error}</small>}</div> },
+            { id: "size", header: "Size", value: (backup) => backup.sizeBytes || 0, render: (backup) => fmtSize(backup.sizeBytes ?? undefined) },
+            { id: "actions", header: "Actions", value: () => "", sortable: false, render: (backup) => <div className="table-row-actions">
+              {backup.state === "succeeded" && <>
+                <a className="btn" href={`${API}/api/servers/${id}/backups/${backup.id}/download`} target="_blank" rel="noreferrer">Download</a>
+                <SharedButton variant="outline" disabled={busy} onClick={() => run(() => json("POST", `/servers/${id}/backups/${backup.id}/verify`), "Restore verification queued.")}>Verify</SharedButton>
+                {canRestore && <SharedButton variant="outline" disabled={busy} onClick={async () => { if (await confirm("Restore replaces all files on the target server. Continue?")) run(() => json("POST", `/servers/${id}/actions`, { action: "restore", backupId: backup.id, confirm: true }), "Restore job queued."); }}>Restore</SharedButton>}
+              </>}
+              {["succeeded", "failed"].includes(backup.state) && <SharedButton variant="destructive" disabled={busy} onClick={async () => { if (await confirm("Permanently delete this backup? The latest successful backup is protected.")) run(() => request(`/servers/${id}/backups/${backup.id}`, { method: "DELETE" }), "Backup deleted."); }}>Delete</SharedButton>}
+            </div> },
+          ] as DataColumn<Backup>[]}
+        />
       )}
     </section>
   );

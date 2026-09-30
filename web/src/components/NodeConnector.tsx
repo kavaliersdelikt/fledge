@@ -10,7 +10,8 @@ Terminal
 import { useEffect,useMemo,useState } from "react";
 
 import { CopyButton,useConfirm } from "./feedback";
-import { Notice } from "./shared";
+import { Button as SharedButton, Notice } from "./shared";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Enrollment = { nodeId: string; token: string; expiresInSeconds: number };
 const repository = "kavaliersdelikt/fledge";
@@ -103,10 +104,10 @@ export default function NodeConnector() {
             replaces the selected node’s existing credential.
           </p>
         </div>
-        <button className="btn" onClick={loadNodes} disabled={loading}>
+        <SharedButton variant="outline" onClick={loadNodes} disabled={loading}>
           <RefreshCw size={15} className={loading ? "spin" : ""} /> Refresh
           nodes
-        </button>
+        </SharedButton>
       </div>
       {loading ? (
         <div className="skeleton" aria-label="Loading nodes" />
@@ -143,14 +144,14 @@ export default function NodeConnector() {
             </div>
           </div>
           <div className="form-actions">
-            <button
-              className="btn primary"
+            <SharedButton
+              variant="default"
               onClick={issue}
               disabled={busy || !nodeId}
             >
               {busy ? <LoaderCircle size={16} className="spin" /> : null}
               Generate one-time connector
-            </button>
+            </SharedButton>
             <span className="muted small">
               The latest published release must exist in the Fledge repository.
             </span>
@@ -168,28 +169,16 @@ export default function NodeConnector() {
                 <code>{token.token}</code>
                 <CopyButton value={token.token} label="Copy enrollment token" />
               </Notice>
-              <div
+              <Tabs
+                value={platform}
+                onValueChange={(value: string) => setPlatform(value as "linux" | "windows")}
                 className="connector-tabs"
-                role="tablist"
-                aria-label="Node operating system"
               >
-                <button
-                  role="tab"
-                  aria-selected={platform === "linux"}
-                  className={platform === "linux" ? "selected" : ""}
-                  onClick={() => setPlatform("linux")}
-                >
-                  Linux
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={platform === "windows"}
-                  className={platform === "windows" ? "selected" : ""}
-                  onClick={() => setPlatform("windows")}
-                >
-                  Windows with WSL2
-                </button>
-              </div>
+                <TabsList aria-label="Node operating system">
+                  <TabsTrigger value="linux">Linux</TabsTrigger>
+                  <TabsTrigger value="windows">Windows with WSL2</TabsTrigger>
+                </TabsList>
+              </Tabs>
               <div className="connector-command">
                 <Terminal size={16} />
                 <code>
@@ -198,10 +187,10 @@ export default function NodeConnector() {
                 </code>
               </div>
               {command && (
-                <button className="btn" onClick={copy}>
+                <SharedButton variant="outline" onClick={copy}>
                   {copied ? <Check size={15} /> : <Copy size={15} />}{" "}
                   {copied ? "Copied" : "Copy one-line command"}
-                </button>
+                </SharedButton>
               )}
               {platform === "windows" && (
                 <p className="muted small">

@@ -1,98 +1,47 @@
 "use client";
-import {
-fmtDate,
-items
-} from "@/lib/api";
-import {
-useState
-} from "react";
 
-import {
-Empty,
-Heading,
-Pager,
-Row,
-Section,
-State,
-useLoad
-} from "./shared";
+import { fmtDate, items } from "@/lib/api";
+import { Search } from "lucide-react";
+import { useState } from "react";
+import DataTable, { type DataColumn } from "./DataTable";
+import { Empty, Heading, Pager, Row, Section, State, useLoad } from "./shared";
+
 export default function ActivityPage() {
-  const [offset, setOffset] = useState(0),
-    [filter, setFilter] = useState("");
-  const { data, error, loading } = useLoad<Row[]>(
-    `/activity?limit=50&offset=${offset}`,
-    15000,
+  const [offset, setOffset] = useState(0);
+  const [filter, setFilter] = useState("");
+  const { data, error, loading } = useLoad<Row[]>(`/activity?limit=50&offset=${offset}`, 15000);
+  const filtered = items(data).filter((event) =>
+    `${event.action || ""} ${event.target_type || event.entity_type || ""} ${event.actor_id || ""}`
+      .toLowerCase()
+      .includes(filter.toLowerCase()),
   );
+  const columns: DataColumn<Row>[] = [
+    { id: "time", header: "Time", value: (event) => event.created_at || event.createdAt || "", render: (event) => fmtDate(event.created_at || event.createdAt) },
+    { id: "action", header: "Action", value: (event) => event.action || "", render: (event) => <span className="mono">{String(event.action || "—").replaceAll(".", " / ")}</span> },
+    { id: "object", header: "Object", value: (event) => event.target_type || event.entity_type || event.targetType || "", render: (event) => <span>{event.target_type || event.entity_type || event.targetType || "—"}<small className="table-subline mono">{event.target_id || event.entity_id || event.targetId || ""}</small></span> },
+    { id: "actor", header: "Actor", value: (event) => event.actor_id || event.actorId || "", render: (event) => <span className="mono small">{event.actor_id || event.actorId || "—"}</span> },
+  ];
+
   return (
     <>
-      <Heading
-        eyebrow="Workspace / Activity"
-        title="Activity"
-        subtitle="Auditable actions by administrators and customers."
-      />
+      <Heading eyebrow="Workspace / Activity" title="Activity" subtitle="Auditable actions by administrators and customers." />
+      <div className="summary-strip" aria-label="Activity context">
+        <div><span>Events on this page</span><strong>{items(data).length}</strong></div>
+        <div><span>Search matches</span><strong>{filtered.length}</strong></div>
+        <div><span>Auto refresh</span><strong>15 sec</strong></div>
+      </div>
       <Section
         title="Audit trail"
-        description="Actions are recorded automatically. Search applies to the current page."
-        action={
-          <input
-            className="search"
-            aria-label="Search activity"
-            placeholder="Search actions…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        }
+        description="Search covers the currently loaded page of up to 50 events."
+        action={<label className="search-control"><Search size={15} /><input className="search" aria-label="Search activity" placeholder="Search actions, targets, actors…" value={filter} onChange={(event) => setFilter(event.target.value)} /></label>}
       >
         <State loading={loading} error={error}>
-          {!items(data).filter((a) =>
-            String(a.action).toLowerCase().includes(filter.toLowerCase()),
-          ).length ? (
-            <Empty>No events yet.</Empty>
+          {filtered.length ? (
+            <DataTable data={filtered} rowKey={(event) => String(event.id || event.created_at || event.createdAt)} columns={columns} empty="No activity on this page." />
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Action</th>
-                    <th>Object</th>
-                    <th>Actor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items(data)
-                    .filter((a) =>
-                      String(a.action)
-                        .toLowerCase()
-                        .includes(filter.toLowerCase()),
-                    )
-                    .map((a, i) => (
-                      <tr key={a.id || i}>
-                        <td>{fmtDate(a.created_at || a.createdAt)}</td>
-                        <td className="mono">{a.action}</td>
-                        <td>
-                          {a.target_type ||
-                            a.entity_type ||
-                            a.targetType ||
-                            "—"}{" "}
-                          <span className="muted small mono">
-                            {a.target_id || a.entity_id || a.targetId || ""}
-                          </span>
-                        </td>
-                        <td className="mono small">
-                          {a.actor_id || a.actorId || "—"}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+            <Empty>{filter ? "No activity matches this search." : "No events yet."}</Empty>
           )}
-          <Pager
-            offset={offset}
-            setOffset={setOffset}
-            count={items(data).length}
-          />
+          <Pager offset={offset} setOffset={setOffset} count={items(data).length} />
         </State>
       </Section>
     </>

@@ -15,7 +15,14 @@ import {
 useState
 } from "react";
 
-import { Modal } from "./feedback";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import DataTable, { type DataColumn } from "./DataTable";
 import {
 Badge,
 Button,
@@ -83,12 +90,15 @@ export default function Servers({ admin }: { admin: boolean }) {
         }
       />
       {admin && (
-        <Modal
+        <Sheet
           open={create}
           onOpenChange={setCreate}
-          title="Create a server"
-          description="Choose a game, assign an owner, and set its resource limits. Available capacity determines placement."
         >
+          <SheetContent className="form-sheet" side="right">
+            <SheetHeader>
+              <SheetTitle>Create a server</SheetTitle>
+              <SheetDescription>Choose a game, assign an owner, and set resource limits. Fledge checks available capacity before placement.</SheetDescription>
+            </SheetHeader>
           {templateError || customerError || nodeError ? (
             <ErrorBox
               message={[templateError, customerError, nodeError]
@@ -188,7 +198,8 @@ export default function Servers({ admin }: { admin: boolean }) {
                 : ""}
             </Notice>
           )}
-        </Modal>
+          </SheetContent>
+        </Sheet>
       )}
       <div className="filter-toolbar">
         <div className="segmented" aria-label="Filter server status">
@@ -198,7 +209,7 @@ export default function Servers({ admin }: { admin: boolean }) {
               aria-pressed={status === value}
               onClick={() => setStatus(value)}
             >
-              {value === "all" ? "All statuses" : value}
+              {value === "all" ? `All · ${items(data).length}` : `${value} · ${items(data).filter((server) => server.status === value).length}`}
             </button>
           ))}
         </div>
@@ -226,57 +237,19 @@ export default function Servers({ admin }: { admin: boolean }) {
                 : "No servers found."}
             </Empty>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Server</th>
-                    <th>Status</th>
-                    <th>Location / node</th>
-                    <th>Resources</th>
-                    <th>Port</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((s) => (
-                    <tr key={s.id}>
-                      <td>
-                        <Link className="strong-link" href={`/servers/${s.id}`}>
-                          {s.name}
-                        </Link>
-                        <div className="muted small">{s.templateId}</div>
-                      </td>
-                      <td>
-                        <Badge value={s.status} />
-                        {s.status === "unreachable" && (
-                          <div className="muted small">
-                            Last observed: {s.observedStatus}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        {s.location}
-                        <div className="muted small">{s.nodeName}</div>
-                      </td>
-                      <td>
-                        {s.memoryMb} MB <span className="muted">·</span>{" "}
-                        {s.cpuPercent}% CPU
-                      </td>
-                      <td className="mono">{s.port}</td>
-                      <td>
-                        <Link
-                          href={`/servers/${s.id}`}
-                          aria-label={`${s.name} open`}
-                        >
-                          <ChevronRight size={17} />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              data={list}
+              rowKey={(server) => server.id}
+              columns={[
+                { id: "name", header: "Server", value: (server) => server.name, render: (server) => <div className="table-entity"><Link className="strong-link" href={`/servers/${server.id}`}>{server.name}</Link><small>{server.templateId}</small></div> },
+                { id: "status", header: "Status", value: (server) => server.status, render: (server) => <div><Badge value={server.status} />{server.status === "unreachable" && <small className="table-subline">Last observed: {server.observedStatus}</small>}</div> },
+                { id: "location", header: "Host", value: (server) => server.nodeName || server.location, render: (server) => <div>{server.nodeName || "Unassigned"}<small className="table-subline">{server.location || "No location"}</small></div> },
+                { id: "memory", header: "Resources", value: (server) => server.memoryMb, render: (server) => <span className="mono">{server.memoryMb} MB · {server.cpuPercent}% CPU</span> },
+                { id: "port", header: "Port", value: (server) => server.port, render: (server) => <span className="mono">{server.port}</span> },
+                { id: "open", header: "", value: () => "", sortable: false, render: (server) => <Link href={`/servers/${server.id}`} className="table-open-link" aria-label={`Open ${server.name}`}><ChevronRight size={16} /></Link> },
+              ] as DataColumn<Server>[]}
+              empty="No matching servers on this page."
+            />
           )}
           {
             <Pager

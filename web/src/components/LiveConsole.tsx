@@ -2,7 +2,7 @@
 import { API,json } from "@/lib/api";
 import { Send } from "lucide-react";
 import { useEffect,useRef,useState,type FormEvent } from "react";
-import { Notice } from "./shared";
+import { Button as SharedButton, Notice } from "./shared";
 
 type Frame = {
   type: "status" | "log" | "sample";
@@ -182,14 +182,14 @@ export default function LiveConsole({
           <span>
             {connection === "connected" ? "LIVE STREAM" : "AWAITING CONNECTION"}
           </span>
-          <button
+          <SharedButton
             type="button"
-            className="btn"
+            variant="outline"
             aria-pressed={following}
             onClick={() => setFollowing(!following)}
           >
             {following ? "Pause scrolling" : "Follow output"}
-          </button>
+          </SharedButton>
         </div>
         <pre
           ref={tail}
@@ -231,8 +231,8 @@ export default function LiveConsole({
             }
             disabled={!reachable || connection !== "connected" || pending}
           />
-          <button
-            className="btn primary"
+          <SharedButton
+            variant="default"
             type="submit"
             disabled={
               !reachable ||
@@ -250,7 +250,7 @@ export default function LiveConsole({
                 Send
               </>
             )}
-          </button>
+          </SharedButton>
         </form>
         {error && <Notice status="danger" className="console-error">{error}</Notice>}
         {!minecraft && (

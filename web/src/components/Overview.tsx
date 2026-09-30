@@ -10,7 +10,18 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Notice } from "./shared";
+import { Badge, Button as SharedButton, Notice } from "./shared";
+import { buttonVariants } from "@/components/ui/button";
+import DataTable, { type DataColumn } from "./DataTable";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type OverviewData = {
   nodes: Record<string, number>;
@@ -26,6 +37,38 @@ type Event = {
   created_at: string;
   target_type: string;
 };
+
+const fleetColumns: DataColumn<Server>[] = [
+  {
+    id: "name",
+    header: "Server",
+    value: (server) => server.name,
+    render: (server) => (
+      <div className="table-entity">
+        <Link className="strong-link" href={`/servers/${server.id}`}>{server.name}</Link>
+        <small>{server.templateId} · {server.location || "No location"}</small>
+      </div>
+    ),
+  },
+  {
+    id: "status",
+    header: "Status",
+    value: (server) => server.status,
+    render: (server) => <Badge value={server.status} />,
+  },
+  {
+    id: "node",
+    header: "Host",
+    value: (server) => server.nodeName || server.location || "",
+    render: (server) => <span>{server.nodeName || server.location || "Unassigned"}</span>,
+  },
+  {
+    id: "memory",
+    header: "Resources",
+    value: (server) => server.memoryMb,
+    render: (server) => <span className="mono">{server.memoryMb} MB · {server.cpuPercent}% CPU</span>,
+  },
+];
 
 export default function Overview() {
   const [data, setData] = useState<OverviewData | null>(null);
@@ -81,11 +124,11 @@ export default function Overview() {
           <p className="muted">A live view of your servers and hosts.</p>
         </div>
         <div className="actions">
-          <button className="btn" disabled={busy} onClick={refreshNow}>
+          <SharedButton variant="outline" disabled={busy} onClick={refreshNow}>
             <RefreshCw size={15} className={busy ? "spin" : ""} />
             {busy ? "Updating" : "Refresh"}
-          </button>
-          <Link href="/servers" className="btn primary">
+          </SharedButton>
+          <Link href="/servers" className={`${buttonVariants({ variant: "default" })} btn primary`}>
             <ServerIcon size={15} />
             Open servers
           </Link>
@@ -152,19 +195,12 @@ export default function Overview() {
                 <Link className="link" href="/servers">All servers <ArrowUpRight size={14} /></Link>
               </div>
               {servers.length ? (
-                <div className="fleet-list">
-                  {servers.slice(0, 6).map((server) => (
-                    <Link href={`/servers/${server.id}`} className="fleet-row" key={server.id}>
-                      <span className={`fleet-state fleet-state--${server.status}`} aria-hidden="true" />
-                      <span className="fleet-row-main">
-                        <strong>{server.name}</strong>
-                        <small>{server.templateId} · {server.nodeName || server.location || "No host assigned"}</small>
-                      </span>
-                      <span className={`fleet-status fleet-status--${server.status}`}>{server.status}</span>
-                      <ArrowUpRight size={14} className="fleet-arrow" />
-                    </Link>
-                  ))}
-                </div>
+                <DataTable
+                  data={servers.slice(0, 6)}
+                  columns={fleetColumns}
+                  rowKey={(server) => server.id}
+                  empty={<span>No servers have been created yet.</span>}
+                />
               ) : (
                 <div className="empty fleet-empty">
                   <ServerIcon size={23} />
@@ -211,6 +247,40 @@ export default function Overview() {
                   );
                 })}
                 <p className="section-footnote">Allocated capacity, not live usage.</p>
+              </section>
+
+              <section className="section capacity-chart-section">
+                <div className="section-title">
+                  <div>
+                    <span className="eyebrow">Placement headroom</span>
+                    <h2>Memory by host</h2>
+                    <p className="muted">Reserved capacity compared with available capacity.</p>
+                  </div>
+                  <Link className="link" href="/nodes">Manage nodes <ArrowUpRight size={14} /></Link>
+                </div>
+                {nodes.length ? (
+                  <div className="capacity-chart" role="img" aria-label="Memory reserved and available by host">
+                    <ResponsiveContainer width="100%" height={Math.min(300, Math.max(150, nodes.length * 32))}>
+                      <BarChart data={nodes.map((node) => ({
+                        name: node.name,
+                        reserved: node.reserved.memoryMb,
+                        available: Math.max(0, node.capacity.memoryMb - node.reserved.memoryMb),
+                      }))} layout="vertical" margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid stroke="#29372f" strokeDasharray="3 4" horizontal={false} />
+                        <XAxis type="number" hide />
+                        <YAxis type="category" dataKey="name" width={90} tick={{ fill: "#aab8ae", fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          cursor={{ fill: "#26342b" }}
+                          contentStyle={{ background: "#17211b", border: "1px solid #3b4a3f", borderRadius: 8, color: "#e8eee9", fontSize: 11 }}
+                          formatter={(value, name) => [`${Number(value).toLocaleString()} MB`, name === "reserved" ? "Reserved" : "Available"]}
+                        />
+                        <Bar dataKey="reserved" stackId="memory" fill="#b7dc8b" radius={[4, 0, 0, 4]} />
+                        <Bar dataKey="available" stackId="memory" fill="#36483a" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="chart-legend"><span><i className="legend-reserved" />Reserved</span><span><i className="legend-available" />Available</span></div>
+                  </div>
+                ) : <div className="empty-state">Register a host to see placement headroom.</div>}
               </section>
 
               <section className="section node-section">
