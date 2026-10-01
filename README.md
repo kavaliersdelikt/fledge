@@ -12,8 +12,13 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 
 <img src="docs/assets/banner2.png" width="100%" alt="Fledge — one panel, many worlds" />
 
+<a href="https://discord.gg/gu49ZF6tQh">
+  <img src="https://img.shields.io/badge/Join%20the%20Fledge%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Fledge Discord" />
+</a>
+
 </div>
 
+</div>
 > **Version v0.2.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
