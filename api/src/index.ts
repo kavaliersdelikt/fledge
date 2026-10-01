@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import {pool,WEB_ORIGIN,PORT,authenticate,migrate,safeError} from './core.js';
 import {authRoutes} from './auth.js';
 import {providerRoutes} from './provider.js';
@@ -21,6 +22,8 @@ await migrate();
 const app=Fastify({logger:true,bodyLimit:12*1024*1024,trustProxy:process.env.TRUST_PROXY==='true'});
 app.addContentTypeParser('application/octet-stream',(req,payload,done)=>done(null,payload));
 await app.register(cookie);await registerPanelCors(app,WEB_ORIGIN);await app.register(multipart,{limits:{fileSize:8*1024*1024}});
+
+await app.register(rateLimit,{max:10000,timeWindow:'1 minute'});
 registerOperations(app);
 app.addHook('preHandler',authenticate);
 app.setErrorHandler((err,req,reply)=>{req.log.error(err);const sql=(err as any).code;const code=sql==='23505'||sql==='23503'?409:sql==='22P02'?400:(err as any).statusCode||500;reply.code(code).send({error:(err as any).error||(code===500?'internal_error':'request_failed'),message:code>=500&&code!==502&&code!==503&&code!==504?'Internal server error':safeError(err)});});

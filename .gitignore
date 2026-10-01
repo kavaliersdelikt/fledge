@@ -20,3 +20,4 @@ coverage/
 /.backups/
 /fledge-source-download.zip
 /weppy-project-sync/
+code-scanning-results.json
