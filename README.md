@@ -8,17 +8,31 @@
 
 Manage customers, servers, templates, and Linux Docker nodes from one self-hosted panel.
 
-[Quick start](#quick-start) · [Connect a node](#connect-a-node) · [Documentation](#documentation) · [Known limits](#known-limits)
+<p>
+  <a href="https://github.com/kavaliersdelikt/fledge/releases"><img src="https://img.shields.io/github/v/release/kavaliersdelikt/fledge?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=8B5CF6" alt="Latest GitHub release" /></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-64748B?style=flat-square" alt="License: AGPL-3.0-only" /></a>
+  <a href="https://github.com/kavaliersdelikt/fledge/stargazers"><img src="https://img.shields.io/github/stars/kavaliersdelikt/fledge?style=flat-square&amp;logo=github&amp;label=stars&amp;color=F59E0B" alt="GitHub stars" /></a>
+  <a href="https://github.com/kavaliersdelikt/fledge/issues"><img src="https://img.shields.io/github/issues/kavaliersdelikt/fledge?style=flat-square&amp;label=issues&amp;color=38BDF8" alt="Open GitHub issues" /></a>
+  <a href="#known-limits"><img src="https://img.shields.io/badge/status-evaluation-F59E0B?style=flat-square" alt="Project status: evaluation" /></a>
+</p>
+
+[Overview](#what-is-fledge) · [Connect a node](#connect-a-node) · [Backups](#backups-and-recovery) · [Community](#community) · [Known limits](#known-limits)
 
 <img src="docs/assets/banner2.png" width="100%" alt="Fledge — one panel, many worlds" />
 
-<a href="https://discord.gg/gu49ZF6tQh">
-  <img src="https://img.shields.io/badge/Join%20the%20Fledge%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Fledge Discord" />
-</a>
+<p>
+  <a href="https://discord.gg/gu49ZF6tQh"><img src="https://img.shields.io/badge/Join_the_Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join the Fledge Discord" /></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_start-0F766E?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Quick start with Docker" /></a>
+  <a href="#documentation"><img src="https://img.shields.io/badge/Read_the_docs-334155?style=for-the-badge" alt="Read the documentation" /></a>
+  <a href="https://github.com/kavaliersdelikt/fledge/releases"><img src="https://img.shields.io/badge/Releases-334155?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Browse releases and release notes" /></a>
+</p>
+
+**Building your own game server setup? Come build it with us.**<br />
+Ask setup questions, share your servers, and help shape what Fledge becomes.
+
 
 </div>
 
-</div>
 > **Version v0.2.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
@@ -28,10 +42,25 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
 Fledge is a self-hosted control panel for operating game servers across multiple Linux Docker hosts. The web panel and API manage users, templates, server lifecycle, placement, backups, and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port.
 
 
-```text
- Browser ── Panel ── API ── PostgreSQL
-                         ├── S3-compatible backups
-                         └── outbound agents ── Linux Docker nodes ── game servers
+```mermaid
+flowchart TB
+    Browser["Browser"] --> Panel["Fledge panel"]
+    Panel --> API["API"]
+
+    API --> Database[("PostgreSQL")]
+    API --> Backups["S3-compatible backups"]
+
+    API -. "outbound connection" .- Agent["Node agent"]
+    Agent --> Node["Linux Docker node"]
+    Node --> Servers["Game servers"]
+
+    classDef app fill:#172554,stroke:#60A5FA,color:#F8FAFC,stroke-width:1.5px
+    classDef data fill:#1E293B,stroke:#64748B,color:#F8FAFC
+    classDef node fill:#052E2B,stroke:#34D399,color:#F0FDFA
+
+    class Browser,Panel,API app
+    class Database,Backups data
+    class Agent,Node,Servers node
 ```
 
 ## Quick start
@@ -95,7 +124,7 @@ Once Docker is installed and reachable on the node:
 
 1. In **Nodes**, register the node's capacity and location.
 2. Use **Connect a node** to create a one-time enrollment token and copy the generated connector command. Tokens expire after ten minutes and are shown once.
-3. Run the connector on the node. It verifies the agent checksum, enrolls the agent, and installs a systemd service. For Windows/WSL2 evaluation, enable systemd first and run the PowerShell helper from the repository root as shown in the agent guide; it returns after starting the background service. Do not paste Linux `curl`/`sudo` commands into PowerShell.
+3. Run the connector on the node. It verifies the agent checksum, enrolls the agent, and installs a systemd service. For Windows/WSL2 evaluation, enable systemd first and run the PowerShell helper from the repository root as shown in the agent guide; it returns after starting the background service.
 4. Confirm the node is connected before placing a server there.
 
 The agent is a high-trust, root-equivalent component because it controls Docker and server files. Install it only on hosts you administer. Use HTTPS outside local development. 
@@ -134,7 +163,6 @@ The in-panel updater runs as a private Compose service and needs access to the D
 - This checkout was exercised with a real Minecraft Java boot, console command, file listing, Docker resource sample, 108 MiB S3-compatible backup download, and successful restore on Docker Desktop with a WSL2 agent. Real AWS S3 retention, Valheim boot, and a separate two-host recovery drill still need dedicated validation. Windows Docker Desktop is for local Linux-container and WSL2-agent evaluation; native Windows services and Windows containers are unsupported.
 - The API has shared request throttles, one-time account recovery codes, admin-only Prometheus metrics, and an updater that restores application code if its health check fails. These controls do not replace a formal production security review. Database migrations are not automatically reversed; account recovery requires previously saved recovery codes; and the Linux agent still has root-equivalent Docker access. Rootless operation, load testing, external monitoring, and credential-rotation operations remain unvalidated.
 
-See [v0.1.7 release notes](docs/releases/v0.1.7.md) and the component READMEs for verification details. Treat this release as an evaluation build until you have tested deployment and recovery on your own infrastructure.
 
 ## Development checks
 
@@ -150,6 +178,24 @@ cd ../agent && go test ./... && go vet ./... && go build ./...
 ```
 
 The disposable API smoke test is in `tests/api-smoke-disposable.ps1`; it creates and removes a uniquely named PostgreSQL test container/database. Set `FLEDGE_SMOKE_S3=true` and provide `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, and a host-reachable `S3_ENDPOINT` to include streamed object and retention checks against an S3-compatible test bucket. It writes only unique `smoke/` objects and cleans up its fixtures. Do not point smoke tests at a production database or bucket.
+
+## Community
+
+<div align="center">
+
+<a href="https://discord.gg/gu49ZF6tQh"><img src="https://img.shields.io/badge/Discord-Come_say_hello-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join the Discord" /></a>
+<a href="https://github.com/kavaliersdelikt/fledge"><img src="https://img.shields.io/badge/Like_Fledge%3F-Star_on_GitHub-F59E0B?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Support Fledge with a star on GitHub" /></a>
+
+</div>
+
+| Want to… | Start here |
+| --- | --- |
+| Ask a setup question or share your server | [Join Discord](https://discord.gg/gu49ZF6tQh) |
+| Report a bug | [Open an issue](https://github.com/kavaliersdelikt/fledge/issues/new) with reproduction steps and relevant logs |
+| Suggest an improvement | [Share an idea](https://github.com/kavaliersdelikt/fledge/issues/new) and describe the problem it would solve |
+| Contribute code | Start with the [open issues](https://github.com/kavaliersdelikt/fledge/issues) and [development checks](#development-checks) |
+
+Please redact credentials, enrollment tokens, and backup URLs before sharing logs or screenshots.
 
 ## Project status
 
