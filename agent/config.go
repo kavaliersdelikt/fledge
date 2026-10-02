@@ -19,7 +19,7 @@ type panelConfig struct {
 
 var (
 	cfgMu    sync.Mutex
-	prefixes = strings.Split(env("ALLOWED_IMAGE_PREFIXES", "itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:"), ",")
+	prefixes = strings.Split(env("ALLOWED_IMAGE_PREFIXES", "itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/"), ",")
 )
 
 func applyConfig(c *panelConfig) {

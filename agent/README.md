@@ -95,7 +95,7 @@ Use this only to evaluate a panel and one local game-server node. The panel/API/
      DATA_ROOT='/var/lib/fledge/servers' \
      CREDENTIAL_FILE='/var/lib/fledge/agent.credential' \
      ALLOW_INSECURE_HTTP='true' \
-     ALLOWED_IMAGE_PREFIXES='itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:' \
+     ALLOWED_IMAGE_PREFIXES='itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/' \
      /usr/local/bin/fledge-agent
    ```
 
@@ -117,7 +117,7 @@ NODE_ID=<the UUID returned by POST /api/nodes>
 ENROLLMENT_TOKEN=<one-time enrollment token; remove from environment after enrollment>
 DATA_ROOT=/var/lib/fledge/servers
 CREDENTIAL_FILE=/var/lib/fledge/agent.credential
-ALLOWED_IMAGE_PREFIXES=itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:
+ALLOWED_IMAGE_PREFIXES=itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/
 ```
 
 Run `fledge-agent` once to exchange the token and save the credential. The agent clears `ENROLLMENT_TOKEN` from its own process environment immediately after reading it. Future restarts read `CREDENTIAL_FILE`; keep the one-time token out of the service configuration. If re-enrolling, issue a fresh enrollment token in the panel, remove the old credential file on this node, provide the fresh token, and restart; issuing the token immediately revokes the old credential. `ALLOW_INSECURE_HTTP=true` permits HTTP *only for local/development use*. Use HTTPS with a valid CA certificate in deployment. The S3 endpoint configured on the control plane must be reachable from this node, since the agent PUTs/GETs via signed URLs.

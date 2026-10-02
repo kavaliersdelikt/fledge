@@ -11,7 +11,7 @@ export type FailoverSettings={enabled:boolean;graceMinutes:number;maxConcurrent:
 type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings};
 type Section=keyof Sections;
 const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl']};
-const defaultImages='itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:';
+const defaultImages='itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/';
 const list=(v:string)=>v.split(',').map(s=>s.trim()).filter(Boolean);
 
 function envDefaults():Sections{

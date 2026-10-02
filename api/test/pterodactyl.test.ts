@@ -29,3 +29,12 @@ test('rejects malformed imports and invalid ports',()=>{
  assert.throws(()=>convertPterodactylEgg('bad'),/Paste one Pterodactyl egg/);
  assert.throws(()=>convertPterodactylEgg({name:'Missing port'},{port:70000}),/valid primary container port/);
 });
+
+test('reads the legacy PTDL_v1 image field, normalises ^^C and warns on unknown schemas',()=>{
+ const v1=convertPterodactylEgg({meta:{version:'PTDL_v1'},name:'Old Egg',image:'vendor/old:1',config:{stop:'^^C'}},{port:25565});
+ assert.equal(v1.template.image,'vendor/old:1');
+ assert.equal(v1.template.stopCommand,'^C');
+ assert.ok(!v1.warnings.some(w=>w.includes('export format')));
+ const unknown=convertPterodactylEgg({meta:{version:'PTDL_v9'},name:'Future Egg',docker_images:{Default:'vendor/new:1'}},{port:25565});
+ assert.ok(unknown.warnings.some(w=>w.includes('PTDL_v9')));
+});

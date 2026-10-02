@@ -52,7 +52,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
-      ALLOWED_IMAGE_PREFIXES: ${ALLOWED_IMAGE_PREFIXES:-itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:}
+      ALLOWED_IMAGE_PREFIXES: ${ALLOWED_IMAGE_PREFIXES:-itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/}
     ports:
       - "${API_BIND:-127.0.0.1}:4000:4000"
     depends_on:

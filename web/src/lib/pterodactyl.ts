@@ -7,9 +7,12 @@ export type FledgeTemplate = {
 };
 
 type Egg = {
-  name?: unknown; startup?: unknown; docker_images?: unknown;
+  meta?: {version?: unknown}; name?: unknown; startup?: unknown; docker_images?: unknown;
+  image?: unknown; images?: unknown;
   variables?: unknown; scripts?: unknown; config?: {stop?: unknown};
 };
+
+const supportedSchemas = ['PTDL_v1', 'PTDL_v2'];
 
 const slug = (value:string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48) || 'pterodactyl-import';
 
@@ -20,7 +23,11 @@ export function convertPterodactylEgg(input:unknown, options:{image?:string;port
   const egg=input as Egg;
   if(typeof egg.name!=='string' || !egg.name.trim()) throw new Error('The egg must include a name.');
   const warnings:string[]=[];
-  const images=egg.docker_images && typeof egg.docker_images==='object' && !Array.isArray(egg.docker_images) ? Object.values(egg.docker_images as Record<string,unknown>).filter((v):v is string=>typeof v==='string'&&!!v.trim()) : [];
+  const schema=typeof egg.meta?.version==='string'?egg.meta.version:'';
+  if(schema&&!supportedSchemas.includes(schema)) warnings.push(`This egg uses the “${schema.slice(0,40)}” export format. Fledge reads PTDL_v1 and PTDL_v2; check the imported values.`);
+  // PTDL_v2 maps a label to each image; PTDL_v1 has a single image or a list.
+  const imageValues:unknown[]=egg.docker_images&&typeof egg.docker_images==='object'&&!Array.isArray(egg.docker_images)?Object.values(egg.docker_images as Record<string,unknown>):Array.isArray(egg.images)?egg.images:[egg.image];
+  const images=imageValues.filter((v):v is string=>typeof v==='string'&&!!v.trim()).map(v=>v.trim());
   const image=options.image?.trim()||images[0]||'';
   if(!image) warnings.push('Choose a Docker image that is available on your nodes and allowed by the Fledge API and agents.');
   else if(images.length) warnings.push('The selected image must exist on your nodes and match the Fledge image allowlist. Pterodactyl daemon images may not be compatible.');
@@ -37,7 +44,8 @@ export function convertPterodactylEgg(input:unknown, options:{image?:string;port
   const startup=typeof egg.startup==='string'?egg.startup.trim().replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g,(_m,name:string)=>`\${${known[name.toLowerCase()]||name.replace(/\./g,'_').toUpperCase()}}`):'';
   if(startup) warnings.push('The startup command was copied with {{VARIABLES}} turned into shell ${VARIABLES}. It runs through /bin/sh in the image you picked, with SERVER_MEMORY, SERVER_PORT and SERVER_IP provided; check it before saving.');
   if(egg.scripts) warnings.push('Pterodactyl install scripts are not copied. Fledge does not run egg install scripts during provisioning.');
-  const stop=typeof egg.config?.stop==='string'?egg.config.stop.trim():'';
+  const rawStop=typeof egg.config?.stop==='string'?egg.config.stop.trim():'';
+  const stop=rawStop==='^^C'?'^C':rawStop;
   if(stop&&stop!=='^C'&&!/^[\x20-\x7e]{1,256}$/.test(stop)) warnings.push('The stop command has unusual characters and was not copied; Fledge stops the container with Docker instead.');
   if(!Number.isInteger(options.port)||Number(options.port)<1||Number(options.port)>65535) throw new Error('Enter a valid primary container port (1–65535).');
   const protocol=options.protocol||'tcp';
