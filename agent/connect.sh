@@ -87,6 +87,7 @@ if ! IFS= read -r ENROLLMENT_TOKEN </dev/tty; then echo 'Could not read the enro
 stty echo </dev/tty
 tty_hidden=0
 printf '\n' >/dev/tty
+ENROLLMENT_TOKEN=$(printf '%s' "$ENROLLMENT_TOKEN" | tr -d '[:space:]')
 case "$ENROLLMENT_TOKEN" in ''|*[!A-Za-z0-9_-]*) echo 'Enrollment token is empty or has invalid characters.' >&2; exit 24 ;; esac
 
 install -d -m 0755 /usr/local/bin /etc/fledge /var/lib/fledge /var/lib/fledge/servers
@@ -113,12 +114,14 @@ if [ "$FOREGROUND" -eq 1 ]; then
   export API_URL NODE_ID DATA_ROOT=/var/lib/fledge/servers CREDENTIAL_FILE="$credential_file"
   exec /usr/local/bin/fledge-agent
 fi
-cat > /etc/systemd/system/fledge-agent.service <<'EOF'
+docker_deps='After=network-online.target'
+if systemctl cat docker.service >/dev/null 2>&1; then docker_deps='After=network-online.target docker.service
+Requires=docker.service'; fi
+cat > /etc/systemd/system/fledge-agent.service <<EOF
 [Unit]
 Description=Fledge game server node agent
-After=network-online.target docker.service
+$docker_deps
 Wants=network-online.target
-Requires=docker.service
 
 [Service]
 Type=simple

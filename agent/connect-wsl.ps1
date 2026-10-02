@@ -22,6 +22,22 @@ if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { throw 'WSL is no
 $distros = & wsl.exe --list --quiet
 if ($LASTEXITCODE -ne 0 -or -not (($distros | ForEach-Object { $_.Trim() }) -contains $Distro)) { throw "WSL distro '$Distro' was not found. Check `wsl --list --verbose`." }
 
+function Test-WslSystemd {
+    & wsl.exe --distribution $Distro --user root --exec sh -c 'systemctl show-environment >/dev/null 2>&1' 2>$null
+    return ($LASTEXITCODE -eq 0)
+}
+if (-not $Foreground -and -not (Test-WslSystemd)) {
+    Write-Host "systemd is not running in $Distro. Enabling it in /etc/wsl.conf and restarting the distro..."
+    $enable = "set -eu; touch /etc/wsl.conf; sed -i '/^[[:space:]]*systemd[[:space:]]*=/d' /etc/wsl.conf; if grep -q '^\[boot\]' /etc/wsl.conf; then sed -i '/^\[boot\]/a systemd=true' /etc/wsl.conf; else printf '\n[boot]\nsystemd=true\n' >> /etc/wsl.conf; fi"
+    & wsl.exe --distribution $Distro --user root --exec sh -c $enable
+    if ($LASTEXITCODE -ne 0) { throw 'Could not enable systemd in /etc/wsl.conf.' }
+    & wsl.exe --terminate $Distro
+    $ready = $false
+    for ($i = 0; $i -lt 30 -and -not $ready; $i++) { Start-Sleep -Seconds 2; $ready = Test-WslSystemd }
+    if (-not $ready) { throw 'systemd did not start after restarting WSL. Run `wsl --shutdown`, retry, or use -Foreground.' }
+    Write-Host 'systemd is enabled.'
+}
+
 function ConvertTo-BashLiteral([string]$Value) { return "'" + $Value.Replace("'", "'\''") + "'" }
 $repoLiteral = ConvertTo-BashLiteral $Repository
 $apiLiteral = ConvertTo-BashLiteral $ApiUrl.TrimEnd('/')
