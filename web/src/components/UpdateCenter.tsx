@@ -1,6 +1,6 @@
 "use client";
 import { request } from "@/lib/api";
-import { ArrowRight, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowRight, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, ErrorNotice, Notice, PageHeader, Skeleton, Status } from "./shared";
 
@@ -172,6 +172,25 @@ export default function UpdateCenter() {
                 <div className="card__foot">The database is backed up before anything changes; your settings are kept.</div>
               ) : null}
             </Card>
+          ) : null}
+
+          {!info.updateAvailable && !running && !info.error && info.latestVersion ? (
+            <div className="uptodate">
+              <div className="uptodate__icon">
+                <CheckCircle2 />
+              </div>
+              <div className="uptodate__body">
+                <strong>You’re on the latest version</strong>
+                <span>
+                  Fledge <span className="num">v{info.currentVersion}</span> is the newest release
+                  {info.publishedAt ? `, published ${new Date(info.publishedAt).toLocaleDateString(undefined, { dateStyle: "long" })}` : ""}.
+                  Last checked {new Date(info.checkedAt).toLocaleTimeString(undefined, { timeStyle: "short" })}.
+                </span>
+              </div>
+              <a className="card-link" href={info.releaseUrl} target="_blank" rel="noreferrer">
+                Release notes <ExternalLink />
+              </a>
+            </div>
           ) : null}
 
           {info.error && (
