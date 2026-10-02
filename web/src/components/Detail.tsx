@@ -326,7 +326,10 @@ function Vitals({ server: s, samples }: { server: Server; samples: Sample[] }) {
         <div className="vital__head">Disk</div>
         <div className="vital__value">
           {diskUsed !== undefined ? <DiskValue bytes={Number(diskUsed)} /> : <span className="faint">—</span>}
-          <small>of {fmtMb(s.diskMb)}</small>
+          <small>
+            of {fmtMb(s.diskMb)}
+            {s.usage?.diskEnforced === true ? " · hard limit" : ""}
+          </small>
         </div>
         <div className="vital__meter">
           {diskUsed !== undefined ? <Meter value={diskUsed} max={diskLimit} label="Disk used" /> : null}

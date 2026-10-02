@@ -5,7 +5,7 @@ import { Download, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import DataTable, { type DataColumn } from "./DataTable";
 import { useConfirm } from "./feedback";
-import { Button, Card, ErrorNotice, Skeleton, Status, Switch, Toolbar, btn } from "./shared";
+import { Button, Card, ErrorNotice, Notice, Skeleton, Status, Switch, Toolbar, btn } from "./shared";
 import { useToast } from "./toast";
 
 type Backup = {
@@ -32,7 +32,11 @@ export default function BackupManager({
     [days, setDays] = useState(0),
     [verification, setVerification] = useState<Verification | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState("");
+    [busy, setBusy] = useState(""),
+    [storage, setStorage] = useState<boolean | null>(null);
+  useEffect(() => {
+    request<{ enabled: boolean }>("/storage/status").then((r) => setStorage(r.enabled), () => setStorage(null));
+  }, []);
   const policyLoaded = useRef(false);
 
   const reload = useCallback(async () => {
@@ -180,12 +184,18 @@ export default function BackupManager({
   return (
     <>
       {error && <ErrorNotice message={error} />}
+      {storage === false ? (
+        <Notice tone="warn" title="Backups are off">
+          Backups are kept in object storage, which isn’t set up yet. An administrator can turn it on in Settings → Panel → Object storage.
+        </Notice>
+      ) : null}
       <Toolbar>
         <span />
         <Button
           size="sm"
           variant="primary"
           busy={busy === "create"}
+          disabled={storage === false}
           onClick={async () => {
             if (await confirm("The server stops cleanly while its files are archived, then starts again.", { danger: false, confirmLabel: "Back up now" }))
               void run("create", () => json("POST", `/servers/${id}/backups`), "Backup queued");

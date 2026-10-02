@@ -155,7 +155,7 @@ func TestBackupStopsAndRestartsRunningContainer(t *testing.T) {
 			return "", fmt.Errorf("unexpected docker command %q", args[0])
 		}
 	}
-	size, err := backupWithLifecycle(root, server.URL, "lifecycle-running", "nvr-test")
+	size, err := backupWithLifecycle(root, server.URL, "lifecycle-running", "nvr-test", false)
 	if err != nil || size <= 0 {
 		t.Fatalf("backup lifecycle: size=%d err=%v", size, err)
 	}
@@ -190,7 +190,7 @@ func TestBackupLifecyclePreservesStoppedStateAndReportsRestartFailure(t *testing
 		calls = append(calls, strings.Join(args, " "))
 		return "false", nil
 	}
-	size, err := backupWithLifecycle(root, server.URL, "lifecycle-stopped", "nvr-test")
+	size, err := backupWithLifecycle(root, server.URL, "lifecycle-stopped", "nvr-test", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestBackupLifecyclePreservesStoppedStateAndReportsRestartFailure(t *testing
 			return "", fmt.Errorf("unexpected command %q", args[0])
 		}
 	}
-	size, err = backupWithLifecycle(root, server.URL, "lifecycle-restart-fail", "nvr-test")
+	size, err = backupWithLifecycle(root, server.URL, "lifecycle-restart-fail", "nvr-test", false)
 	if err == nil || !strings.Contains(err.Error(), "backup uploaded but server restart failed") || size <= 0 {
 		t.Fatalf("restart failure should preserve uploaded size and report recovery action: size=%d err=%v", size, err)
 	}

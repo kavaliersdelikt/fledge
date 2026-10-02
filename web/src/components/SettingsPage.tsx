@@ -7,6 +7,7 @@ import DataTable, { type DataColumn } from "./DataTable";
 import { CopyButton, Modal, Secret } from "./feedback";
 import { Button, Card, Confirm, Field, Form, PageHeader, Row, Select, State, Status, useLoad } from "./shared";
 import { Plus } from "lucide-react";
+import AdminSettings from "./AdminSettings";
 
 function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
@@ -105,6 +106,12 @@ export default function SettingsPage({ user }: { user: User }) {
             <Button onClick={() => setAsk("recovery")}>Generate recovery codes</Button>
           </div>
         </Section>
+
+        {admin && (
+          <Section title="Panel" description="Everything here takes effect immediately and is stored encrypted in the panel’s database — no .env editing or restarts.">
+            <AdminSettings />
+          </Section>
+        )}
 
         {admin && (
           <Section title="API tokens" description="For billing systems and scripts. Give each token only the permissions it needs.">

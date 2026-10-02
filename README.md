@@ -33,8 +33,8 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.3.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
-> **New in v0.3.x:** a redesigned panel with live resource graphs, live usage in server lists, a persistent console, and a fix for schedule creation. See the [release notes](docs/releases/v0.3.1.1.md).
+> **Version v0.5.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+>
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
 ## What is Fledge?
@@ -63,6 +63,20 @@ flowchart TB
     class Agent,Node,Servers node
 ```
 
+## What you get
+
+| | |
+|---|---|
+| **Live servers** | Real CPU and memory graphs from each node's samples, disk use, and a console that keeps its history across tabs. |
+| **Whole-fleet view** | One overview that lists each offline node or failed server once, with the error and a link to fix it. |
+| **Placement that fits** | Servers go to a node with free capacity. Each node shows its reserved memory split per server. |
+| **Files and backups** | Browser file manager and editor, drag-and-drop upload, temporary SFTP credentials, S3 backups with retention and restore checks. |
+| **People and access** | Customer accounts, per-server collaborators (view, console, files, backups, manage), an audit log, and scoped API tokens. |
+| **Safe by default** | Two-factor authentication required for administrators, recovery codes, and outbound-only node agents. |
+| **Fast to drive** | Ctrl K searches pages and servers. Works on phones. Motion respects "reduce motion". |
+
+> **New in v0.5.2.1:** automatic failover, planned server moves, a Resilience page with health and recovery history, and webhook notifications. v0.5.1.1 added kernel-enforced disk limits, uploads without object storage and agent updates from the panel. See the [release notes](docs/releases/v0.5.2.1.md).
+
 ## Quick start
 
 ### Requirements
@@ -70,7 +84,7 @@ flowchart TB
 - Docker Engine with Docker Compose v2
 - 4 GB RAM recommended for the panel, database, and a small evaluation workload
 - For game nodes: Linux, Docker Engine, and a reachable HTTPS panel URL
-- Optional backups: an S3-compatible service reachable from the API, nodes, and browsers
+- Optional backups: an S3-compatible service reachable from the API and nodes (set up in the panel, not `.env`)
 
 ### Install with one command
 
@@ -133,9 +147,9 @@ New game containers keep standard input open. The live console streams Docker lo
 
 ## Backups and recovery
 
-Configure `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, and `S3_ENDPOINT` in the API environment. The endpoint must be reachable by the API, every node, and browsers downloading backups. Backups are verified archives, and restore stages files before swapping them into place where Linux filesystem support permits. Cross-node recovery is a manual operation: create a replacement server on another node, restore, verify the game, then update network records.
+Turn on object storage in **Settings → Panel → Object storage**: bucket, region, endpoint and keys, with a **Test connection** button that writes, reads and deletes a probe object. The secret key is stored encrypted in the database. The endpoint must be reachable by the API and every node. (The `S3_*` variables in `.env` only seed the form before the first save; the bundled SeaweedFS service is opt-in with `docker compose --profile bundled-s3 up -d`.) Backups are verified archives, and restore stages files before swapping them into place where Linux filesystem support permits. Cross-node recovery is a manual operation: create a replacement server on another node, restore, verify the game, then update network records.
 
-Backups are not game-aware snapshots. Validate recovery with your game and storage provider before relying on them.
+On nodes with disk limits, a running server is backed up from a frozen point-in-time copy of its volume while it keeps running (Minecraft first flushes and pauses world saving). Elsewhere the game is stopped cleanly for the archive. Neither is game-aware beyond that; validate recovery with your game and storage provider before relying on backups.
 
 ## Updating
 
@@ -151,16 +165,35 @@ The in-panel updater runs as a private Compose service and needs access to the D
 - [SFTP status](SFTP_STATUS.md)
 - [Environment template](.env.example)
 
+## Failover and server moves
+
+Everything is managed in **Settings → Panel → Automatic failover** and watched on the **Resilience** page. Failover is off until you turn it on, and it needs object storage because servers are rebuilt from backups.
+
+- **Automatic failover.** When a node has been silent for the configured wait (default 5 minutes), each of its servers is re-homed on a connected node with room (same location first, if you want only that, a setting), created there and restored from its newest backup. Up to *N* recoveries run at once. Servers whose newest backup is too old, or that have none, are not moved; they appear as *Waiting* with the reason (and the webhook is told), unless you allow recovery with empty data. **Data written since the last backup is lost**, so the page shows each server's backup age, and *Keep backups fresh* can take backups on a schedule (only on nodes with disk volumes, where it doesn't stop the game).
+- **No double running.** When the old node returns, it is told to remove its copy of every server that now lives elsewhere (moved aside and kept for a few days by default). Optionally, *Stop servers if a node loses the panel* makes nodes stop their protected servers after most of the waiting time without contact, so a node that is cut off but still alive cannot run a server that has already been started elsewhere. Without it, a partitioned node keeps its game running until it reconnects.
+- **Planned moves.** *Move* on a server (or *Empty node*) stops the server, takes a final backup, rebuilds it on another node, and only then removes the old copy: nothing is lost, with a few minutes of downtime.
+- **Simulate failure** shows, for a node, where each server would go and which would stay down, without changing anything.
+- **Monitoring.** The Resilience page shows readiness per server, node state with a failover countdown, recovery history with timings, and node up/down history. `GET /api/metrics` adds `fledge_failover_events{state}` and `fledge_servers_without_backup`. An optional webhook (Slack, Discord, Mattermost compatible) is notified when a node goes offline or returns and when a server is recovered, blocked or fails.
+- A per-server switch turns failover off for servers you would rather recover by hand.
+
+## Node agents, SFTP and disk limits
+
+All of this is managed in **Settings → Panel** and **Nodes**; nothing needs `.env` or a restart.
+
+- **Agent updates.** Nodes report their agent version. When a newer release is published (GitHub release of your repository, or your own download URL with `VERSION`, `SHA256SUMS` and `fledge-agent_linux_{amd64,arm64}`), **Nodes** shows *Update to x.y.z.w*; **Update N agents** updates them all, and *Update node agents automatically* does it unattended. The agent downloads the binary, verifies its SHA-256, runs it once to confirm its version, keeps the old binary as `fledge-agent.prev`, swaps and re-executes itself, then confirms to the panel. A new version that fails to start three times is rolled back and not retried. Agents older than 0.5.1.1 cannot update themselves; reconnect them once with the connector.
+- **Disk limits.** Each server's data lives in a sparse ext4 image sized to its disk allowance and loop-mounted into the node's data directory, so the kernel returns *no space left* to the game, SFTP and the panel alike. Growing a limit is applied live where the kernel allows it; shrinking (or growing on hosts that refuse online resizing) briefly stops the server. The panel refuses to shrink below current use. Usable space is about 2 % smaller than the allowance because of filesystem metadata. Existing servers move into a volume the next time they are restarted. The node needs root, loop devices and `e2fsprogs`; otherwise it falls back to soft limits (or refuses to run servers, if you chose *Require enforcement*).
+- **SFTP.** Turn it on or off and choose its port in the panel; agents apply it within seconds. Set a node's *Public address* so credentials show the right host.
+- **Allowed images.** One prefix per line; applied to the API and all agents.
+
 ## Known limits
 
-- SFTP is implemented with short-lived per-server credentials and confined paths. Enable it explicitly on each Linux agent and restrict its SSH port with the host firewall; it has not been field-tested with third-party clients on a dedicated node.
-- Browser file transfers stream through object storage up to 1 GiB; the text editor remains capped at 1 MiB. The older 8 MiB API transfer routes remain for compatibility.
-- Per-server disk allowances guard panel and SFTP writes, and disk usage is reported, but they are not kernel-enforced filesystem quotas. Game processes can exceed the allowance.
-- Automatic stateful failover and live migration are not implemented. Cross-node recovery is manual: provision a replacement, restore a backup, verify the game, then update network records. Do not attach the same writable server data to two nodes.
-- Backups ask Docker to stop a running game cleanly before archiving and restart it afterward. They are still archives rather than atomic filesystem snapshots; consistency depends on the game handling Docker's stop signal and the host filesystem remaining stable. Scheduled verification checks archive integrity and safe extraction; it does not boot a game.
+- Disk limits cover each server's data directory. The container's writable layer (anything a game writes outside the data mount) is not limited. Volumes need a Linux node with root, loop devices and `e2fsprogs`.
+- Failover is backup-based, not replication: a recovered server loses everything since its newest backup, and recovery takes the time of a restore. It does not detect a hung game on a healthy node, a node that is reachable but broken, or an outage of the panel itself. Without *Stop servers if a node loses the panel*, a node that is cut off from the panel but still running keeps its game running until it reconnects, so the same game may run on two nodes in that window (players can only reach one address). A failed recovery leaves the server on the new node in a failed state with the old data kept aside, to be retried by hand. Live migration without downtime is not implemented.
+- Snapshot backups are crash-consistent: they capture the volume as if power were cut at that instant, with a world-save flush for Minecraft. Other games depend on their own crash recovery. Without a volume, backups stop the game cleanly and depend on it honouring Docker's stop signal. Scheduled verification checks archive integrity and safe extraction; it does not boot a game.
+- Without object storage, file transfers are spooled on the API host (`TRANSFER_DIR`, a Compose volume by default). Several API replicas then need that directory shared, or object storage turned on. Transfers are limited to 1 GiB; the text editor to 1 MiB.
 - Console events and node ownership are routed through PostgreSQL for multiple API replicas, but a sustained multi-replica load and failover drill has not been run.
-- Pterodactyl conversion covers portable egg fields only; egg install scripts, daemon images, startup interpolation, and stop commands need operator review and are not executed.
-- This checkout was exercised with a real Minecraft Java boot, console command, file listing, Docker resource sample, 108 MiB S3-compatible backup download, and successful restore on Docker Desktop with a WSL2 agent. Real AWS S3 retention, Valheim boot, and a separate two-host recovery drill still need dedicated validation. Windows Docker Desktop is for local Linux-container and WSL2-agent evaluation; native Windows services and Windows containers are unsupported.
+- Pterodactyl conversion copies portable fields, the startup command (with `{{VAR}}` turned into `${VAR}`, plus `SERVER_MEMORY`, `SERVER_PORT`, `SERVER_IP`) and the stop command. Install scripts and Pterodactyl daemon images are not executed; review imported templates.
+- Verified against a real Docker host: kernel limits, grow/shrink, legacy migration, uploads and downloads, agent self-update with checksum refusal, snapshot backup and restore, an S3-protocol test server, and (v0.5.2.1) automatic failover, planned moves, blocked recovery, stale-copy eviction and webhooks across two agents with separate Docker daemons. Not yet validated: real AWS S3 retention, Valheim boot, failover across physical hosts and with a real game (it was exercised with two agents and two Docker daemons on one machine), SFTP with third-party clients on a dedicated node, and agent rollback of a binary that crashes after starting (covered by unit tests only). Windows Docker Desktop is for local Linux-container and WSL2-agent evaluation; native Windows services and Windows containers are unsupported.
 - The API has shared request throttles, one-time account recovery codes, admin-only Prometheus metrics, and an updater that restores application code if its health check fails. These controls do not replace a formal production security review. Database migrations are not automatically reversed; account recovery requires previously saved recovery codes; and the Linux agent still has root-equivalent Docker access. Rootless operation, load testing, external monitoring, and credential-rotation operations remain unvalidated.
 
 

@@ -10,7 +10,6 @@ export const pool = new pg.Pool({connectionString:process.env.DATABASE_URL, max:
 export const WEB_ORIGIN = process.env.WEB_ORIGIN || 'http://localhost:3000';
 export const PORT = Number(process.env.PORT || 4000);
 export const SESSION_DAYS = 7;
-export const imageAllowed=(image:string)=>{const prefixes=(process.env.ALLOWED_IMAGE_PREFIXES||'itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:').split(',').map(s=>s.trim()).filter(Boolean);return prefixes.some(prefix=>image.startsWith(prefix));};
 export const hash = (s:string)=>createHash('sha256').update(s).digest('hex');
 export const hashPassword = async (password:string)=>bcrypt.hash(password, 12);
 export const verifyPassword = async (password:string, hashed:string)=>bcrypt.compare(password, hashed);
@@ -63,5 +62,5 @@ export async function serverAccess(req:FastifyRequest,id:string,permission?:stri
 }
 export const effectivePermissions=(req:FastifyRequest,s:any)=>req.actor?.tokenScopes?['view']:req.actor?.role==='admin'||req.actor?.id===s.owner_id||(s.permissions||[]).includes('manage')?['view','console','files','backups','manage']:(s.permissions||[]).filter((p:string)=>['view','console','files','backups'].includes(p));
 export function serverShape(s:any){return {id:s.id,name:s.name,status:s.node_status==='disconnected'?'unreachable':s.observed_status,observedStatus:s.observed_status,desiredStatus:s.desired_status,ownerId:s.owner_id,nodeId:s.node_id,nodeName:s.node_name,location:s.location,templateId:s.template_id,supportsRcon:!!s.image?.startsWith('itzg/minecraft-server:'),memoryMb:s.memory_mb,cpuPercent:s.cpu_percent,diskMb:s.disk_mb,port:s.port,suspended:s.suspended,usage:s.usage,createdAt:s.created_at};}
-export function nodeShape(n:any){return {id:n.id,name:n.name,location:n.location,status:n.status,lastSeenAt:n.last_seen_at,draining:n.draining,headroomMb:n.headroom_mb,capacity:{memoryMb:n.memory_mb,cpuPercent:n.cpu_percent,diskMb:n.disk_mb},reserved:{memoryMb:Number(n.reserved_memory||0),cpuPercent:Number(n.reserved_cpu||0),diskMb:Number(n.reserved_disk||0)},usage:n.usage,version:n.version};}
+export function nodeShape(n:any){return {id:n.id,name:n.name,location:n.location,status:n.status,lastSeenAt:n.last_seen_at,draining:n.draining,headroomMb:n.headroom_mb,capacity:{memoryMb:n.memory_mb,cpuPercent:n.cpu_percent,diskMb:n.disk_mb},reserved:{memoryMb:Number(n.reserved_memory||0),cpuPercent:Number(n.reserved_cpu||0),diskMb:Number(n.reserved_disk||0)},usage:n.usage,version:n.version,agent:n.agent||{},publicHost:n.public_host||null};}
 export async function enqueue(nodeId:string,serverId:string|null,kind:string,payload:any={}){return (await pool.query('INSERT INTO jobs(node_id,server_id,kind,payload) VALUES($1,$2,$3,$4) RETURNING *',[nodeId,serverId,kind,JSON.stringify(payload)])).rows[0];}

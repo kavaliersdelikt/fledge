@@ -3,21 +3,22 @@ import {randomBytes} from 'node:crypto';
 import {mkdir, open, readFile} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {admin} from './core.js';
+import {settings} from './settings.js';
 
-const repository=(process.env.GITHUB_REPOSITORY||'kavaliersdelikt/fledge').trim();
 const currentVersion=()=> (process.env.APP_VERSION||'0.1.7').replace(/^v/i,'');
 const updater=(process.env.UPDATER_URL||'').replace(/\/$/,'');
 const tokenFile=process.env.UPDATE_TOKEN_FILE||'/run/fledge-updater/token';
-let cached:{at:number;value:any}|undefined;
-const parse=(value:string):[number,number,number,number,string]|null=>{const m=/^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$/.exec(value);return m?[Number(m[1]),Number(m[2]),Number(m[3]),Number(m[4]||0),m[5]||'']:null;};
-const newer=(candidate:string,current:string)=>{const a=parse(candidate),b=parse(current);if(!a||!b)return false;for(let i=0;i<4;i++)if(a[i]!==b[i])return a[i]>b[i];return !a[4]&&!!b[4];};
+let cached:{at:number;value:any;repo?:string}|undefined;
+export const parse=(value:string):[number,number,number,number,string]|null=>{const m=/^v?(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$/.exec(value);return m?[Number(m[1]),Number(m[2]),Number(m[3]),Number(m[4]||0),m[5]||'']:null;};
+export const newer=(candidate:string,current:string)=>{const a=parse(candidate),b=parse(current);if(!a||!b)return false;for(let i=0;i<4;i++)if(a[i]!==b[i])return a[i]>b[i];return !a[4]&&!!b[4];};
 
-async function getRelease(force=false){
- if(!force&&cached&&Date.now()-cached.at<5*60_000)return cached.value;
+export async function getRelease(force=false){
+ const {repository,githubToken}=(await settings()).updates;
+ if(!force&&cached&&cached.repo===repository&&Date.now()-cached.at<5*60_000)return cached.value;
  const releaseUrl=`https://github.com/${repository}/releases/latest`;
  try{
   const headers:Record<string,string>={accept:'application/vnd.github+json','user-agent':'Fledge-update-check'};
-  if(process.env.GITHUB_TOKEN)headers.authorization=`Bearer ${process.env.GITHUB_TOKEN}`;
+  if(githubToken)headers.authorization=`Bearer ${githubToken}`;
   const request={headers,signal:AbortSignal.timeout(6000)};
   const response=await fetch(`https://api.github.com/repos/${repository}/releases/latest`,request);
   let release:any;
@@ -40,7 +41,7 @@ async function getRelease(force=false){
   const version=typeof tag==='string'?tag.replace(/^v/i,''):'';
   if(!parse(version))throw new Error('github-invalid-response');
   const value={repository,currentVersion:currentVersion(),latestVersion:version,updateAvailable:newer(version,currentVersion()),releaseName:typeof release.name==='string'&&release.name?release.name:`Fledge v${version}`,releaseUrl:typeof release.html_url==='string'?release.html_url:releaseUrl,body:typeof release.body==='string'?release.body.slice(0,12000):'',publishedAt:typeof release.published_at==='string'?release.published_at:null,checkedAt:new Date().toISOString(),error:null};
-  cached={at:Date.now(),value};return value;
+  cached={at:Date.now(),value,repo:repository};return value;
  }catch(error:any){
   const status=error?.status;
   const errorMessage=status===401||status===404
@@ -51,7 +52,7 @@ async function getRelease(force=false){
      ?'GitHub is temporarily unavailable. Try checking for updates again shortly.'
      :'Could not reach GitHub to check for updates. Check the API container’s internet and DNS connectivity.';
   const value={repository,currentVersion:currentVersion(),latestVersion:null,updateAvailable:false,releaseName:null,releaseUrl,body:'',publishedAt:null,checkedAt:new Date().toISOString(),error:errorMessage};
-  cached={at:Date.now(),value};return value;
+  cached={at:Date.now(),value,repo:repository};return value;
  }
 }
 

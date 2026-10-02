@@ -3,6 +3,7 @@ export type FledgeTemplate = {
   internalPorts: Array<{container:number;offset:number;protocol:'tcp'|'udp'}>;
   env: Record<string,string>; memoryMb:number; cpuPercent:number; diskMb:number;
   editableVariables:string[];
+  stopCommand?:string;
 };
 
 type Egg = {
@@ -32,13 +33,17 @@ export function convertPterodactylEgg(input:unknown, options:{image?:string;port
     env[key]=value==null?'':typeof value==='string'||typeof value==='number'||typeof value==='boolean'?String(value):'';
     if(v.user_editable===true) editableVariables.push(key);
   }
-  if(egg.startup) warnings.push('Pterodactyl startup commands are not copied: their variable interpolation and container entrypoint semantics differ. Fledge will use the selected image entrypoint.');
+  const known:Record<string,string>={'server.build.memory':'SERVER_MEMORY','server.build.default.port':'SERVER_PORT','server.build.default.ip':'SERVER_IP'};
+  const startup=typeof egg.startup==='string'?egg.startup.trim().replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}/g,(_m,name:string)=>`\${${known[name.toLowerCase()]||name.replace(/\./g,'_').toUpperCase()}}`):'';
+  if(startup) warnings.push('The startup command was copied with {{VARIABLES}} turned into shell ${VARIABLES}. It runs through /bin/sh in the image you picked, with SERVER_MEMORY, SERVER_PORT and SERVER_IP provided; check it before saving.');
   if(egg.scripts) warnings.push('Pterodactyl install scripts are not copied. Fledge does not run egg install scripts during provisioning.');
-  if(egg.config?.stop) warnings.push('The Pterodactyl stop command is not copied; Fledge stops containers through Docker.');
+  const stop=typeof egg.config?.stop==='string'?egg.config.stop.trim():'';
+  if(stop&&stop!=='^C'&&!/^[\x20-\x7e]{1,256}$/.test(stop)) warnings.push('The stop command has unusual characters and was not copied; Fledge stops the container with Docker instead.');
   if(!Number.isInteger(options.port)||Number(options.port)<1||Number(options.port)>65535) throw new Error('Enter a valid primary container port (1–65535).');
   const protocol=options.protocol||'tcp';
   const name=egg.name.trim().slice(0,100);
-  const template:FledgeTemplate={id:slug(name),name,image,startup:'',internalPorts:[{container:Number(options.port),offset:0,protocol}],env,memoryMb:2048,cpuPercent:100,diskMb:10240,editableVariables:[...new Set(editableVariables)].slice(0,30)};
+  const template:FledgeTemplate={id:slug(name),name,image,startup,internalPorts:[{container:Number(options.port),offset:0,protocol}],env,memoryMb:2048,cpuPercent:100,diskMb:10240,editableVariables:[...new Set(editableVariables)].slice(0,30)};
+  if(stop&&(stop==='^C'||/^[\x20-\x7e]{1,256}$/.test(stop))) template.stopCommand=stop;
   warnings.push('Pterodactyl eggs do not define public port allocations in a portable way. Review the primary port and protocol before saving.');
   return {template,warnings};
 }

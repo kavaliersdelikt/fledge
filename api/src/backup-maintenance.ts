@@ -5,7 +5,7 @@ import {backupEnabled,deleteObject} from './storage.js';
 // removing its object. On a transport error the row remains for a later retry;
 // after S3 succeeds, deleting the row is safe to retry (S3 DELETE is idempotent).
 async function removeBackup(id:string,automatic:boolean):Promise<boolean>{
- if(!backupEnabled())return false;
+ if(!(await backupEnabled()))return false;
  const c=await pool.connect();
  try{
   await c.query('BEGIN');
@@ -37,7 +37,7 @@ async function removeBackup(id:string,automatic:boolean):Promise<boolean>{
 }
 export async function deleteBackup(id:string){return removeBackup(id,false);}
 export async function sweepBackupRetention(){
- if(!backupEnabled())return;
+ if(!(await backupEnabled()))return;
  // The sweeper is single-process today. A row marked deleting is retried after
  // any S3/DB error. The conditional update below prevents concurrent workers
  // from claiming the same row, and an advisory lock serializes sweeps.

@@ -125,3 +125,36 @@ CREATE TABLE IF NOT EXISTS console_nodes(node_id uuid PRIMARY KEY REFERENCES nod
 
 ALTER TABLE servers ADD COLUMN IF NOT EXISTS verify_interval_hours integer NOT NULL DEFAULT 0;
 ALTER TABLE servers ADD COLUMN IF NOT EXISTS verify_last_run timestamptz;
+
+-- 0.5.1.1: panel-managed settings (secrets AES-GCM encrypted with ENCRYPTION_KEY).
+CREATE TABLE IF NOT EXISTS settings(key text PRIMARY KEY,value jsonb NOT NULL DEFAULT '{}'::jsonb,secret text,updated_by uuid REFERENCES users(id) ON DELETE SET NULL,updated_at timestamptz NOT NULL DEFAULT now());
+-- Transfers spool on the API host when object storage is off.
+ALTER TABLE file_transfers ADD COLUMN IF NOT EXISTS store text NOT NULL DEFAULT 's3';
+-- What the agent reports about itself (platform, quota support, SFTP, updatability).
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS agent jsonb NOT NULL DEFAULT '{}'::jsonb;
+-- Address players and SFTP clients use to reach the node.
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS public_host text;
+CREATE INDEX IF NOT EXISTS jobs_agent_update_idx ON jobs(node_id,created_at) WHERE kind='agent.update';
+
+-- 0.5.1.1: graceful stop command (Pterodactyl egg stop). '^C' means SIGINT.
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS stop_command text;
+
+-- 0.5.2.1: automatic failover, planned migration and node health history.
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS failover_enabled boolean NOT NULL DEFAULT true;
+CREATE TABLE IF NOT EXISTS failover_events(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('failover','migration')),
+ state text NOT NULL CHECK(state IN ('blocked','backing-up','restoring','completed','failed')),
+ reason text NOT NULL DEFAULT '', from_node uuid REFERENCES nodes(id), to_node uuid REFERENCES nodes(id),
+ backup_id uuid REFERENCES backups(id) ON DELETE SET NULL, data_age_seconds integer, error text,
+ job_id uuid, actor_id uuid REFERENCES users(id) ON DELETE SET NULL,
+ started_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS failover_events_recent ON failover_events(started_at DESC);
+CREATE INDEX IF NOT EXISTS failover_events_server ON failover_events(server_id,started_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS failover_events_one_open ON failover_events(server_id) WHERE state IN ('blocked','backing-up','restoring');
+CREATE TABLE IF NOT EXISTS node_events(
+ id bigserial PRIMARY KEY, node_id uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('down','up')), at timestamptz NOT NULL DEFAULT now(), detail text
+);
+CREATE INDEX IF NOT EXISTS node_events_recent ON node_events(at DESC);

@@ -58,6 +58,9 @@ command -v curl >/dev/null 2>&1 || { echo 'curl is required.' >&2; exit 13; }
 command -v docker >/dev/null 2>&1 || { echo 'Docker CLI is required.' >&2; exit 15; }
 command -v sha256sum >/dev/null 2>&1 || { echo 'sha256sum is required to verify the downloaded agent.' >&2; exit 17; }
 command -v stty >/dev/null 2>&1 || { echo 'stty is required to securely prompt for the one-time token.' >&2; exit 17; }
+for tool in mkfs.ext4 losetup resize2fs e2fsck; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "Note: $tool is missing, so per-server disk limits cannot be enforced by the kernel on this node. Install e2fsprogs and util-linux, then restart the agent." >&2; break; }
+done
 docker info >/dev/null 2>&1 || { echo 'Docker is not reachable. Start Docker Engine and retry.' >&2; exit 18; }
 if [ "$FOREGROUND" -eq 0 ]; then
   command -v systemctl >/dev/null 2>&1 || { echo 'systemd is required for background service installation. On WSL2, enable systemd in /etc/wsl.conf or use --foreground for a temporary session.' >&2; exit 16; }

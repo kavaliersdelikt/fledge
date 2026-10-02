@@ -1,7 +1,7 @@
 "use client";
-import { items, json, request, type Node, type Server } from "@/lib/api";
+import { items, json, request, type AgentReleases, type Node, type Server } from "@/lib/api";
 import { fmtAgo, fmtCpu, fmtCpuPair, fmtMb, fmtMbPair, fmtTime } from "@/lib/format";
-import { MoreHorizontal, Pause, Pencil, Play, Plug, Plus, Trash2 } from "lucide-react";
+import { ArrowUpCircle, MoreHorizontal, Pause, Pencil, Play, Plug, Plus, Trash2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
@@ -46,6 +46,9 @@ export default function Nodes() {
     router.replace(nodeId ? `${pathname}?connect=${nodeId}` : pathname, { scroll: false });
   const { data, error, loading, reload } = useLoad<Node[]>("/nodes", 12000);
   const { data: servers } = useLoad<Server[]>("/servers?limit=100&offset=0", 30000);
+  const { data: releases, reload: reloadReleases } = useLoad<AgentReleases>("/agent-releases", 20000);
+  const release = (id: string) => releases?.nodes.find((r) => r.id === id);
+  const outdated = releases?.nodes.filter((r) => r.available && !r.blocker && !r.pending).length || 0;
   const all = items(data);
   const list = all.filter((n) => `${n.name} ${n.location}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -64,9 +67,23 @@ export default function Nodes() {
       <PageHeader
         title="Nodes"
         actions={
-          <Button variant="primary" onClick={() => setRegistering(true)}>
-            <Plus /> Add node
-          </Button>
+          <>
+            {outdated > 0 ? (
+              <Button
+                onClick={() =>
+                  void act(async () => {
+                    await json("POST", "/nodes/agent-update");
+                    reloadReleases();
+                  }, `Updating ${outdated} ${outdated === 1 ? "agent" : "agents"} to ${releases?.latest}`)
+                }
+              >
+                <ArrowUpCircle /> Update {outdated} {outdated === 1 ? "agent" : "agents"}
+              </Button>
+            ) : null}
+            <Button variant="primary" onClick={() => setRegistering(true)}>
+              <Plus /> Add node
+            </Button>
+          </>
         }
       />
       {all.length > 6 && (
@@ -203,6 +220,11 @@ export default function Nodes() {
                     No servers · {fmtMb(n.capacity.memoryMb)}, {fmtCpu(n.capacity.cpuPercent)}, {fmtMb(n.capacity.diskMb)} disk
                   </p>
                 )}
+                {online && n.agent?.quota ? (
+                  <p className="node__note" title={n.agent.quota.reason}>
+                    {n.agent.quota.enforced ? "Disk limits enforced by the kernel" : `Disk limits are not enforced${n.agent.quota.reason ? ` — ${n.agent.quota.reason}` : ""}`}
+                  </p>
+                ) : null}
                 <div className="node__foot">
                   {waiting ? (
                     <Button size="sm" onClick={() => setConnecting(n.id)}>
@@ -213,6 +235,26 @@ export default function Nodes() {
                       Agent {n.version || "unknown"} · seen {fmtAgo(n.lastSeenAt)}
                     </span>
                   )}
+                  {(() => {
+                    const r = release(n.id);
+                    if (!r?.available) return null;
+                    if (r.pending) return <Status value="busy" tone="busy" label={`Updating to ${releases?.latest}`} />;
+                    return (
+                      <Button
+                        size="sm"
+                        disabled={!!r.blocker}
+                        title={r.blocker || undefined}
+                        onClick={() =>
+                          void act(async () => {
+                            await json("POST", `/nodes/${n.id}/agent-update`);
+                            reloadReleases();
+                          }, `Updating ${n.name} to ${releases?.latest}`)
+                        }
+                      >
+                        <ArrowUpCircle /> Update to {releases?.latest}
+                      </Button>
+                    );
+                  })()}
                 </div>
               </article>
             );
@@ -261,6 +303,7 @@ export default function Nodes() {
                 name: v.name,
                 location: v.location,
                 headroomMb: Math.round(Number(v.headroomGb) * 1024),
+                publicHost: String(v.publicHost || "").trim() || null,
               });
               reload();
             }}
@@ -268,6 +311,13 @@ export default function Nodes() {
             <Field label="Name" name="name" defaultValue={editing.name} required />
             <Field label="Location" name="location" defaultValue={editing.location} required />
             <UnitField label="Kept free for the host" name="headroomGb" unit="GB" step={0.5} min={0} defaultValue={editing.headroomMb / 1024} />
+            <Field
+              label="Public address"
+              name="publicHost"
+              defaultValue={editing.publicHost || ""}
+              placeholder="play.example.com"
+              hint="Shown to players next to SFTP credentials. Leave empty to show the panel’s address."
+            />
           </Form>
         )}
       </Drawer>

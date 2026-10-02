@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.1.7"
+var version = "0.5.2.1"
 
 const maxTransfer = 8 << 20
 
@@ -36,6 +36,7 @@ type server struct {
 	Port          int    `json:"port"`
 	Image         string `json:"image"`
 	Startup       string `json:"startup"`
+	StopCommand   string `json:"stopCommand"`
 	TemplateID    string `json:"templateId"`
 	InternalPorts []struct {
 		Container int    `json:"container"`
@@ -64,6 +65,10 @@ func consumeEnrollmentToken() string {
 	return secret
 }
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
+		fmt.Println(version)
+		return
+	}
 	api = strings.TrimRight(os.Getenv("API_URL"), "/")
 	nodeID = os.Getenv("NODE_ID")
 	dataRoot = env("DATA_ROOT", "/var/lib/fledge/servers")
@@ -78,6 +83,7 @@ func main() {
 	if e = os.MkdirAll(dataRoot, 0700); e != nil {
 		log.Fatal(e)
 	}
+	updateBoot()
 	if b, e := os.ReadFile(credentialFile); e == nil {
 		credential = strings.TrimSpace(string(b))
 	}
@@ -104,14 +110,17 @@ func main() {
 		}
 	}
 	log.Printf("Fledge agent %s node %s", version, nodeID)
-	if e := startSFTP(); e != nil {
-		log.Fatal(e)
+	mountAllVolumes()
+	loadFailoverState()
+	if e := heartbeat(); e != nil {
+		log.Printf("heartbeat: %v", e)
 	}
 	go liveLoop()
 	go func() {
 		for {
 			if e := heartbeat(); e != nil {
 				log.Printf("heartbeat: %v", e)
+				checkFence()
 			}
 			time.Sleep(10 * time.Second)
 		}
@@ -219,6 +228,7 @@ func heartbeat() error {
 	usage["cpuCount"] = len(strings.Split(strings.TrimSpace(cpuList()), "\n"))
 	status := []map[string]interface{}{}
 	running := []string{}
+	ids := []string{}
 	entries := map[string]map[string]interface{}{}
 	names, e := docker("ps", "-a", "--filter", "label=fledge.server", "--format", "{{.Names}}|{{.Status}}")
 	if e == nil {
@@ -234,12 +244,18 @@ func heartbeat() error {
 				s = "failed"
 			}
 			entry := map[string]interface{}{"id": strings.TrimPrefix(f[0], "nvr-"), "status": s}
+			ids = append(ids, strings.TrimPrefix(f[0], "nvr-"))
 			if s == "running" {
 				running = append(running, f[0])
 				entries[f[0]] = entry
 			}
-			if used, err := diskUsage(filepath.Join(dataRoot, strings.TrimPrefix(f[0], "nvr-"))); err == nil {
+			sroot := filepath.Join(dataRoot, strings.TrimPrefix(f[0], "nvr-"))
+			if used, _, ok := volumeUsedBytes(sroot); ok {
 				entry["diskBytes"] = used
+				entry["diskEnforced"] = true
+			} else if used, err := diskUsage(sroot); err == nil {
+				entry["diskBytes"] = used
+				entry["diskEnforced"] = false
 			}
 			status = append(status, entry)
 		}
@@ -253,7 +269,16 @@ func heartbeat() error {
 	} else {
 		log.Printf("docker status: %v", e)
 	}
-	return request("POST", "/api/agent/heartbeat", map[string]interface{}{"version": version, "usage": usage, "servers": status}, nil, true)
+	var reply struct {
+		Config *panelConfig `json:"config"`
+	}
+	if e := request("POST", "/api/agent/heartbeat", map[string]interface{}{"version": version, "usage": usage, "servers": status, "agent": agentInfo(), "held": heldIDs(ids)}, &reply, true); e != nil {
+		return e
+	}
+	applyConfig(reply.Config)
+	beatOK()
+	updateConfirm()
+	return nil
 }
 func cpuList() string {
 	b, _ := os.ReadFile("/proc/stat")
@@ -302,6 +327,13 @@ func runJob(j *job) {
 	}
 }
 func executeOnce(j *job) (interface{}, error) {
+	if j.Kind == "agent.update" {
+		return updateAgent(j)
+	}
+	if j.Kind == "evict" {
+		id, _ := j.Payload["serverId"].(string)
+		return evictServer(id)
+	}
 	persistent := map[string]bool{"create": true, "reinstall": true, "configure": true, "start": true, "stop": true, "restart": true, "kill": true, "delete": true, "backup": true, "restore": true, "file.import": true, "file.export": true}[j.Kind]
 	if !persistent {
 		return execute(j)
@@ -343,13 +375,7 @@ func execute(j *job) (interface{}, error) {
 	root := filepath.Join(dataRoot, s.ID)
 	switch j.Kind {
 	case "create", "reinstall":
-		allowed := false
-		for _, prefix := range strings.Split(env("ALLOWED_IMAGE_PREFIXES", "itzg/minecraft-server:,ghcr.io/lloesche/valheim-server:"), ",") {
-			prefix = strings.TrimSpace(prefix)
-			if prefix != "" && strings.HasPrefix(s.Image, prefix) {
-				allowed = true
-			}
-		}
+		allowed := imageAllowed(s.Image)
 		if !allowed {
 			return nil, errors.New("image not allowlisted on node")
 		}
@@ -357,15 +383,18 @@ func execute(j *job) (interface{}, error) {
 			if _, e := docker("rm", "-f", n); e != nil && !strings.Contains(e.Error(), "No such container") {
 				return nil, e
 			}
+			if e := destroyVolume(s.ID); e != nil {
+				return nil, e
+			}
 			if e := os.RemoveAll(root); e != nil {
 				return nil, e
 			}
 		}
-		if e := os.MkdirAll(root, 0700); e != nil {
-			return nil, e
-		}
 		if _, e := docker("inspect", n); e == nil {
 			return map[string]bool{"existing": true}, nil
+		}
+		if e := prepareData(s); e != nil {
+			return nil, e
 		}
 		mount := "/data"
 		if s.TemplateID == "valheim" {
@@ -375,6 +404,8 @@ func execute(j *job) (interface{}, error) {
 		for _, p := range s.InternalPorts {
 			args = append(args, "-p", fmt.Sprintf("%d:%d/%s", s.Port+p.Offset, p.Container, p.Protocol))
 		}
+		// Variables Pterodactyl startup commands expect.
+		args = append(args, "-e", "SERVER_MEMORY="+strconv.Itoa(s.MemoryMB), "-e", "SERVER_PORT="+strconv.Itoa(s.Port), "-e", "SERVER_IP=0.0.0.0")
 		for k, v := range s.Env {
 			if strings.ContainsAny(k, "=\x00") || strings.ContainsRune(v, '\x00') {
 				return nil, errors.New("invalid environment variable")
@@ -391,20 +422,29 @@ func execute(j *job) (interface{}, error) {
 		_, e := docker(args...)
 		return map[string]string{"container": n}, e
 	case "start":
+		if recreated, e := mountForStart(s); e != nil || recreated {
+			return map[string]bool{"ok": e == nil}, e
+		}
 		_, e := docker("start", n)
 		return map[string]bool{"ok": e == nil}, e
 	case "stop":
-		_, e := docker("stop", "-t", "30", n)
+		e := stopServer(s, n)
 		return map[string]bool{"ok": e == nil}, e
 	case "kill":
 		_, e := docker("kill", n)
 		return map[string]bool{"ok": e == nil}, e
 	case "restart":
+		if recreated, e := mountForStart(s); e != nil || recreated {
+			return map[string]bool{"ok": e == nil}, e
+		}
 		_, e := docker("restart", "-t", "30", n)
 		return map[string]bool{"ok": e == nil}, e
 	case "delete":
 		_, e := docker("rm", "-f", n)
 		if e != nil && !strings.Contains(e.Error(), "No such container") {
+			return nil, e
+		}
+		if e = destroyVolume(s.ID); e != nil {
 			return nil, e
 		}
 		return map[string]bool{"ok": true}, os.RemoveAll(root)
@@ -414,6 +454,9 @@ func execute(j *job) (interface{}, error) {
 				return nil, e
 			}
 			return execute(&job{Kind: "create", Server: s})
+		}
+		if e := resizeData(s); e != nil {
+			return nil, e
 		}
 		_, e := docker("update", "--memory", strconv.Itoa(s.MemoryMB)+"m", "--cpus", fmt.Sprintf("%.2f", float64(s.CPUPercent)/100), n)
 		return map[string]bool{"ok": e == nil}, e
@@ -441,7 +484,7 @@ func execute(j *job) (interface{}, error) {
 		if e != nil {
 			return nil, e
 		}
-		size, e := backupWithLifecycle(root, u, j.ID, n)
+		size, e := backupWithLifecycle(root, u, j.ID, n, strings.HasPrefix(s.Image, "itzg/minecraft-server:"))
 		return map[string]int64{"sizeBytes": size}, e
 	case "verify-backup":
 		return verifyBackup(j)
@@ -521,4 +564,115 @@ func value(j *job, key string) (string, error) {
 		return "", fmt.Errorf("missing %s", key)
 	}
 	return s, nil
+}
+
+// prepareData creates the server's data directory: a size-limited volume when this
+// node can enforce disk allowances, a plain directory otherwise.
+func prepareData(s *server) error {
+	root := filepath.Join(dataRoot, s.ID)
+	on, e := quotaActive()
+	if e != nil {
+		return e
+	}
+	if on || hasVolume(s.ID) {
+		return ensureVolume(s.ID, s.DiskMB)
+	}
+	return os.MkdirAll(root, 0700)
+}
+
+// mountForStart makes sure the data volume is mounted before the game starts. A server
+// from before disk limits is moved into a volume by recreating its container; the
+// returned bool says the container was recreated (and so is already running).
+func mountForStart(s *server) (bool, error) {
+	root := filepath.Join(dataRoot, s.ID)
+	if isMounted(root) {
+		return false, nil
+	}
+	if hasVolume(s.ID) {
+		return false, mountVolume(imagePath(s.ID), root)
+	}
+	on, e := quotaActive()
+	if e != nil {
+		return false, e
+	}
+	if !on {
+		return false, nil
+	}
+	if _, e = docker("rm", "-f", container(s.ID)); e != nil && !strings.Contains(e.Error(), "No such container") {
+		return false, e
+	}
+	if e = ensureVolume(s.ID, s.DiskMB); e != nil {
+		return false, e
+	}
+	_, e = execute(&job{Kind: "create", Server: s})
+	return true, e
+}
+
+// resizeData applies a changed disk allowance to the volume (grow online, shrink
+// with the game stopped) and migrates plain directories when enforcement is on.
+func resizeData(s *server) error {
+	n, root := container(s.ID), filepath.Join(dataRoot, s.ID)
+	if !hasVolume(s.ID) {
+		on, e := quotaActive()
+		if e != nil || !on {
+			return e
+		}
+		state, _ := docker("inspect", "--format", "{{.State.Running}}", n)
+		if _, e = mountForStart(s); e != nil {
+			return e
+		}
+		if state != "true" {
+			docker("stop", "-t", "30", n)
+		}
+		return nil
+	}
+	if e := mountVolume(imagePath(s.ID), root); e != nil {
+		return e
+	}
+	cur, e := volumeSizeMB(s.ID)
+	if e != nil || cur == s.DiskMB {
+		return e
+	}
+	if s.DiskMB > cur && growOnline(s.ID, s.DiskMB) == nil {
+		return nil
+	}
+	state, _ := docker("inspect", "--format", "{{.State.Running}}", n)
+	if state == "true" {
+		if _, e = docker("stop", "-t", "30", n); e != nil {
+			return e
+		}
+	}
+	e = resizeOffline(s.ID, s.DiskMB)
+	if state == "true" {
+		if _, se := docker("start", n); se != nil && e == nil {
+			e = se
+		}
+	}
+	return e
+}
+
+// stopServer stops a game the way its template asks: "^C" sends SIGINT, any other stop
+// command is typed into the console. If the game is still up after 30 s, Docker stops it.
+func stopServer(s *server, n string) error {
+	cmd := strings.TrimSpace(s.StopCommand)
+	if cmd == "" {
+		_, e := docker("stop", "-t", "30", n)
+		return e
+	}
+	var e error
+	if cmd == "^C" {
+		_, e = docker("kill", "--signal", "SIGINT", n)
+	} else {
+		_, e = writeConsoleInput(n, cmd)
+	}
+	if e == nil {
+		for i := 0; i < 30; i++ {
+			if state, _ := docker("inspect", "--format", "{{.State.Running}}", n); state == "false" {
+				return nil
+			}
+			time.Sleep(time.Second)
+		}
+	}
+	_, e = docker("stop", "-t", "10", n)
+	return e
 }

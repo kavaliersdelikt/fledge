@@ -18,6 +18,7 @@ import {
   Settings,
   Users,
   type LucideIcon,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -48,6 +49,7 @@ export const destinations: Destination[] = [
   { title: "Overview", url: "/", icon: LayoutGrid, group: "", adminOnly: true },
   { title: "Servers", url: "/servers", icon: Server, group: "", adminOnly: false },
   { title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
+  { title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
   { title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
   { title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
   { title: "Activity", url: "/activity", icon: Activity, group: "Administration", adminOnly: true },

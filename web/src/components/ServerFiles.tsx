@@ -22,7 +22,7 @@ export default function ServerFiles({ id }: { id: string }) {
     [busy, setBusy] = useState(""),
     [dragging, setDragging] = useState(false),
     [folderOpen, setFolderOpen] = useState(false),
-    [sftp, setSftp] = useState<{ username: string; password: string } | null>(null);
+    [sftp, setSftp] = useState<{ username: string; password: string; host: string | null; port: number; hostIsPanel: boolean } | null>(null);
   const upload = useRef<HTMLInputElement>(null);
   // Transfers poll for a while; stop when the user leaves this tab.
   const alive = useRef(true);
@@ -334,8 +334,12 @@ export default function ServerFiles({ id }: { id: string }) {
       <Modal open={!!sftp} onOpenChange={(o) => !o && setSftp(null)} title="SFTP credentials" description="They aren’t shown again.">
         {sftp && (
           <>
+            <Secret label="Host" value={sftp.host ? `${sftp.host}:${sftp.port}` : `port ${sftp.port}`} />
             <Secret label="Username" value={sftp.username} />
             <Secret label="Password" value={sftp.password} />
+            {sftp.hostIsPanel ? (
+              <small className="muted">This is the panel’s address. If your game node has its own address, an administrator can set it on the node.</small>
+            ) : null}
           </>
         )}
       </Modal>

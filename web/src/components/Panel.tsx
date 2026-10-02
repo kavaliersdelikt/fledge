@@ -12,6 +12,7 @@ import Overview from "./Overview";
 import Servers from "./Servers";
 import SettingsPage from "./SettingsPage";
 import Templates from "./Templates";
+import Resilience from "./Resilience";
 import UpdateCenter from "./UpdateCenter";
 import Workspace from "./Workspace";
 import { ConfirmationProvider } from "./feedback";
@@ -74,7 +75,7 @@ export default function Panel() {
   const admin = user.role === "admin",
     seg = pathname.split("/").filter(Boolean);
   const forbidden =
-    ["nodes", "templates", "customers", "activity", "updates"].includes(seg[0]) && !admin;
+    ["nodes", "templates", "customers", "activity", "updates", "resilience"].includes(seg[0]) && !admin;
   let page;
   if (forbidden)
     page = (
@@ -119,6 +120,9 @@ export default function Panel() {
         break;
       case "activity":
         page = <ActivityPage />;
+        break;
+      case "resilience":
+        page = <Resilience />;
         break;
       case "updates":
         page = <UpdateCenter />;

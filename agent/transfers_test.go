@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -103,11 +104,12 @@ func TestSFTPSSHAuthSubsystemReadWriteAndPathConfinement(t *testing.T) {
 	}
 	address := ln.Addr().String()
 	ln.Close()
-	t.Setenv("SFTP_LISTEN", address)
 	t.Setenv("SFTP_HOST_KEY", filepath.Join(root, "host-key"))
-	if err = startSFTP(); err != nil {
-		t.Fatal(err)
-	}
+	_, portText, _ := net.SplitHostPort(address)
+	port, _ := strconv.Atoi(portText)
+	applySFTP(true, port)
+	defer applySFTP(false, 0)
+	address = "127.0.0.1:" + portText
 	defer func() {
 		api, nodeID, dataRoot, credential, credentialFile = priorAPI, priorNode, priorRoot, priorCredential, priorCredFile
 	}()

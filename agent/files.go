@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -381,7 +382,10 @@ func backup(root, link, id string) (int64, error) {
 // files, then restores the original running state. This narrows the window
 // where games can mutate files while tar is reading them. It is not a
 // filesystem snapshot and depends on the image handling Docker's stop signal.
-func backupWithLifecycle(root, link, id, name string) (int64, error) {
+func backupWithLifecycle(root, link, id, name string, minecraft bool) (int64, error) {
+	if size, ok, err := backupSnapshot(root, link, id, name, minecraft); ok {
+		return size, err
+	}
 	state, err := docker("inspect", "--format", "{{.State.Running}}", name)
 	if err != nil {
 		return 0, err
@@ -531,6 +535,28 @@ func exchangeDirs(parent, oldName, newName string) error {
 	return nil
 }
 
+// fetchAndScan downloads a backup from the panel and verifies and extracts it into stage.
+func fetchAndScan(link, stage string) error {
+	r, e := http.NewRequest("GET", api+link, nil)
+	if e != nil {
+		return errors.New("invalid backup download URL")
+	}
+	r.Header.Set("Authorization", "Bearer "+credential)
+	r.Header.Set("X-Node-ID", nodeID)
+	res, e := (&http.Client{Timeout: 30 * time.Minute}).Do(r)
+	if e != nil {
+		return errors.New("backup download failed (check the node's network access to the panel)")
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return fmt.Errorf("backup download: %s", res.Status)
+	}
+	if e = scanArchive(res.Body, stage); e != nil {
+		return fmt.Errorf("restore archive verification failed: %w", e)
+	}
+	return nil
+}
+
 func restoreWithPostSwap(root, link, id string, postSwap func() error) error {
 	parent := filepath.Dir(root)
 	if e := os.MkdirAll(parent, 0700); e != nil {
@@ -559,22 +585,8 @@ func restoreWithPostSwap(root, link, id string, postSwap func() error) error {
 			return e
 		}
 	}
-	r, e := http.NewRequest("GET", api+link, nil)
-	if e != nil {
-		return errors.New("invalid backup download URL")
-	}
-	r.Header.Set("Authorization", "Bearer "+credential)
-	r.Header.Set("X-Node-ID", nodeID)
-	res, e := (&http.Client{Timeout: 30 * time.Minute}).Do(r)
-	if e != nil {
-		return errors.New("S3 download transport failed (check agent S3 network access)")
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return fmt.Errorf("S3 GET: %s", res.Status)
-	}
-	if e = scanArchive(res.Body, stage); e != nil {
-		return fmt.Errorf("restore archive verification failed: %w", e)
+	if e = fetchAndScan(link, stage); e != nil {
+		return e
 	}
 	// Until this point an invalid/truncated archive leaves the original intact.
 	if current == nil {
@@ -628,13 +640,18 @@ func restoreWithLifecycle(root, link, id, name string) error {
 			return e
 		}
 	}
-	e = restoreWithPostSwap(root, link, id, func() error {
+	postSwap := func() error {
 		if !wasRunning {
 			return nil
 		}
 		_, startErr := docker("start", name)
 		return startErr
-	})
+	}
+	if sid := filepath.Base(root); isMounted(root) && hasVolume(sid) {
+		e = restoreVolume(sid, func(stage string) error { return fetchAndScan(link, stage) }, postSwap)
+	} else {
+		e = restoreWithPostSwap(root, link, id, postSwap)
+	}
 	if e != nil && wasRunning {
 		if _, restartErr := docker("start", name); restartErr != nil {
 			return fmt.Errorf("restore failed: %v; original container could not restart: %w", e, restartErr)
@@ -678,4 +695,40 @@ func verifyBackup(j *job) (interface{}, error) {
 		return nil, e
 	}
 	return map[string]interface{}{"verified": true, "restoredBytes": size, "gameBooted": false}, nil
+}
+
+// backupSnapshot archives a running server from a frozen point-in-time copy of its volume,
+// so the game is not stopped. For Minecraft, world saving is flushed and paused first.
+// ok=false means a snapshot wasn't possible and the caller should use the stop-and-archive path.
+func backupSnapshot(root, link, id, name string, minecraft bool) (int64, bool, error) {
+	sid := filepath.Base(root)
+	if !isMounted(root) || !hasVolume(sid) {
+		return 0, false, nil
+	}
+	state, err := docker("inspect", "--format", "{{.State.Running}}", name)
+	if err != nil {
+		return 0, true, err
+	}
+	if state != "true" {
+		size, e := backup(root, link, id)
+		return size, true, e
+	}
+	paused := false
+	if minecraft {
+		if _, e := docker("exec", name, "rcon-cli", "--host", "127.0.0.1", "save-off"); e == nil {
+			paused = true
+			docker("exec", name, "rcon-cli", "--host", "127.0.0.1", "save-all", "flush")
+		}
+	}
+	snapRoot, cleanup, e := snapshotVolume(sid)
+	if paused {
+		docker("exec", name, "rcon-cli", "--host", "127.0.0.1", "save-on")
+	}
+	if e != nil {
+		log.Printf("snapshot unavailable, falling back to a clean stop: %v", e)
+		return 0, false, nil
+	}
+	defer cleanup()
+	size, e := backup(snapRoot, link, id)
+	return size, true, e
 }

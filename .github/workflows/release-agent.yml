@@ -34,6 +34,7 @@ jobs:
           done
           cd release
           sha256sum fledge-agent_linux_amd64 fledge-agent_linux_arm64 > SHA256SUMS
+          printf '%s\n' "$version" > VERSION
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}

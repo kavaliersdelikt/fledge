@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/unix"
@@ -19,38 +20,78 @@ import (
 	"time"
 )
 
-func startSFTP() error {
-	address := os.Getenv("SFTP_LISTEN")
-	if address == "" {
-		return nil
+var (
+	sftpMu       sync.Mutex
+	sftpListener net.Listener
+	sftpPort     int
+	sftpSigner   ssh.Signer
+	sftpError    string
+)
+
+func sftpSignerLoad() (ssh.Signer, error) {
+	if sftpSigner != nil {
+		return sftpSigner, nil
 	}
 	keyPath := env("SFTP_HOST_KEY", filepath.Join(filepath.Dir(credentialFile), "sftp_host_key"))
 	raw, e := os.ReadFile(keyPath)
 	if os.IsNotExist(e) {
 		_, key, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		der, err := x509.MarshalPKCS8PrivateKey(key)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		raw = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 		if err = os.WriteFile(keyPath, raw, 0600); err != nil {
-			return err
+			return nil, err
 		}
 	} else if e != nil {
-		return e
+		return nil, e
 	}
 	signer, e := ssh.ParsePrivateKey(raw)
 	if e != nil {
-		return e
+		return nil, e
 	}
-	listener, e := net.Listen("tcp", address)
+	sftpSigner = signer
+	return signer, nil
+}
+
+// applySFTP starts, stops or moves the SFTP listener to match the panel's settings.
+func applySFTP(enabled bool, port int) {
+	sftpMu.Lock()
+	defer sftpMu.Unlock()
+	if !enabled || port < 1 || port > 65535 {
+		if sftpListener != nil {
+			sftpListener.Close()
+			sftpListener = nil
+			log.Printf("SFTP stopped")
+		}
+		sftpError = ""
+		return
+	}
+	if sftpListener != nil && sftpPort == port {
+		return
+	}
+	if sftpListener != nil {
+		sftpListener.Close()
+		sftpListener = nil
+	}
+	signer, e := sftpSignerLoad()
 	if e != nil {
-		return e
+		sftpError = e.Error()
+		return
 	}
-	log.Printf("SFTP listening on %s; host key %s", address, ssh.FingerprintSHA256(signer.PublicKey()))
+	listener, e := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if e != nil {
+		sftpError = e.Error()
+		log.Printf("SFTP: %v", e)
+		return
+	}
+	sftpError = ""
+	sftpListener, sftpPort = listener, port
+	log.Printf("SFTP listening on :%d; host key %s", port, ssh.FingerprintSHA256(signer.PublicKey()))
 	slots := make(chan struct{}, 32)
 	go func() {
 		for {
@@ -66,7 +107,19 @@ func startSFTP() error {
 			}
 		}
 	}()
-	return nil
+}
+
+func sftpStatus() map[string]interface{} {
+	sftpMu.Lock()
+	defer sftpMu.Unlock()
+	st := map[string]interface{}{"listening": sftpListener != nil, "port": sftpPort}
+	if sftpSigner != nil {
+		st["fingerprint"] = ssh.FingerprintSHA256(sftpSigner.PublicKey())
+	}
+	if sftpError != "" {
+		st["error"] = sftpError
+	}
+	return st
 }
 
 type sftpGrant struct {
