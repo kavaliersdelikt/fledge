@@ -395,7 +395,7 @@ func backupWithLifecycle(root, link, id, name string, minecraft bool) (int64, er
 	}
 	wasRunning := state == "true"
 	if wasRunning {
-		if _, err = docker("stop", "-t", "30", name); err != nil {
+		if err = stopContainer(name, 30); err != nil {
 			return 0, err
 		}
 	}
@@ -636,7 +636,7 @@ func restoreWithLifecycle(root, link, id, name string) error {
 	}
 	wasRunning := state == "true"
 	if wasRunning {
-		if _, e = docker("stop", "-t", "30", name); e != nil {
+		if e = stopContainer(name, 30); e != nil {
 			return e
 		}
 	}

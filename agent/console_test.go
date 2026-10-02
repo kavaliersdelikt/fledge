@@ -87,3 +87,53 @@ func TestDockerConsoleInputIntegration(t *testing.T) {
 	got, _ := docker("logs", "--tail", "20", name)
 	t.Fatalf("stdin did not reach the container; console log: %q", got)
 }
+
+func TestStopContainerUsesIPv4RCONForMinecraft(t *testing.T) {
+	prior := runDocker
+	defer func() { runDocker = prior }()
+	running := "true"
+	var calls []string
+	runDocker = func(args ...string) (string, error) {
+		line := strings.Join(args, " ")
+		calls = append(calls, line)
+		switch {
+		case strings.Contains(line, "Config.Image"):
+			return "itzg/minecraft-server:java21-alpine", nil
+		case args[0] == "exec":
+			running = "false"
+			return "", nil
+		case args[0] == "inspect":
+			return running, nil
+		}
+		return "", errors.New("unexpected docker call: " + line)
+	}
+	if err := stopContainer("mc", 5); err != nil {
+		t.Fatal(err)
+	}
+	if want := "exec mc rcon-cli --host 127.0.0.1 stop"; calls[1] != want {
+		t.Fatalf("expected %q, got %#v", want, calls)
+	}
+}
+
+func TestStopContainerFallsBackToDockerStop(t *testing.T) {
+	prior := runDocker
+	defer func() { runDocker = prior }()
+	var calls []string
+	runDocker = func(args ...string) (string, error) {
+		line := strings.Join(args, " ")
+		calls = append(calls, line)
+		switch {
+		case strings.Contains(line, "Config.Image"):
+			return "itzg/minecraft-server:java21-alpine", nil
+		case args[0] == "exec":
+			return "", errors.New("rcon unavailable")
+		}
+		return "", nil
+	}
+	if err := stopContainer("mc", 5); err != nil {
+		t.Fatal(err)
+	}
+	if last := calls[len(calls)-1]; last != "stop -t 5 mc" {
+		t.Fatalf("expected docker stop fallback, got %#v", calls)
+	}
+}

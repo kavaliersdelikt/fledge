@@ -437,7 +437,10 @@ func execute(j *job) (interface{}, error) {
 		if recreated, e := mountForStart(s); e != nil || recreated {
 			return map[string]bool{"ok": e == nil}, e
 		}
-		_, e := docker("restart", "-t", "30", n)
+		e := stopContainer(n, 30)
+		if e == nil {
+			_, e = docker("start", n)
+		}
 		return map[string]bool{"ok": e == nil}, e
 	case "delete":
 		_, e := docker("rm", "-f", n)
@@ -656,8 +659,7 @@ func resizeData(s *server) error {
 func stopServer(s *server, n string) error {
 	cmd := strings.TrimSpace(s.StopCommand)
 	if cmd == "" {
-		_, e := docker("stop", "-t", "30", n)
-		return e
+		return stopContainer(n, 30)
 	}
 	var e error
 	if cmd == "^C" {

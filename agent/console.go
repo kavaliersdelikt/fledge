@@ -5,9 +5,32 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
+
+// stopContainer stops a game container, waiting up to seconds for it to exit.
+// Minecraft images get a graceful RCON "stop" over IPv4 first: the runner
+// inside the image calls rcon-cli against "localhost", which can resolve to
+// IPv6 and fail, and its stdin fallback cannot write to Docker's read-only
+// stdin pipe, so Docker's stop would otherwise end in a SIGKILL.
+func stopContainer(name string, seconds int) error {
+	image, err := docker("inspect", "--format", "{{.Config.Image}}", name)
+	if err == nil && strings.HasPrefix(strings.TrimSpace(image), "itzg/minecraft-server:") {
+		if _, err = docker("exec", name, "rcon-cli", "--host", "127.0.0.1", "stop"); err == nil {
+			for i := 0; i < seconds; i++ {
+				if state, _ := docker("inspect", "--format", "{{.State.Running}}", name); strings.TrimSpace(state) == "false" {
+					return nil
+				}
+				time.Sleep(time.Second)
+			}
+		}
+	}
+	_, err = docker("stop", "-t", strconv.Itoa(seconds), name)
+	return err
+}
 
 type consoleSession struct {
 	input io.WriteCloser

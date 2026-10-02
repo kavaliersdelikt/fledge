@@ -162,7 +162,7 @@ func TestBackupStopsAndRestartsRunningContainer(t *testing.T) {
 	if state != "true" {
 		t.Fatalf("running container was not restarted: %q", state)
 	}
-	want := []string{"inspect --format {{.State.Running}} nvr-test", "stop -t 30 nvr-test", "inspect --format {{.State.ExitCode}} nvr-test", "start nvr-test"}
+	want := []string{"inspect --format {{.State.Running}} nvr-test", "inspect --format {{.Config.Image}} nvr-test", "stop -t 30 nvr-test", "inspect --format {{.State.ExitCode}} nvr-test", "start nvr-test"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("docker calls = %#v, want %#v", calls, want)
 	}
