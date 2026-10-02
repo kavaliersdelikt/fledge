@@ -1,27 +1,14 @@
 "use client";
 
-import { fmtDate, items, request, type Node, type Server } from "@/lib/api";
-import {
-  ArrowUpRight,
-  HardDrive,
-  RefreshCw,
-  Server as ServerIcon,
-  Users,
-} from "lucide-react";
+import { items, request, type Job, type Node, type Server } from "@/lib/api";
+import { fmtAction, fmtAgo, fmtCpuPair, fmtMbPair, fmtTime } from "@/lib/format";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Badge, Button as SharedButton, Notice } from "./shared";
-import { buttonVariants } from "@/components/ui/button";
 import DataTable, { type DataColumn } from "./DataTable";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Num } from "./motion";
+import { CpuCell, MemoryCell, liveUsage } from "./ServerUsage";
+import { Card, Empty, ErrorNotice, Meter, Notice, PageHeader, Skeleton, btn } from "./shared";
 
 type OverviewData = {
   nodes: Record<string, number>;
@@ -36,57 +23,44 @@ type Event = {
   action: string;
   created_at: string;
   target_type: string;
+  target_id?: string;
 };
 
-const fleetColumns: DataColumn<Server>[] = [
+const loadColumns: DataColumn<Server>[] = [
   {
     id: "name",
     header: "Server",
-    value: (server) => server.name,
-    render: (server) => (
-      <div className="table-entity">
-        <Link className="strong-link" href={`/servers/${server.id}`}>{server.name}</Link>
-        <small>{server.templateId} · {server.location || "No location"}</small>
+    value: (s) => s.name,
+    render: (s) => (
+      <div className="cell-main">
+        <Link href={`/servers/${s.id}`}>{s.name}</Link>
+        <small>{s.nodeName}</small>
       </div>
     ),
   },
-  {
-    id: "status",
-    header: "Status",
-    value: (server) => server.status,
-    render: (server) => <Badge value={server.status} />,
-  },
-  {
-    id: "node",
-    header: "Host",
-    value: (server) => server.nodeName || server.location || "",
-    render: (server) => <span>{server.nodeName || server.location || "Unassigned"}</span>,
-  },
-  {
-    id: "memory",
-    header: "Resources",
-    value: (server) => server.memoryMb,
-    render: (server) => <span className="mono">{server.memoryMb} MB · {server.cpuPercent}% CPU</span>,
-  },
+  { id: "cpu", header: "CPU", width: "170px", value: (s) => liveUsage(s)?.cpu ?? -1, render: (s) => <CpuCell server={s} /> },
+  { id: "memory", header: "Memory", width: "190px", value: (s) => liveUsage(s)?.mem ?? -1, render: (s) => <MemoryCell server={s} /> },
 ];
 
 export default function Overview() {
   const [data, setData] = useState<OverviewData | null>(null);
-  const [servers, setServers] = useState<Server[]>([]);
+  const [fleet, setFleet] = useState<Server[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [overview, activity, fleet] = await Promise.all([
+      const [overview, activity, servers, recentJobs] = await Promise.all([
         request<OverviewData>("/overview"),
-        request<Event[]>("/activity?limit=5"),
-        request<Server[]>("/servers?limit=6&offset=0"),
+        request<Event[]>("/activity?limit=30"),
+        request<Server[]>("/servers?limit=100&offset=0"),
+        request<Job[]>("/jobs?limit=100"),
       ]);
       setData(overview);
-      setEvents(activity);
-      setServers(items(fleet));
+      setEvents(items(activity).filter((e) => e.action !== "login").slice(0, 7));
+      setFleet(items(servers));
+      setJobs(items(recentJobs));
       setError("");
     } catch (e) {
       setError((e as Error).message);
@@ -99,245 +73,157 @@ export default function Overview() {
     return () => clearInterval(timer);
   }, [load]);
 
-  async function refreshNow() {
-    setBusy(true);
-    await load();
-    setBusy(false);
-  }
-
   const nodes = data?.capacity || [];
-  const offline = nodes.filter((node) => node.status !== "connected");
-  const totalServers = data
-    ? Object.values(data.servers).reduce((total, count) => total + count, 0)
-    : 0;
-  const sum = (
-    key: "memoryMb" | "cpuPercent" | "diskMb",
-    kind: "capacity" | "reserved",
-  ) => nodes.reduce((total, node) => total + node[kind][key], 0);
+  const total = fleet.length;
+  const running = fleet.filter((s) => s.status === "running");
+  const failed = fleet.filter((s) => ["failed", "missing"].includes(s.status));
+  const offline = nodes.filter((n) => n.status !== "connected" && n.lastSeenAt);
+  const waiting = nodes.filter((n) => n.status !== "connected" && !n.lastSeenAt);
+  const names: Record<string, string> = {
+    ...Object.fromEntries(fleet.map((s) => [s.id, s.name])),
+    ...Object.fromEntries(nodes.map((n) => [n.id, n.name])),
+  };
+  const lastError = (serverId: string) => jobs.find((j) => j.serverId === serverId && j.state === "failed")?.error;
+  const sum = (key: "memoryMb" | "cpuPercent" | "diskMb", kind: "capacity" | "reserved") =>
+    nodes.reduce((acc, node) => acc + node[kind][key], 0);
+  const busiest = [...running].sort((a, b) => (liveUsage(b)?.cpu ?? 0) - (liveUsage(a)?.cpu ?? 0));
 
   return (
     <>
-      <div className="heading overview-heading">
-        <div>
-          <div className="eyebrow">Workspace / Overview</div>
-          <h1>Infrastructure</h1>
-          <p className="muted">A live view of your servers and hosts.</p>
-        </div>
-        <div className="actions">
-          <SharedButton variant="outline" disabled={busy} onClick={refreshNow}>
-            <RefreshCw size={15} className={busy ? "spin" : ""} />
-            {busy ? "Updating" : "Refresh"}
-          </SharedButton>
-          <Link href="/servers" className={`${buttonVariants({ variant: "default" })} btn primary`}>
-            <ServerIcon size={15} />
-            Open servers
+      <PageHeader
+        title="Overview"
+        description={
+          data ? (
+            <>
+              <Num value={running.length} /> of {total} servers running
+            </>
+          ) : undefined
+        }
+        actions={
+          <Link href="/servers?new=1" className={btn("primary")}>
+            <Plus /> New server
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      {error && <Notice status="danger" title="Dashboard refresh failed">{error}</Notice>}
+      <ErrorNotice message={error} />
 
       {!data ? (
-        !error && <div className="skeleton overview-skeleton" aria-label="Loading infrastructure" />
+        !error && <Skeleton rows={6} />
       ) : (
         <>
-          <section className="overview-counts" aria-label="Workspace totals">
-            <Link className="overview-count overview-count--lead" href="/servers">
-              <span>Running servers</span>
-              <strong>{(data.servers.running || 0).toLocaleString()}</strong>
-              <small>of {totalServers.toLocaleString()} total</small>
-            </Link>
-            <Link className="overview-count" href="/nodes">
-              <span>Connected hosts</span>
-              <strong>{(data.nodes.connected || 0).toLocaleString()}</strong>
-              <small>{nodes.length} registered</small>
-            </Link>
-            <Link className="overview-count" href="/customers">
-              <span>Customers</span>
-              <strong>{data.customers.toLocaleString()}</strong>
-              <small>Workspace accounts</small>
-            </Link>
-            <Link className="overview-count" href="/activity">
-              <span>Failed jobs</span>
-              <strong className={data.failedJobs ? "count-warning" : ""}>
-                {data.failedJobs.toLocaleString()}
-              </strong>
-              <small>Across the fleet</small>
-            </Link>
-          </section>
-
-          {(offline.length > 0 || (data.servers.unreachable || 0) > 0) && (
-            <Notice status="warning" className="dashboard-notice" title="Infrastructure needs attention">
-              <span>
-                {offline.length} {offline.length === 1 ? "host is" : "hosts are"} disconnected
-                {data.servers.unreachable
-                  ? ` · ${data.servers.unreachable} ${data.servers.unreachable === 1 ? "server is" : "servers are"} unreachable`
-                  : ""}.
-              </span>
-              <Link href="/nodes" className="notice-link">Review hosts <ArrowUpRight size={13} /></Link>
+          {offline.map((n) => {
+            const affected = fleet.filter((s) => s.nodeId === n.id).length;
+            return (
+              <Notice
+                key={n.id}
+                tone="warn"
+                title={`${n.name} is offline`}
+                action={
+                  <Link href="/nodes" className={btn("secondary", "sm")}>
+                    Nodes
+                  </Link>
+                }
+              >
+                Last seen {fmtAgo(n.lastSeenAt)}
+                {affected ? ` · ${affected} ${affected === 1 ? "server" : "servers"} unreachable` : ""}
+              </Notice>
+            );
+          })}
+          {waiting.map((n) => (
+            <Notice
+              key={n.id}
+              title={`${n.name} is waiting for its agent`}
+              action={
+                <Link href={`/nodes?connect=${n.id}`} className={btn("secondary", "sm")}>
+                  Connect
+                </Link>
+              }
+            />
+          ))}
+          {failed.map((s) => (
+            <Notice
+              key={s.id}
+              tone="bad"
+              title={`${s.name} failed`}
+              action={
+                <Link href={`/servers/${s.id}?tab=jobs`} className={btn("secondary", "sm")}>
+                  Open
+                </Link>
+              }
+            >
+              {lastError(s.id) || "Its last job didn’t complete."}
             </Notice>
-          )}
-          {data.failedJobs > 0 && (
-            <Notice status="warning" className="dashboard-notice" title="Failed jobs need review">
-              <span>{data.failedJobs} jobs have failed across the workspace.</span>
-              <Link href="/servers" className="notice-link">Review server jobs <ArrowUpRight size={13} /></Link>
-            </Notice>
-          )}
+          ))}
 
-          <div className="overview-main-grid">
-            <section className="section fleet-section">
-              <div className="section-title">
-                <div>
-                  <span className="eyebrow">Fleet</span>
-                  <h2>Recently updated servers</h2>
-                  <p className="muted">Status is refreshed automatically.</p>
-                </div>
-                <Link className="link" href="/servers">All servers <ArrowUpRight size={14} /></Link>
-              </div>
-              {servers.length ? (
+          <Card flush>
+            <div className="capacity-totals">
+              {(
+                [
+                  ["Memory", "memoryMb", fmtMbPair],
+                  ["CPU", "cpuPercent", fmtCpuPair],
+                  ["Disk", "diskMb", fmtMbPair],
+                ] as const
+              ).map(([label, key, pair]) => {
+                const used = sum(key, "reserved");
+                const cap = sum(key, "capacity");
+                return (
+                  <div className="capacity-total" key={key}>
+                    <header>
+                      <span>{label} reserved</span>
+                      <strong>
+                        <Num value={cap ? Math.round((used / cap) * 100) : 0} />%
+                      </strong>
+                    </header>
+                    <Meter value={used} max={cap} label={`${label} reserved`} />
+                    <small>{pair(used, cap)}</small>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <div className="grid-2">
+            <Card title="Running now" flush>
+              {busiest.length ? (
                 <DataTable
-                  data={servers.slice(0, 6)}
-                  columns={fleetColumns}
-                  rowKey={(server) => server.id}
-                  empty={<span>No servers have been created yet.</span>}
+                  data={busiest.slice(0, 8)}
+                  columns={loadColumns}
+                  rowKey={(s) => s.id}
+                  rowHref={(s) => `/servers/${s.id}`}
                 />
               ) : (
-                <div className="empty fleet-empty">
-                  <ServerIcon size={23} />
-                  <h3>No servers yet</h3>
-                  <p>Create a server once a connected host is available.</p>
-                  <Link href="/servers" className="link">Go to servers <ArrowUpRight size={14} /></Link>
-                </div>
-              )}
-            </section>
-
-            <div className="overview-rail">
-              <section className="section capacity-section">
-                <div className="section-title">
-                  <div>
-                    <span className="eyebrow">Capacity</span>
-                    <h2>Reserved resources</h2>
-                  </div>
-                  <Link className="link" href="/nodes">Hosts <ArrowUpRight size={14} /></Link>
-                </div>
-                {(
-                  [
-                    { key: "memoryMb", label: "Memory", unit: "GB", divisor: 1024 },
-                    { key: "cpuPercent", label: "CPU", unit: "%", divisor: 1 },
-                    { key: "diskMb", label: "Disk", unit: "GB", divisor: 1024 },
-                  ] as const
-                ).map((resource) => {
-                  const used = sum(resource.key, "reserved");
-                  const capacity = sum(resource.key, "capacity");
-                  const percent = capacity ? Math.round((used / capacity) * 100) : 0;
-                  return (
-                    <div className="resource-line" key={resource.key}>
-                      <header>
-                        <strong>{resource.label}</strong>
-                        <span className="mono">{percent}% <small>reserved</small></span>
-                      </header>
-                      <div className="meter" role="meter" aria-label={`${resource.label} reserved`} aria-valuenow={used} aria-valuemin={0} aria-valuemax={Math.max(1, used, capacity)}>
-                        <span style={{ width: `${Math.min(100, percent)}%` }} />
-                      </div>
-                      <footer>
-                        <span>{(used / resource.divisor).toLocaleString(undefined, { maximumFractionDigits: 1 })} {resource.unit}</span>
-                        <span>{(capacity / resource.divisor).toLocaleString(undefined, { maximumFractionDigits: 1 })} total</span>
-                      </footer>
-                    </div>
-                  );
-                })}
-                <p className="section-footnote">Allocated capacity, not live usage.</p>
-              </section>
-
-              <section className="section capacity-chart-section">
-                <div className="section-title">
-                  <div>
-                    <span className="eyebrow">Placement headroom</span>
-                    <h2>Memory by host</h2>
-                    <p className="muted">Reserved capacity compared with available capacity.</p>
-                  </div>
-                  <Link className="link" href="/nodes">Manage nodes <ArrowUpRight size={14} /></Link>
-                </div>
-                {nodes.length ? (
-                  <div className="capacity-chart" role="img" aria-label="Memory reserved and available by host">
-                    <ResponsiveContainer width="100%" height={Math.min(300, Math.max(150, nodes.length * 32))}>
-                      <BarChart data={nodes.map((node) => ({
-                        name: node.name,
-                        reserved: node.reserved.memoryMb,
-                        available: Math.max(0, node.capacity.memoryMb - node.reserved.memoryMb),
-                      }))} layout="vertical" margin={{ top: 2, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid stroke="#29372f" strokeDasharray="3 4" horizontal={false} />
-                        <XAxis type="number" hide />
-                        <YAxis type="category" dataKey="name" width={90} tick={{ fill: "#aab8ae", fontSize: 10 }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          cursor={{ fill: "#26342b" }}
-                          contentStyle={{ background: "#17211b", border: "1px solid #3b4a3f", borderRadius: 8, color: "#e8eee9", fontSize: 11 }}
-                          formatter={(value, name) => [`${Number(value).toLocaleString()} MB`, name === "reserved" ? "Reserved" : "Available"]}
-                        />
-                        <Bar dataKey="reserved" stackId="memory" fill="#b7dc8b" radius={[4, 0, 0, 4]} />
-                        <Bar dataKey="available" stackId="memory" fill="#36483a" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    <div className="chart-legend"><span><i className="legend-reserved" />Reserved</span><span><i className="legend-available" />Available</span></div>
-                  </div>
-                ) : <div className="empty-state">Register a host to see placement headroom.</div>}
-              </section>
-
-              <section className="section node-section">
-                <div className="section-title">
-                  <div>
-                    <span className="eyebrow">Hosts</span>
-                    <h2>Node health</h2>
-                  </div>
-                  <Link className="link" href="/nodes">View all <ArrowUpRight size={14} /></Link>
-                </div>
-                {nodes.length ? (
-                  <div className="health-list">
-                    {nodes.slice(0, 4).map((node) => (
-                      <Link href="/nodes" className="health-row" key={node.id}>
-                        <span className="entity-icon"><HardDrive size={16} /></span>
-                        <span className="health-row-copy">
-                          <strong>{node.name}</strong>
-                          <small>{node.location}</small>
-                        </span>
-                        <span className={`badge ${node.status === "connected" ? "good" : "bad"}`}>
-                          <span className="dot" />
-                          {node.status !== "connected" ? "Disconnected" : node.draining ? "Draining" : "Connected"}
-                        </span>
+                <Empty
+                  title={total ? "Nothing is running" : "No servers yet"}
+                  action={
+                    total ? undefined : (
+                      <Link href="/servers?new=1" className={btn("secondary", "sm")}>
+                        Create a server
                       </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty node-empty">
-                    <HardDrive size={23} />
-                    <p>No hosts registered.</p>
-                    <Link href="/nodes" className="link">Connect a host <ArrowUpRight size={14} /></Link>
-                  </div>
-                )}
-              </section>
-            </div>
-
-            <section className="section activity-summary">
-              <div className="section-title">
-                <div>
-                  <span className="eyebrow">Workspace log</span>
-                  <h2>Recent activity</h2>
-                </div>
-                <Link href="/activity" className="link">Full activity <ArrowUpRight size={14} /></Link>
-              </div>
-              <div className="event-list">
-                {events.length ? events.map((event) => (
-                  <div className="event-row" key={event.id}>
-                    <span className="event-rail" aria-hidden="true" />
-                    <div>
-                      <strong>{event.action.replaceAll(".", " / ")}</strong>
-                      <small>{event.target_type}</small>
+                    )
+                  }
+                />
+              )}
+            </Card>
+            <Card title="Recent changes" flush>
+              {events.length ? (
+                <div className="feed">
+                  {events.map((e, i) => (
+                    <div className="feed__row" key={e.id} style={{ ["--i" as string]: i }}>
+                      <span>
+                        {fmtAction(e.action)}
+                        {e.target_id && names[e.target_id] ? <small>{names[e.target_id]}</small> : null}
+                      </span>
+                      <time dateTime={e.created_at} title={fmtTime(e.created_at)}>
+                        {fmtAgo(e.created_at)}
+                      </time>
                     </div>
-                    <time>{fmtDate(event.created_at)}</time>
-                  </div>
-                )) : <div className="empty">New workspace activity will appear here.</div>}
-              </div>
-            </section>
+                  ))}
+                </div>
+              ) : (
+                <Empty title="No changes yet" />
+              )}
+            </Card>
           </div>
         </>
       )}

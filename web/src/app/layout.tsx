@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./install.css";
+
 export const metadata: Metadata = {
-  title: "Fledge · Game server management",
-  description: "Control panel for game servers",
+  title: "Fledge",
+  description: "Self-hosted game server panel",
 };
+
 export default function RootLayout({
   children,
 }: {

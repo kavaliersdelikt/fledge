@@ -1,8 +1,20 @@
 "use client";
-import { json,request,type User } from "@/lib/api";
-import { ArrowUpRight,LoaderCircle,ShieldCheck,X } from "lucide-react";
-import { useEffect,useRef,useState,type FormEvent } from "react";
-import { Button as SharedButton, Notice } from "./shared";
+import { json, request, type User } from "@/lib/api";
+import { LoaderCircle } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Secret } from "./feedback";
+import { Button, Notice } from "./shared";
+
+type Mode = "loading" | "login" | "challenge" | "bootstrap" | "setup" | "recover";
+
+const copy: Record<Mode, [string, string]> = {
+  loading: ["Fledge", ""],
+  login: ["Sign in", ""],
+  challenge: ["Two-factor authentication", "Enter the 6-digit code from your authenticator app."],
+  bootstrap: ["Set up Fledge", "Create the first administrator account for this panel."],
+  setup: ["Turn on two-factor authentication", "Administrators need an authenticator app. Add this key to yours, then enter the code it shows."],
+  recover: ["Recover your account", "Use one of your saved recovery codes to set a new password."],
+};
 
 export default function Auth({
   existing,
@@ -11,16 +23,15 @@ export default function Auth({
   existing?: User;
   onSuccess: (u: User) => void;
 }) {
-  const [mode, setMode] = useState<
-    "loading" | "login" | "bootstrap" | "setup" | "recover"
-  >(existing ? "setup" : "loading");
+  const [mode, setMode] = useState<Mode>(existing ? "setup" : "loading");
   const [error, setError] = useState(""),
+    [info, setInfo] = useState(""),
     [busy, setBusy] = useState(false),
     [secret, setSecret] = useState(""),
     [uri, setUri] = useState(""),
     [challenge, setChallenge] = useState("");
-  const dialog = useRef<HTMLDialogElement>(null),
-    started = useRef(false);
+  const started = useRef(false);
+
   async function setup() {
     const s = await json("POST", "/auth/2fa/setup");
     setSecret(s.secret);
@@ -36,10 +47,7 @@ export default function Auth({
         .then((s) => setMode(s.needsSetup ? "bootstrap" : "login"))
         .catch((e) => setError(e.message));
   }, [existing]);
-  useEffect(() => {
-    if (challenge) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [challenge]);
+
   async function complete() {
     const me = await request<User>("/auth/me");
     if (me.role === "admin" && !me.has2fa) await setup();
@@ -48,269 +56,152 @@ export default function Auth({
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    setInfo("");
     setBusy(true);
     const f = Object.fromEntries(new FormData(e.currentTarget));
     try {
       if (mode === "recover") {
-        await json("POST", "/auth/recover", {
-          email: f.email,
-          password: f.password,
-          recoveryCode: f.recoveryCode,
-        });
+        await json("POST", "/auth/recover", { email: f.email, password: f.password, recoveryCode: f.recoveryCode });
         setMode("login");
-        setError(
-          "Account recovered. Sign in with your new password and configure your authenticator again.",
-        );
-        return;
-      }
-      if (mode === "setup") {
+        setInfo("Account recovered. Sign in with your new password, then set up your authenticator again.");
+      } else if (mode === "challenge") {
+        await json("POST", "/auth/challenge", { challenge, code: f.code });
+        setChallenge("");
+        await complete();
+      } else if (mode === "setup") {
         await json("POST", "/auth/2fa/confirm", { code: f.code });
         await complete();
       } else {
-        const r = await json("POST", `/auth/${mode}`, {
-          email: f.email,
-          password: f.password,
-          stepwise: true,
-        });
-        if (r.requires2fa) setChallenge(r.challenge);
-        else await complete();
+        const r = await json("POST", `/auth/${mode}`, { email: f.email, password: f.password, stepwise: true });
+        if (r.requires2fa) {
+          setChallenge(r.challenge);
+          setMode("challenge");
+        } else await complete();
       }
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (ex) {
+      setError((ex as Error).message);
     } finally {
       setBusy(false);
     }
   }
-  async function verify(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      await json("POST", "/auth/challenge", {
-        challenge,
-        code: new FormData(e.currentTarget).get("code"),
-      });
-      setChallenge("");
-      await complete();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  const title =
-    mode === "recover"
-      ? "Recover your account"
-      : mode === "bootstrap"
-        ? "Create your workspace"
-        : mode === "setup"
-          ? "Secure your account"
-          : "Welcome back.";
+
+  const [title, subtitle] = copy[mode];
+  const codeInput = (
+    <label className="field">
+      <span className="field__label">Code</span>
+      <input
+        className="input otp"
+        name="code"
+        required
+        inputMode="numeric"
+        pattern="[0-9]{6}"
+        maxLength={6}
+        autoComplete="one-time-code"
+        placeholder="000000"
+        autoFocus
+      />
+    </label>
+  );
+
   return (
-    <main className="auth-layout">
-      <section className="auth-left">
-        <a className="auth-logo" href="/">
-          <img src="/fledge-symbol.png" alt="" /> Fledge
-          <span>CONTROL PANEL</span>
-        </a>
-        <div className="auth-form-wrap">
-          <div className="eyebrow">
-            {mode === "bootstrap"
-              ? "FLEDGE / FIRST ADMINISTRATOR"
-              : mode === "setup"
-                ? "FLEDGE / ACCOUNT SECURITY"
-                : "FLEDGE / CONTROL PANEL"}
-          </div>
-          <h1>{title}</h1>
-          <p className="auth-intro">
-            {mode === "recover"
-              ? "Use a saved recovery code to reset your access."
-              : mode === "bootstrap"
-                ? "Create the first administrator to open your workspace."
-                : mode === "setup"
-                  ? "Connect an authenticator app to keep your workspace secure."
-                  : "Sign in to manage your servers and connected hosts."}
-          </p>
-          {mode === "loading" ? (
-            <div className="loading-state">
-              <LoaderCircle className="spin" />
-              <span>{error || "Opening your workspace…"}</span>
-              {error && (
-                <SharedButton variant="outline" onClick={() => location.reload()}>
-                  Retry
-                </SharedButton>
-              )}
-            </div>
+    <main className="auth">
+      <div className="auth__panel">
+        <div className="auth__brand">
+          <img src="/fledge-symbol.png" alt="" />
+          Fledge
+        </div>
+        {mode === "loading" ? (
+          error ? (
+            <>
+              <Notice tone="bad" title="Can’t reach the panel API">
+                {error}
+              </Notice>
+              <Button onClick={() => location.reload()}>Try again</Button>
+            </>
           ) : (
-            <form onSubmit={submit} className="form">
+            <LoaderCircle className="spin faint" />
+          )
+        ) : (
+          <>
+            <div className="auth__head">
+              <h1>{title}</h1>
+              {subtitle ? <p>{subtitle}</p> : null}
+            </div>
+            <form onSubmit={submit} className="form" key={mode}>
               {mode === "setup" ? (
                 <>
-                  <div className="secret">
-                    <span>Authenticator setup key</span>
-                    <code>{secret || "Loading…"}</code>
-                  </div>
-                  <a className="link" href={uri}>
-                    Open in your authenticator <ArrowUpRight size={14} />
-                  </a>
-                  <label className="field">
-                    <span>Verification code</span>
-                    <input
-                      name="code"
-                      required
-                      inputMode="numeric"
-                      pattern="[0-9]{6}"
-                      maxLength={6}
-                      autoComplete="one-time-code"
-                      placeholder="000000"
-                    />
-                  </label>
+                  {secret ? <Secret label="Setup key" value={secret} /> : <LoaderCircle className="spin faint" />}
+                  {uri ? (
+                    <a className="text-button" href={uri}>
+                      Open in authenticator app on this device
+                    </a>
+                  ) : null}
+                  {codeInput}
                 </>
+              ) : mode === "challenge" ? (
+                codeInput
               ) : (
                 <>
                   <label className="field">
-                    <span>Email address</span>
-                    <input
-                      name="email"
-                      type="email"
-                      required
-                      autoComplete="username"
-                      placeholder="you@yourcompany.com"
-                    />
+                    <span className="field__label">Email</span>
+                    <input className="input" name="email" type="email" required autoComplete="username" autoFocus />
                   </label>
                   <label className="field">
-                    <span>
-                      {mode === "recover" ? "New password" : "Password"}
-                    </span>
+                    <span className="field__label">{mode === "recover" ? "New password" : "Password"}</span>
                     <input
+                      className="input"
                       name="password"
                       type="password"
                       required
                       minLength={mode !== "login" ? 12 : undefined}
-                      autoComplete={
-                        mode !== "login" ? "new-password" : "current-password"
-                      }
-                      placeholder={
-                        mode !== "login"
-                          ? "At least 12 characters"
-                          : "Enter your password"
-                      }
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                      placeholder={mode === "login" ? undefined : "At least 12 characters"}
                     />
                   </label>
                   {mode === "recover" && (
                     <label className="field">
-                      <span>Saved recovery code</span>
-                      <input name="recoveryCode" required autoComplete="off" />
+                      <span className="field__label">Recovery code</span>
+                      <input className="input mono" name="recoveryCode" required autoComplete="off" />
                     </label>
                   )}
                 </>
               )}
-              {error && !challenge && <Notice status="danger">{error}</Notice>}
-              <SharedButton
-                variant="default"
-                className="auth-submit"
-                disabled={busy || (mode === "setup" && !secret)}
-              >
-                {busy ? <LoaderCircle size={18} className="spin" /> : null}
+              {info && <Notice tone="ok">{info}</Notice>}
+              {error && <Notice tone="bad">{error}</Notice>}
+              <Button type="submit" variant="primary" busy={busy} disabled={mode === "setup" && !secret}>
                 {mode === "recover"
-                  ? "Reset account access"
+                  ? "Reset password"
                   : mode === "bootstrap"
-                    ? "Create workspace"
+                    ? "Create administrator"
                     : mode === "setup"
-                      ? "Enable protection"
-                      : "Continue"}
-                <ArrowUpRight size={18} />
-              </SharedButton>
-              <div className="auth-secure">
-                <ShieldCheck size={14} />{" "}
-                {mode === "login"
-                  ? "A second verification step follows sign-in."
-                  : "Protect this workspace with two-step verification."}
-              </div>
+                      ? "Turn on"
+                      : mode === "challenge"
+                        ? "Verify"
+                        : "Sign in"}
+              </Button>
             </form>
-          )}
-          {(mode === "login" || mode === "recover") && (
-            <button
-              className="text-button recovery-link"
-              onClick={() => {
-                setMode(mode === "login" ? "recover" : "login");
-                setError("");
-              }}
-            >
-              {mode === "login"
-                ? "Lost access? Use a recovery code"
-                : "Back to sign in"}
-            </button>
-          )}
-        </div>
-        <footer className="auth-bottom">
-          <a href="/install">Getting started</a>
-          <span>Server and host management</span>
-          <span>© {new Date().getFullYear()}</span>
-        </footer>
-      </section>
-      <aside className="auth-art">
-        <div className="art-top">
-          <span>FLEDGE / CONTROL PANEL</span>
-          <img src="/fledge-symbol.png" alt="Fledge mark" />
-        </div>
-        <div className="auth-art-content">
-          <h2>Keep the whole fleet in view.</h2>
-          <p>Manage game servers, connected hosts, and maintenance from one workspace.</p>
-          <div className="auth-feature-list">
-            <div><strong>Servers</strong><small>Console, files, backups</small></div>
-            <div><strong>Hosts</strong><small>Connections and capacity</small></div>
-            <div><strong>Operations</strong><small>Jobs, activity, updates</small></div>
-          </div>
-        </div>
-        <div className="auth-art-foot"><span>FLEDGE</span><span>SELF-HOSTED GAME SERVERS</span></div>
-      </aside>
-      <dialog
-        ref={dialog}
-        className="auth-dialog"
-        onCancel={() => {
-          setChallenge("");
-          setError("");
-        }}
-        aria-labelledby="verification-title"
-      >
-        <button
-          className="dialog-close"
-          aria-label="Close verification"
-          onClick={() => {
-            setChallenge("");
-            setError("");
-          }}
-        >
-          <X size={20} />
-        </button>
-        <ShieldCheck size={28} />
-        <div className="eyebrow">Security / Verification</div>
-        <h2 id="verification-title">Verify your identity</h2>
-        <p className="muted">
-          Enter the six-digit code from your authenticator app.
-        </p>
-        <form onSubmit={verify} className="form">
-          <label className="field">
-            <span>Verification code</span>
-            <input
-              name="code"
-              className="otp-input"
-              required
-              pattern="[0-9]{6}"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="000000"
-              autoFocus
-            />
-          </label>
-          {error && <Notice status="danger">{error}</Notice>}
-          <SharedButton variant="default" disabled={busy}>
-            {busy ? <LoaderCircle size={16} className="spin" /> : null}Verify
-            and sign in
-          </SharedButton>
-        </form>
-      </dialog>
+            {(mode === "login" || mode === "recover" || mode === "challenge") && (
+              <div className="auth__foot">
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setMode(mode === "login" ? "recover" : "login");
+                    setChallenge("");
+                    setError("");
+                    setInfo("");
+                  }}
+                >
+                  {mode === "login" ? "Lost your authenticator?" : "Back to sign in"}
+                </button>
+                <a href="https://github.com/kavaliersdelikt/fledge#quick-start" target="_blank" rel="noreferrer">
+                  Help
+                </a>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </main>
   );
 }

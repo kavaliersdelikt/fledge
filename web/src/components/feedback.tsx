@@ -1,29 +1,32 @@
 "use client";
-import { Check,Copy,TriangleAlert } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import {
-createContext,
-useCallback,
-useContext,
-useEffect,
-useRef,
-useState,
-type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
 } from "react";
 import {
-AlertDialog,
-AlertDialogContent,
-AlertDialogDescription,
-AlertDialogHeader,
-AlertDialogTitle,
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { Button as UiButton } from "./ui/button";
 import {
-Dialog,
-DialogContent,
-DialogDescription,
-DialogHeader,
-DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from "./ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "./ui/sheet";
 
 export function Modal({
   open,
@@ -31,50 +34,88 @@ export function Modal({
   title,
   description,
   children,
-  compact = false,
+  wide = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
-  compact?: boolean;
+  wide?: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`app-modal ${compact ? "compact" : ""}`}>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+      <DialogContent className={`modal${wide ? " modal--wide" : ""}`}>
+        <div className="modal__head">
+          <DialogTitle className="modal__title">{title}</DialogTitle>
+          {description ? (
+            <DialogDescription className="modal__description">{description}</DialogDescription>
+          ) : null}
+        </div>
         {children}
       </DialogContent>
     </Dialog>
   );
 }
 
+/** Side panel used for create and edit forms. */
+export function Drawer({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+  wide = false,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: ReactNode;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className={`drawer${wide ? " drawer--wide" : ""}`}>
+        <div className="drawer__head">
+          <SheetTitle className="drawer__title">{title}</SheetTitle>
+          {description ? (
+            <SheetDescription className="drawer__description">{description}</SheetDescription>
+          ) : null}
+        </div>
+        <div className="drawer__body">{children}</div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+type ConfirmOptions = { danger?: boolean; confirmLabel?: string; title?: string };
+type Pending = ConfirmOptions & { message: string };
+
 const ConfirmationContext = createContext<
-  (message: string) => Promise<boolean>
+  (message: string, options?: ConfirmOptions) => Promise<boolean>
 >(async () => false);
+
 export function useConfirm() {
   return useContext(ConfirmationContext);
 }
+
 export function ConfirmationProvider({ children }: { children: ReactNode }) {
-  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState<Pending | null>(null);
   const resolve = useRef<((value: boolean) => void) | null>(null);
   const confirm = useCallback(
-    (text: string) =>
+    (message: string, options: ConfirmOptions = {}) =>
       new Promise<boolean>((done) => {
         resolve.current?.(false);
         resolve.current = done;
-        setMessage(text);
+        setPending({ danger: true, ...options, message });
       }),
     [],
   );
   const finish = (value: boolean) => {
     resolve.current?.(value);
     resolve.current = null;
-    setMessage("");
+    setPending(null);
   };
   useEffect(
     () => () => {
@@ -86,26 +127,30 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
     <ConfirmationContext.Provider value={confirm}>
       {children}
       <AlertDialog
-        open={!!message}
+        open={!!pending}
         onOpenChange={(open) => {
           if (!open) finish(false);
         }}
       >
-        <AlertDialogContent className="app-confirm">
-          <AlertDialogHeader>
-            <div className="confirm-icon">
-              <TriangleAlert size={22} />
-            </div>
-            <AlertDialogTitle>Confirm this action</AlertDialogTitle>
-            <AlertDialogDescription>{message}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="form-actions dialog-actions">
-            <UiButton variant="outline" className="btn" autoFocus onClick={() => finish(false)}>
+        <AlertDialogContent className="modal modal--confirm">
+          <div className="modal__head">
+            <AlertDialogTitle className="modal__title">
+              {pending?.title || (pending?.confirmLabel ? `${pending.confirmLabel}?` : "Continue?")}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="modal__description">
+              {pending?.message}
+            </AlertDialogDescription>
+          </div>
+          <div className="modal__actions">
+            <button className="btn btn--secondary" autoFocus onClick={() => finish(false)}>
               Cancel
-            </UiButton>
-            <UiButton variant="destructive" className="btn danger" onClick={() => finish(true)}>
-              Confirm action
-            </UiButton>
+            </button>
+            <button
+              className={`btn ${pending?.danger ? "btn--danger-solid" : "btn--primary"}`}
+              onClick={() => finish(true)}
+            >
+              {pending?.confirmLabel || "Continue"}
+            </button>
           </div>
         </AlertDialogContent>
       </AlertDialog>
@@ -116,41 +161,48 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
 export function CopyButton({
   value,
   label = "Copy",
+  size = "sm",
 }: {
   value: string;
   label?: string;
+  size?: "sm" | "icon";
 }) {
-  const [copied, setCopied] = useState(false),
-    [failed, setFailed] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1800);
+    if (state !== "copied") return;
+    const timer = setTimeout(() => setState("idle"), 1600);
     return () => clearTimeout(timer);
-  }, [copied]);
+  }, [state]);
   return (
-    <>
-      <UiButton
-        variant="outline"
-        className="btn"
-        type="button"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(value);
-            setCopied(true);
-            setFailed(false);
-          } catch {
-            setFailed(true);
-          }
-        }}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}{" "}
-        {copied ? "Copied" : label}
-      </UiButton>
-      {failed && (
-        <span role="status" className="muted small">
-          Select the text and copy it manually.
-        </span>
-      )}
-    </>
+    <button
+      type="button"
+      className={`btn btn--secondary btn--${size}`}
+      aria-label={size === "icon" ? label : undefined}
+      title={state === "failed" ? "Clipboard blocked — select the text and copy it manually." : undefined}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setState("copied");
+        } catch {
+          setState("failed");
+        }
+      }}
+    >
+      {state === "copied" ? <Check /> : <Copy />}
+      {size === "icon" ? null : state === "copied" ? "Copied" : state === "failed" ? "Copy blocked" : label}
+    </button>
+  );
+}
+
+/** A one-time secret with a copy button. */
+export function Secret({ value, label }: { value: string; label?: string }) {
+  return (
+    <div className="secret">
+      {label ? <span className="secret__label">{label}</span> : null}
+      <div className="secret__row">
+        <code>{value}</code>
+        <CopyButton value={value} size="icon" label={`Copy ${label || "value"}`} />
+      </div>
+    </div>
   );
 }

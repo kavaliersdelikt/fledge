@@ -33,8 +33,8 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.2.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
->
+> **Version v0.3.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **New in v0.3.x:** a redesigned panel with live resource graphs, live usage in server lists, a persistent console, and a fix for schedule creation. See the [release notes](docs/releases/v0.3.1.1.md).
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
 ## What is Fledge?

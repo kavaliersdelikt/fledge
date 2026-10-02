@@ -1,11 +1,7 @@
 # UI primitives
 
-The sidebar primitives use the official shadcn/ui **Base UI** implementation, Base Nova style, retrieved from the shadcn registry on 2026-09-25.
+Thin wrappers around [Base UI](https://base-ui.com) components, originally generated from the official shadcn/ui **Base Nova** registry. Only the primitives the panel uses are kept: `button`, `dialog`, `alert-dialog`, `sheet`, `dropdown-menu`, and `tabs`.
 
-Reference: https://ui.shadcn.com/docs/components/base/sidebar
-
-Registry: https://ui.shadcn.com/r/styles/base-nova/sidebar.json
-
-Sidebar 07 was added from the official block registry. The app keeps its `TeamSwitcher`, `NavMain`, `NavProjects`, `NavUser`, and `SidebarRail` composition in `src/components/app-sidebar.tsx` and the adjacent navigation components. Sample data is replaced with Fledge account details, routes, and shortcuts. The black theme is defined in `app/globals.css`.
+Their colors come from the tokens in `app/globals.css` (`@theme inline`). Panel-specific styling is applied through class names such as `.modal`, `.drawer`, `.menu`, and `.ui-tabs-*` in the same file.
 
 Upstream shadcn/ui is MIT licensed: https://github.com/shadcn-ui/ui/blob/main/LICENSE.md

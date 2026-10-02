@@ -1,146 +1,85 @@
 "use client";
 import BackupManager from "@/components/BackupManager";
 import LiveConsole from "@/components/LiveConsole";
+import ServerFiles from "@/components/ServerFiles";
 import {
-API,
-fmtDate,
-fmtSize,
-items,
-json,
-request,
-type Job,
-type Server,
-type ServerPermission,
-type Template,
+  items,
+  json,
+  request,
+  type Job,
+  type Server,
+  type ServerPermission,
+  type Template,
 } from "@/lib/api";
-import {
-ArrowLeft,
-CircleStop,
-Download,
-FileText,
-LoaderCircle,
-Play,
-Folder,
-RefreshCw,
-Square,
-Upload
-} from "lucide-react";
+import { fmtAgo, fmtBytes, fmtCpu, fmtMb, fmtTime } from "@/lib/format";
+import { ArrowLeft, CircleStop, MoreHorizontal, Play, Plus, RotateCw, Square } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-useCallback,
-useEffect,
-useRef,
-useState,
-type FormEvent,
-type ReactNode,
-} from "react";
-import { CopyButton,Modal,useConfirm } from "./feedback";
-import { Button as SharedButton, Notice } from "./shared";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useState } from "react";
+import { Sparkline } from "./charts";
 import DataTable, { type DataColumn } from "./DataTable";
-function Err({ text }: { text: string }) {
-  return text ? <Notice status="danger">{text}</Notice> : null;
-}
-function Btn({
-  children,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <SharedButton {...props}>{children}</SharedButton>;
-}
-function useData<T>(path: string | null, interval = 0) {
-  const [data, setData] = useState<T | null>(null),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(true),
-    sequence = useRef(0);
-  const reload = useCallback(async () => {
-    if (!path) return;
-    const ticket = ++sequence.current;
-    try {
-      const value = await request<T>(path);
-      if (sequence.current === ticket) {
-        setData(value);
-        setError("");
-      }
-    } catch (e) {
-      if (sequence.current === ticket) {
-        setData(null);
-        setError((e as Error).message);
-      }
-    } finally {
-      if (sequence.current === ticket) setBusy(false);
-    }
-  }, [path]);
-  useEffect(() => {
-    ++sequence.current;
-    setBusy(true);
-    setData(null);
-    setError("");
-    reload();
-    const timer = interval ? setInterval(reload, interval) : null;
-    return () => {
-      ++sequence.current;
-      if (timer) clearInterval(timer);
-    };
-  }, [reload, interval]);
-  return { data, error, busy, reload };
-}
-function Submit({
-  children,
-  onRun,
-  label = "Save",
-}: {
-  children: ReactNode;
-  onRun: (v: Record<string, string>) => Promise<void>;
-  label?: string;
-}) {
-  const [pending, setPending] = useState(false),
-    [message, setMessage] = useState(""),
-    [error, setError] = useState("");
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setPending(true);
-    setError("");
-    setMessage("");
-    try {
-      await onRun(
-        Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<
-          string,
-          string
-        >,
-      );
-      setMessage("Saved / job queued.");
-    } catch (ex) {
-      setError((ex as Error).message);
-    } finally {
-      setPending(false);
-    }
-  }
-  return (
-    <form className="form" onSubmit={submit}>
-      {children}
-      <Err text={error} />
-      <div className="form-actions">
-        <Btn className="primary" disabled={pending} type="submit">
-          {pending ? "Please wait…" : label}
-        </Btn>
-        {message && <Notice status="success" className="form-success">{message}</Notice>}
-      </div>
-    </form>
-  );
-}
-const tabs: Array<{
-  key: string;
-  label: string;
-  permission: ServerPermission;
-}> = [
+import { Modal, useConfirm } from "./feedback";
+import { Num } from "./motion";
+import { useToast } from "./toast";
+import { useLiveServer, type Sample } from "./useLiveServer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Button,
+  Card,
+  CheckChip,
+  Empty,
+  ErrorNotice,
+  Form,
+  Meter,
+  Notice,
+  PageHeader,
+  Skeleton,
+  State,
+  Status,
+  Toolbar,
+  UnitField,
+  btn,
+  useLoad,
+  type Row,
+} from "./shared";
+
+const tabs: Array<{ key: string; label: string; permission: ServerPermission }> = [
   { key: "console", label: "Console", permission: "console" },
   { key: "files", label: "Files", permission: "files" },
   { key: "backups", label: "Backups", permission: "backups" },
   { key: "schedules", label: "Schedules", permission: "manage" },
   { key: "access", label: "Access", permission: "manage" },
+  { key: "jobs", label: "Jobs", permission: "view" },
   { key: "settings", label: "Settings", permission: "manage" },
 ];
+
+const actionCopy: Record<string, [pending: string, done: string]> = {
+  start: ["Starting", "Start queued"],
+  restart: ["Restarting", "Restart queued"],
+  stop: ["Stopping", "Stop queued"],
+  kill: ["Force stopping", "Force stop queued"],
+  suspend: ["Suspending", "Server suspended"],
+  unsuspend: ["Unsuspending", "Server unsuspended"],
+  reinstall: ["Reinstalling", "Reinstall queued"],
+  restore: ["Restoring", "Restore queued"],
+};
+
+/** What the server is doing, from what was requested vs. what the node last saw. */
+function transition(s: Server) {
+  if (s.status === "unreachable" || !s.desiredStatus || s.desiredStatus === s.observedStatus) return null;
+  if (s.desiredStatus === "running" && ["stopped", "provisioning", "starting"].includes(s.observedStatus)) return "Starting";
+  if (s.desiredStatus === "stopped" && s.observedStatus === "running") return "Stopping";
+  return null;
+}
+
+const STALE_MS = 60_000;
+
 export default function ServerDetail({
   id,
   admin,
@@ -154,792 +93,525 @@ export default function ServerDetail({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const {
-    data: s,
-    error,
-    busy,
-    reload,
-  } = useData<Server>(`/servers/${id}`, 12000);
-  const isOwner = s?.ownerId === actorId;
-  const effectivePermissions = new Set<ServerPermission>(
-    s?.effectivePermissions || [],
-  );
-  const canManage = admin || isOwner || effectivePermissions.has("manage");
-  const canAccess = (permission: ServerPermission) =>
-    canManage || effectivePermissions.has(permission);
-  const visibleTabs = tabs.filter(({ permission }) => canAccess(permission));
-  const activeTab = visibleTabs.some((t) => t.key === tab)
-    ? tab
-    : (visibleTabs[0]?.key ?? null);
-  const {
-    data: jobs,
-    error: jobsError,
-    busy: jobsBusy,
-    reload: reloadJobs,
-  } = useData<Job[]>(`/jobs?serverId=${id}&limit=20`, 8000);
-  const [actionError, setActionError] = useState(""),
-    [actionMessage, setActionMessage] = useState(""),
-    [acting, setActing] = useState("");
+  const toast = useToast();
+  const { data: s, error, loading, reload } = useLoad<Server>(`/servers/${id}`, 12000);
+  const permissions = new Set<ServerPermission>(s?.effectivePermissions || []);
+  const canManage = admin || s?.ownerId === actorId || permissions.has("manage");
+  const can = (p: ServerPermission) => p === "view" || canManage || permissions.has(p);
+  const visibleTabs = tabs.filter(({ permission }) => can(permission));
+  const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : visibleTabs[0]?.key;
+  const reachable = !!s && s.status !== "unreachable";
+  const live = useLiveServer(id, reachable && can("console"));
+  const [acting, setActing] = useState("");
+
+  // Samples the node reported with its heartbeat also feed the charts.
+  const usage = s?.usage;
+  const { addSample } = live;
+  useEffect(() => {
+    if (usage?.sampledAt && typeof usage.cpuPercent === "number" && typeof usage.memoryBytes === "number" && usage.memoryLimitBytes)
+      addSample({ t: Date.parse(usage.sampledAt), cpu: usage.cpuPercent, mem: usage.memoryBytes, memLimit: usage.memoryLimitBytes });
+  }, [usage?.sampledAt, usage?.cpuPercent, usage?.memoryBytes, usage?.memoryLimitBytes, addSample]);
+
   async function action(kind: string, extra: Record<string, unknown> = {}) {
+    const prompts: Record<string, [string, string]> = {
+      kill: ["The process ends immediately without saving. Unsaved world data may be lost.", "Force stop"],
+      reinstall: ["Every file on the server is deleted and it’s set up from its template again.", "Reinstall"],
+      restore: ["All files on the server are replaced with the backup.", "Restore"],
+      suspend: ["The server stops and its owner can’t start it until you unsuspend it.", "Suspend"],
+    };
     if (
-      ["kill", "reinstall", "restore"].includes(kind) &&
-      !(await confirm(
-        kind === "restore"
-          ? "Restore replaces all files on this server. Continue?"
-          : kind === "reinstall"
-            ? "Reinstall deletes all local files. Continue?"
-            : "Force stop the server without a clean shutdown?",
-      ))
+      prompts[kind] &&
+      !(await confirm(prompts[kind][0], { title: `${prompts[kind][1]} ${s?.name || "this server"}?`, confirmLabel: prompts[kind][1] }))
     )
       return;
     setActing(kind);
-    setActionError("");
-    setActionMessage("");
     try {
-      const result = (await json("POST", `/servers/${id}/actions`, {
+      await json("POST", `/servers/${id}/actions`, {
         action: kind,
         ...extra,
         ...(["restore", "reinstall"].includes(kind) ? { confirm: true } : {}),
-      })) as Record<string, any>;
-      setActionMessage(
-        `Job ${result.jobId || result.job?.id || result.id} queued.`,
-      );
+      });
+      toast({ tone: "ok", title: actionCopy[kind]?.[1] || "Done" });
       reload();
-      reloadJobs();
     } catch (e) {
-      setActionError((e as Error).message);
+      toast({ tone: "bad", title: `Couldn’t ${kind === "kill" ? "force stop" : kind}`, description: (e as Error).message });
     } finally {
       setActing("");
     }
   }
+
+  if (loading && !s) return <Skeleton rows={6} />;
+  if (!s)
+    return (
+      <Empty
+        title="Server unavailable"
+        action={
+          <Link href="/servers" className={btn("secondary", "sm")}>
+            Back to servers
+          </Link>
+        }
+      >
+        {error || "This server doesn’t exist or you no longer have access to it."}
+      </Empty>
+    );
+
+  const blocked = !!acting || !reachable || s.suspended;
+  const moving = acting ? actionCopy[acting]?.[0] : transition(s);
+
   return (
     <>
-      <Link href="/servers" className="back">
-        <ArrowLeft size={16} /> All servers
-      </Link>
-      {busy ? <div className="skeleton" /> : null}
-      <Err text={error} />
-      {s && (
-        <>
-          <div className="detail-head">
-            <div>
-              <div className="eyebrow">Workspace / Servers / {s.location}</div>
-              <h1>{s.name}</h1>
-              <div className="detail-sub">
-                <span
-                  className={`badge server-status ${acting ? "server-status--pending" : `server-status--${s.status}`}`}
-                  aria-live="polite"
-                  aria-busy={!!acting}
-                >
-                  <span className="dot" />
-                  {acting
-                    ? acting === "kill"
-                      ? "Force stopping"
-                      : `${acting[0].toUpperCase()}${acting.slice(1)}${acting === "restart" ? "ing" : acting === "start" ? "ing" : "ping"}`
-                    : s.status === "unreachable"
-                    ? "Node unreachable"
-                    : s.status === "running"
-                      ? "Running"
-                      : s.status === "stopped"
-                        ? "Stopped"
-                        : s.status}
-                </span>
-                <span>
-                  {s.nodeName} · Port {s.port} · {s.templateId}
-                </span>
-              </div>
+      <PageHeader
+        crumb={
+          <Link href="/servers" className="crumb">
+            <ArrowLeft /> Servers
+          </Link>
+        }
+        title={
+          <>
+            {s.name}
+            <Status
+              pill
+              live
+              value={moving ? "pending" : s.suspended ? "suspended" : s.status}
+              label={moving || undefined}
+            />
+          </>
+        }
+        meta={
+          <>
+            <span>{s.templateId}</span>
+            <span className="sep">·</span>
+            <span>
+              {s.nodeName || "No node"}
+              {s.location ? <span className="faint"> {s.location}</span> : null}
+            </span>
+            <span className="sep">·</span>
+            <span className="num">Port {s.port}</span>
+          </>
+        }
+        actions={
+          canManage ? (
+            <div className="joined" role="group" aria-label="Power">
+              {s.status === "running" ? (
+                <Button disabled={blocked} busy={acting === "stop"} onClick={() => action("stop")}>
+                  {acting === "stop" ? null : <Square />}
+                  Stop
+                </Button>
+              ) : (
+                <Button className="btn--go" disabled={blocked} busy={acting === "start"} onClick={() => action("start")}>
+                  {acting === "start" ? null : <Play />}
+                  Start
+                </Button>
+              )}
+              <Button disabled={blocked} busy={acting === "restart"} onClick={() => action("restart")}>
+                {acting === "restart" ? null : <RotateCw />}
+                Restart
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger className={btn("ghost", "icon")} aria-label="More power actions" disabled={blocked}>
+                  <MoreHorizontal />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="menu">
+                  <DropdownMenuItem className="is-danger" onClick={() => action("kill")}>
+                    <CircleStop /> Force stop
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            {canManage && (
-              <div className="actions">
-                <Btn
-                  className="primary"
-                  disabled={
-                    !!acting || s.status === "unreachable" || s.suspended
-                  }
-                  onClick={() => action("start")}
-                >
-                  {acting === "start" ? <LoaderCircle size={14} className="spin" /> : <Play size={14} fill="currentColor" />}
-                  {acting === "start" ? "Starting" : "Start"}
-                </Btn>
-                <Btn
-                  disabled={
-                    !!acting || s.status === "unreachable" || s.suspended
-                  }
-                  onClick={() => action("restart")}
-                >
-                  {acting === "restart" ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
-                  {acting === "restart" ? "Restarting" : "Restart"}
-                </Btn>
-                <Btn
-                  disabled={
-                    !!acting || s.status === "unreachable" || s.suspended
-                  }
-                  onClick={() => action("stop")}
-                >
-                  {acting === "stop" ? <LoaderCircle size={14} className="spin" /> : <Square size={12} fill="currentColor" />}
-                  {acting === "stop" ? "Stopping" : "Stop"}
-                </Btn>
-                <Btn
-                  className="subtle-danger"
-                  disabled={
-                    !!acting || s.status === "unreachable" || s.suspended
-                  }
-                  onClick={() => action("kill")}
-                >
-                  {acting === "kill" ? <LoaderCircle size={14} className="spin" /> : <CircleStop size={14} />}
-                  {acting === "kill" ? "Stopping" : "Force stop"}
-                </Btn>
-              </div>
-            )}
-          </div>
-          {s.status === "unreachable" && (
-            <Notice status="warning" title="Node unreachable">
-              The node is unreachable. The last observed server state was „
-              {s.observedStatus}“. The server may still be running. Actions are
-              not recommended until the node reconnects.
-            </Notice>
-          )}
-          {s.suspended && (
-            <Notice status="warning" title="Server suspended">
-              This server is suspended. Customers cannot start it.
-            </Notice>
-          )}
-          <Err text={actionError} />
-          {acting && <Notice status="accent" className="operation-notice" title={`${acting === "kill" ? "Force stop" : acting[0].toUpperCase() + acting.slice(1)} request sent`}>
-            Sending the request to the server host…
-          </Notice>}
-          {actionMessage && <Notice status="accent" className="operation-notice" title="Operation queued">{actionMessage}</Notice>}
-          <div className="detail-stats">
-            <div>
-              <span>Memory</span>
-              <strong>{s.memoryMb} MB</strong>
-            </div>
-            <div>
-              <span>CPU limit</span>
-              <strong>{s.cpuPercent}%</strong>
-            </div>
-            <div>
-              <span>Disk / allowance</span>
-              <strong>
-                {s.usage?.diskBytes !== undefined
-                  ? `${(s.usage.diskBytes / 1048576).toFixed(0)} / `
-                  : ""}
-                {s.diskMb} MB
-              </strong>
-            </div>
-            <div>
-              <span>Status</span>
-              <strong>{s.status}</strong>
-            </div>
-          </div>
-          {activeTab ? (
-          <Tabs
-            value={activeTab}
-            onValueChange={(value: string) => router.replace(`/servers/${id}?tab=${value}`, { scroll: false })}
-            className="detail-tabs"
-          >
-            <TabsList aria-label="Server sections">
-              {visibleTabs.map(({ key, label }) => <TabsTrigger key={key} value={key}>{label}</TabsTrigger>)}
-            </TabsList>
-            <TabsContent value={activeTab} className="tab-panel">
-            {activeTab === "files" ? (
-              <Files id={id} />
+          ) : undefined
+        }
+      />
+
+      {s.status === "unreachable" && (
+        <Notice tone="warn" title={`${s.nodeName || "The node"} is offline`}>
+          Last reported as {s.observedStatus}. The server may still be running; power actions are paused until the node reconnects.
+        </Notice>
+      )}
+      {s.suspended && (
+        <Notice tone="warn" title="Suspended">
+          {admin ? "The owner can’t start this server until you unsuspend it in Settings." : "An administrator suspended this server."}
+        </Notice>
+      )}
+
+      <Vitals server={s} samples={live.samples} />
+
+      {activeTab ? (
+        <Tabs
+          value={activeTab}
+          onValueChange={(value: string) => router.replace(`/servers/${id}?tab=${value}`, { scroll: false })}
+        >
+          <TabsList aria-label="Server sections">
+            {visibleTabs.map(({ key, label }) => (
+              <TabsTrigger key={key} value={key}>
+                {label}
+              </TabsTrigger>
+            ))}
+            <TabsIndicator />
+          </TabsList>
+          <TabsContent value={activeTab} key={activeTab}>
+            {activeTab === "console" ? (
+              <LiveConsole id={id} live={live} minecraft={!!s.supportsRcon} reachable={reachable} />
+            ) : activeTab === "files" ? (
+              <ServerFiles id={id} />
             ) : activeTab === "backups" ? (
-              <BackupManager
-                id={id}
-                canManage={canManage}
-                canRestore={canManage}
-              />
+              <BackupManager id={id} canManage={canManage} canRestore={canManage} />
             ) : activeTab === "schedules" ? (
               <Schedules id={id} minecraft={!!s.supportsRcon} />
             ) : activeTab === "access" ? (
               <Access id={id} />
-            ) : activeTab === "settings" ? (
-              <ServerSettings
-                id={id}
-                server={s}
-                admin={admin}
-                reload={reload}
-                action={action}
-              />
-            ) : activeTab === "console" ? (
-              <LiveConsole
-                id={id}
-                minecraft={!!s.supportsRcon}
-                reachable={s.status !== "unreachable"}
-              />
+            ) : activeTab === "jobs" ? (
+              <Jobs id={id} />
             ) : (
-              <Notice status="warning">
-                This server is available in read-only mode. Console, files,
-                backups, or management require the corresponding permission.
-              </Notice>
+              <ServerSettings id={id} server={s} admin={admin} reload={reload} action={action} />
             )}
-            </TabsContent>
-          </Tabs>
-          ) : <Notice status="warning">This server is available in read-only mode. Console, files, backups, or management require the corresponding permission.</Notice>}
-          <details className="section jobs-disclosure">
-            <summary>
-              Recent jobs{" "}
-              <span className="muted small">
-                {items(jobs).filter((j) => j.state === "failed").length} failed
-                · {items(jobs).length} recent
-              </span>
-            </summary>
-            <div className="section-title">
-              <div>
-                <h2>Job history</h2>
-                <p className="muted">Refreshes every eight seconds</p>
-              </div>
-              <Btn onClick={reloadJobs}>
-                <RefreshCw size={15} /> Refresh
-              </Btn>
-            </div>
-            <Err text={jobsError} />
-            {jobsBusy ? (
-              <div className="skeleton" />
-            ) : jobsError ? null : !items(jobs).length ? (
-              <div className="empty">No jobs found.</div>
-            ) : (
-              <div className="job-alert-list">
-                {items(jobs).map((job) => (
-                  <Notice
-                    key={job.id}
-                    status={job.state === "failed" ? "danger" : job.state === "succeeded" ? "success" : ["queued", "running"].includes(job.state) ? "accent" : "default"}
-                    className="job-alert"
-                    title={`${job.kind} · ${job.state}`}
-                    role={job.state === "failed" ? "alert" : "status"}
-                  >
-                    <span className="job-alert-meta">{fmtDate(job.createdAt)} <code>{job.id}</code></span>
-                    {job.error ? <span className="job-alert-error">{job.error}</span> : null}
-                  </Notice>
-                ))}
-              </div>
-            )}
-          </details>
-        </>
-      )}
+          </TabsContent>
+        </Tabs>
+      ) : null}
     </>
   );
 }
-function Files({ id }: { id: string }) {
-  const confirm = useConfirm();
-  const [sftp, setSftp] = useState<{
-    username: string;
-    password: string;
-  } | null>(null);
-  const [path, setPath] = useState("/"),
-    [selected, setSelected] = useState(""),
-    [content, setContent] = useState(""),
-    [originalContent, setOriginalContent] = useState(""),
-    [message, setMessage] = useState(""),
-    [opError, setOpError] = useState(""),
-    [uploading, setUploading] = useState(false);
-  const { data, error, busy, reload } = useData<{
-    path: string;
-    items: Array<{
-      name: string;
-      path: string;
-      type: string;
-      size: number;
-      modifiedAt: string;
-    }>;
-  }>(`/servers/${id}/files?path=${encodeURIComponent(path)}`);
-  async function open(file: string) {
-    if (
-      selected &&
-      content !== originalContent &&
-      !(await confirm("Discard unsaved changes to this file?"))
-    )
-      return;
-    setSelected("");
-    setContent("");
-    try {
-      const r = await request<{ content: string }>(
-        `/servers/${id}/files/content?path=${encodeURIComponent(file)}`,
-      );
-      setContent(r.content);
-      setOriginalContent(r.content);
-      setSelected(file);
-      setOpError("");
-    } catch (e) {
-      setOpError((e as Error).message);
-    }
-  }
-  async function execute(fn: () => Promise<any>) {
-    setOpError("");
-    setMessage("");
-    try {
-      await fn();
-      setMessage("Operation completed.");
-      reload();
-    } catch (e) {
-      setOpError((e as Error).message);
-    }
-  }
-  const parent =
-    path === "/" ? "/" : path.slice(0, path.lastIndexOf("/")) || "/";
-  const pathSegments = path.split("/").filter(Boolean);
+
+const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(bytes < 10 * 1024 ** 3 ? 2 : 1)}`;
+
+/** Live CPU and memory from the node's samples, plus disk use. */
+function Vitals({ server: s, samples }: { server: Server; samples: Sample[] }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, []);
+  const last = samples[samples.length - 1];
+  const fresh = !!last && s.status === "running" && now - last.t < STALE_MS;
+  const recent = fresh ? samples.filter((p) => now - p.t < 5 * 60_000) : [];
+  const quiet = s.status === "unreachable" ? "Node unreachable" : s.status !== "running" ? "Not running" : "No recent samples";
+  const cpuShare = fresh ? (last.cpu / Math.max(1, s.cpuPercent)) * 100 : 0;
+  const memLimit = fresh ? last.memLimit : s.memoryMb * 1024 * 1024;
+  const diskUsed = s.usage?.diskBytes;
+  const diskLimit = s.diskMb * 1024 * 1024;
   return (
-    <section className="section">
-      <div className="section-title">
-        <div>
-          <h2>Files</h2>
-          <p className="muted">
-            Virtual server directory · streamed transfers up to 1 GiB · text
-            editor up to 1 MiB.
-          </p>
+    <section className="vitals" aria-label="Resources">
+      <div className="vital">
+        <div className="vital__head">CPU</div>
+        <div className="vital__value">
+          {fresh ? <Num value={cpuShare} format={(n) => `${Math.round(n)}%`} /> : <span className="faint">—</span>}
+          <small>of {fmtCpu(s.cpuPercent)}</small>
         </div>
-        <Btn onClick={reload}>
-          <RefreshCw size={15} /> Refresh
-        </Btn>
-      </div>
-      <div className="sftp-access">
-        <Btn
-          onClick={() =>
-            execute(async () =>
-              setSftp(await json("POST", `/servers/${id}/sftp`)),
-            )
-          }
-        >
-          Connect with SFTP
-        </Btn>
-        <Modal
-          open={!!sftp}
-          onOpenChange={(open) => {
-            if (!open) setSftp(null);
-          }}
-          title="Connect with SFTP"
-          description="Temporary credentials are valid for 15 minutes."
-        >
-          {sftp && (
-            <Notice status="warning" title="SFTP credentials" className="token-notice">
-              <span>
-                Connect to your node’s SFTP address. Local evaluation:
-                localhost:2022.
-              </span>
-              <span>Username</span>
-              <code>{sftp.username}</code>
-              <span>Password</span>
-              <code>{sftp.password}</code>
-              <CopyButton value={sftp.password} label="Copy password" />
-            </Notice>
-          )}
-        </Modal>
-      </div>
-      <div className="breadcrumbs">
-        <nav aria-label="File path" className="file-breadcrumbs">
-          <button type="button" aria-current={path === "/" ? "page" : undefined} onClick={() => { setPath("/"); setSelected(""); }}>Root</button>
-          {pathSegments.map((segment, index) => {
-            const segmentPath = `/${pathSegments.slice(0, index + 1).join("/")}`;
-            return <span className="file-breadcrumb-part" key={segmentPath}><span aria-hidden="true">/</span><button type="button" aria-current={index === pathSegments.length - 1 ? "page" : undefined} onClick={() => { setPath(segmentPath); setSelected(""); }}>{segment}</button></span>;
-          })}
-        </nav>
-        {path !== "/" && <Btn onClick={() => { setPath(parent); setSelected(""); }}><ArrowLeft size={14} /> Parent folder</Btn>}
-      </div>
-      <Err text={error || opError} />
-      {message && <Notice status="success">{message}</Notice>}
-      {busy ? (
-        <div className="skeleton" />
-      ) : error ? null : !data?.items?.length ? (
-        <div className="empty">Directory is empty.</div>
-      ) : (
-        <div className="file-list">
-          {data.items.map((f) => (
-            <div key={f.path} className="file-row">
-              <button
-                disabled={f.type !== "directory" && f.size > 1024 * 1024}
-                title={
-                  f.type !== "directory" && f.size > 1024 * 1024
-                    ? "Editor limit is 1 MiB — download file instead"
-                    : undefined
-                }
-                onClick={() =>
-                  f.type === "directory"
-                    ? (setPath(f.path), setSelected(""))
-                    : open(f.path)
-                }
-              >
-                {f.type === "directory" ? (
-                  <Folder size={18} />
-                ) : (
-                  <FileText size={18} />
-                )}
-                <span>{f.name}</span>
-              </button>
-              <span className="muted small">
-                {f.type === "directory" ? "Folder" : fmtSize(f.size)}
-                {f.type !== "directory" && f.size > 1024 * 1024
-                  ? " · download only"
-                  : ""}
-              </span>
-              {f.type !== "directory" && (
-                <>
-                  <Btn
-                    onClick={async () => {
-                      try {
-                        const transfer = await json(
-                          "POST",
-                          `/servers/${id}/transfers`,
-                          { direction: "download", path: f.path },
-                        );
-                        setMessage("Preparing download…");
-                        await waitTransfer(id, transfer.id);
-                        const a = document.createElement("a");
-                        a.href = `${API}/api/servers/${id}/transfers/${transfer.id}/content`;
-                        a.download = f.name;
-                        a.click();
-                        setMessage("Download ready.");
-                      } catch (e) {
-                        setOpError((e as Error).message);
-                      }
-                    }}
-                    aria-label={`${f.name} download`}
-                  >
-                    <Download size={15} />
-                  </Btn>
-                  {f.name.toLowerCase().endsWith(".zip") && (
-                    <Btn
-                      onClick={async () => {
-                        if (
-                          await confirm(
-                            `${f.name} extract into this directory?`,
-                          )
-                        )
-                          execute(() =>
-                            json("POST", `/servers/${id}/files/extract`, {
-                              path: f.path,
-                            }),
-                          );
-                      }}
-                    >
-                      Extract ZIP
-                    </Btn>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {!busy && !error && (
-        <div className="two-col file-tools">
-          <div>
-            <h3>Upload</h3>
-            <form
-              className="form"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const file = new FormData(e.currentTarget).get("file") as File;
-                setUploading(true);
-                await execute(async () => {
-                  if (file.size > 1024 ** 3)
-                    throw new Error("Maximum file size is 1 GiB.");
-                  const transfer = await json(
-                    "POST",
-                    `/servers/${id}/transfers`,
-                    {
-                      direction: "upload",
-                      path: (path === "/" ? "" : path) + "/" + file.name,
-                      size: file.size,
-                    },
-                  );
-                  await request(`/servers/${id}/transfers/${transfer.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/octet-stream" },
-                    body: file,
-                  });
-                  setMessage("Upload received. Saving on your server…");
-                  await waitTransfer(id, transfer.id);
-                });
-                setUploading(false);
-              }}
-            >
-              <label className="upload-dropzone">
-                <Upload size={19} />
-                <span><strong>Choose a file to upload</strong><small>Up to 1 GiB · saved to this folder</small></span>
-                <input aria-label="Choose file" type="file" name="file" required />
-              </label>
-              <Btn disabled={uploading} type="submit">
-                <Upload size={15} /> {uploading ? "Uploading…" : "Upload file"}
-              </Btn>
-            </form>
-          </div>
-          <div>
-            <h3>Create folder</h3>
-            <Submit
-              label="Create folder"
-              onRun={async (v) => {
-                await json("POST", `/servers/${id}/files/mkdir`, {
-                  path: (path === "/" ? "" : path) + "/" + v.name,
-                });
-                reload();
-              }}
-            >
-              <label className="field">
-                <span>Folder name</span>
-                <input name="name" required pattern="[^/]+" />
-              </label>
-            </Submit>
-          </div>
-        </div>
-      )}
-      {selected && (
-        <div className="editor">
-          <div className="section-title">
-            <h3 className="mono">{selected}</h3>
-            <Btn
-              onClick={async () => {
-                if (
-                  content === originalContent ||
-                  (await confirm("Discard unsaved changes to this file?"))
-                )
-                  setSelected("");
-              }}
-            >
-              Close
-            </Btn>
-          </div>
-          <textarea
-            aria-label="File contents"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={16}
+        <div className="vital__chart">
+          <Sparkline
+            points={recent.map((p) => ({ t: p.t, v: p.cpu }))}
+            max={s.cpuPercent}
+            label="CPU"
+            empty={fresh ? "" : quiet}
+            format={(v) => `${Math.round((v / Math.max(1, s.cpuPercent)) * 100)}%`}
           />
-          <Btn
-            className="primary"
-            onClick={() => {
-              if (new TextEncoder().encode(content).length > 1024 * 1024) {
-                setOpError("Editor limit: 1 MiB (UTF-8).");
-                return;
-              }
-              execute(async () => {
-                await json(
-                  "PUT",
-                  `/servers/${id}/files/content?path=${encodeURIComponent(selected)}`,
-                  { content },
-                );
-                setOriginalContent(content);
-              });
-            }}
-          >
-            Save file
-          </Btn>
         </div>
-      )}
+      </div>
+      <div className="vital">
+        <div className="vital__head">Memory</div>
+        <div className="vital__value">
+          {fresh ? <Num value={last.mem} format={(n) => `${gb(n)} GB`} /> : <span className="faint">—</span>}
+          <small>of {fmtBytes(memLimit)}</small>
+        </div>
+        <div className="vital__chart">
+          <Sparkline
+            points={recent.map((p) => ({ t: p.t, v: p.mem }))}
+            max={memLimit}
+            label="Memory"
+            empty={fresh ? "" : quiet}
+            format={(v) => `${gb(v)} GB`}
+          />
+        </div>
+      </div>
+      <div className="vital">
+        <div className="vital__head">Disk</div>
+        <div className="vital__value">
+          {diskUsed !== undefined ? <DiskValue bytes={Number(diskUsed)} /> : <span className="faint">—</span>}
+          <small>of {fmtMb(s.diskMb)}</small>
+        </div>
+        <div className="vital__meter">
+          {diskUsed !== undefined ? <Meter value={diskUsed} max={diskLimit} label="Disk used" /> : null}
+        </div>
+      </div>
     </section>
   );
 }
+
+/** Animated disk use that keeps one unit while it rolls. */
+function DiskValue({ bytes }: { bytes: number }) {
+  const [div, unit] = bytes >= 1024 ** 3 ? [1024 ** 3, "GB"] : bytes >= 1024 ** 2 ? [1024 ** 2, "MB"] : [1024, "KB"];
+  return <Num value={bytes / div} format={(n) => `${n >= 100 ? Math.round(n) : n.toFixed(1).replace(/\.0$/, "")} ${unit}`} />;
+}
+
+type JobGroup = Job & { count: number };
+
+/** Collapses runs of identical jobs (e.g. repeated file listings) into one row. */
+function groupJobs(list: Job[]) {
+  const out: JobGroup[] = [];
+  for (const j of list) {
+    const prev = out[out.length - 1];
+    if (prev && prev.kind === j.kind && prev.state === j.state && !prev.error && !j.error) prev.count++;
+    else out.push({ ...j, count: 1 });
+  }
+  return out;
+}
+
+function Jobs({ id }: { id: string }) {
+  const { data, error, loading } = useLoad<Job[]>(`/jobs?serverId=${id}&limit=50`, 8000);
+  const columns: DataColumn<JobGroup>[] = [
+    {
+      id: "kind",
+      header: "Job",
+      value: (j) => j.kind,
+      render: (j) => (
+        <div className="cell-main">
+          <strong className="mono" style={{ fontWeight: 400 }}>
+            {j.kind}
+            {j.count > 1 ? <span className="faint"> ×{j.count}</span> : null}
+          </strong>
+          {j.error ? <small style={{ color: "var(--bad)" }}>{j.error}</small> : null}
+        </div>
+      ),
+    },
+    { id: "state", header: "State", value: (j) => j.state, render: (j) => <Status value={j.state} tone={j.state === "running" ? "busy" : undefined} /> },
+    {
+      id: "created",
+      header: "When",
+      align: "end",
+      value: (j) => j.createdAt,
+      render: (j) => (
+        <time className="muted num" dateTime={j.createdAt} title={fmtTime(j.createdAt)}>
+          {fmtAgo(j.createdAt)}
+        </time>
+      ),
+    },
+  ];
+  return (
+    <Card flush>
+      <State loading={loading} error={error}>
+        <DataTable data={groupJobs(items(data))} columns={columns} rowKey={(j) => j.id} empty="No jobs have run for this server yet." />
+      </State>
+    </Card>
+  );
+}
+
+const units = { minutes: 1, hours: 60, days: 1440 } as const;
+function every(minutes?: number) {
+  if (!minutes) return "—";
+  if (minutes % 1440 === 0) return `${minutes / 1440} ${minutes === 1440 ? "day" : "days"}`;
+  if (minutes % 60 === 0) return `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`;
+  return `${minutes} min`;
+}
+const scheduleLabel: Record<string, string> = { backup: "Back up", command: "Run command" };
+
 function Schedules({ id, minecraft }: { id: string; minecraft: boolean }) {
   const confirm = useConfirm();
-  const { data, error, busy, reload } = useData<Array<Record<string, any>>>(
-    `/servers/${id}/schedules`,
-  );
-  const [opError, setOpError] = useState("");
-  return (
-    <section className="section">
-      <div className="section-title">
-        <div>
-          <h2>Schedules</h2>
-          <p className="muted">
-            Interval-based; runs at least every five minutes.
-          </p>
+  const toast = useToast();
+  const { data, error, loading, reload } = useLoad<Row[]>(`/servers/${id}/schedules`);
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState(minecraft ? "command" : "backup");
+  const columns: DataColumn<Row>[] = [
+    {
+      id: "kind",
+      header: "Action",
+      value: (s) => s.kind || "",
+      render: (s) => (
+        <div className="cell-main">
+          <strong>{scheduleLabel[s.kind] || s.kind}</strong>
+          {s.command ? <small className="mono">{s.command}</small> : null}
         </div>
-      </div>
-      {!busy && !error && (
-        <Submit
-          label="Create schedule"
-          onRun={async (v) => {
-            await json("POST", `/servers/${id}/schedules`, {
-              kind: v.kind,
-              intervalMinutes: Number(v.intervalMinutes),
-              ...(v.kind === "command" ? { command: v.command } : {}),
-            });
-            reload();
+      ),
+    },
+    { id: "interval", header: "Every", value: (s) => s.interval_minutes || 0, render: (s) => <span className="num">{every(s.interval_minutes)}</span> },
+    {
+      id: "next",
+      header: "Next run",
+      value: (s) => s.next_run_at || "",
+      render: (s) => (
+        <time className="muted" title={fmtTime(s.next_run_at)}>
+          {fmtAgo(s.next_run_at)}
+        </time>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      align: "end",
+      sortable: false,
+      value: () => "",
+      render: (s) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="row-hover"
+          onClick={async () => {
+            if (!(await confirm("It stops running immediately.", { title: `Delete “${scheduleLabel[s.kind] || s.kind}” schedule?`, confirmLabel: "Delete" }))) return;
+            try {
+              await request(`/servers/${id}/schedules/${s.id}`, { method: "DELETE" });
+              toast({ tone: "ok", title: "Schedule deleted" });
+              reload();
+            } catch (e) {
+              toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
+            }
           }}
         >
-          <div className="form-grid">
-            <label className="field">
-              <span>Action</span>
-              <select name="kind">
-                <option value="backup">Backup</option>
-                {minecraft && (
-                  <option value="command">Minecraft command</option>
-                )}
-              </select>
-            </label>
-            <label className="field">
-              <span>Interval (minutes)</span>
-              <input
-                name="intervalMinutes"
-                type="number"
-                min="5"
-                defaultValue="60"
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Command (only for the command action)</span>
-              <input
-                name="command"
-                placeholder="say Maintenance in 5 minutes"
-              />
-            </label>
-          </div>
-        </Submit>
-      )}
-      <Err text={error || opError} />
-      {busy ? (
-        <div className="skeleton" />
-      ) : error ? null : !items(data).length ? (
-        <div className="empty">No schedules found.</div>
-      ) : (
-        <DataTable
-          data={items(data)}
-          rowKey={(schedule) => String(schedule.id)}
-          columns={[
-            { id: "kind", header: "Type", value: (schedule) => schedule.kind || "", render: (schedule) => <span>{schedule.kind}{schedule.command && <small className="table-subline mono">{schedule.command}</small>}</span> },
-            { id: "interval", header: "Interval", value: (schedule) => schedule.interval_minutes || 0, render: (schedule) => `${schedule.interval_minutes} min` },
-            { id: "next", header: "Next run", value: (schedule) => schedule.next_run_at || "", render: (schedule) => fmtDate(schedule.next_run_at) },
-            { id: "actions", header: "Actions", value: () => "", sortable: false, render: (schedule) => <Btn className="subtle-danger" onClick={async () => { if (!(await confirm("Delete this schedule?"))) return; try { await request(`/servers/${id}/schedules/${schedule.id}`, { method: "DELETE" }); reload(); } catch (error) { setOpError((error as Error).message); } }}>Remove</Btn> },
-          ] as DataColumn<Record<string, any>>[]}
-        />
-      )}
-    </section>
-  );
-}
-function Access({ id }: { id: string }) {
-  const confirm = useConfirm();
-  const { data, error, busy, reload } = useData<Array<Record<string, any>>>(
-    `/servers/${id}/collaborators`,
-  );
-  const [opError, setOpError] = useState("");
+          Delete
+        </Button>
+      ),
+    },
+  ];
   return (
-    <section className="section">
-      <div className="section-title">
-        <div>
-          <h2>Collaborators</h2>
-          <p className="muted">
-            Only existing customer accounts can be added. No email invitation is
-            sent.
-          </p>
-        </div>
-      </div>
-      {!busy && !error && (
-        <Submit
-          label="Grant access"
-          onRun={async (v) => {
-            const perms = [
-              "view",
-              "console",
-              "files",
-              "backups",
-              "manage",
-            ].filter((p) => v[p]);
-            await json("POST", `/servers/${id}/collaborators`, {
-              email: v.email,
-              permissions: perms,
+    <>
+      <Toolbar>
+        <span />
+        <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+          <Plus /> New schedule
+        </Button>
+      </Toolbar>
+      <Card flush>
+        <State loading={loading} error={error}>
+          <DataTable data={items(data)} rowKey={(s) => String(s.id)} columns={columns} empty="No schedules yet." />
+        </State>
+      </Card>
+      <Modal open={open} onOpenChange={setOpen} title="New schedule">
+        <Form
+          submit="Add schedule"
+          success="Schedule added"
+          onSubmit={async (v) => {
+            const minutes = Number(v.every) * units[v.unit as keyof typeof units];
+            if (!Number.isFinite(minutes) || minutes < 5) throw new Error("Schedules can run at most every 5 minutes.");
+            if (minutes > 10080) throw new Error("The longest interval is 7 days.");
+            await json("POST", `/servers/${id}/schedules`, {
+              kind: v.kind,
+              intervalMinutes: Math.round(minutes),
+              ...(v.kind === "command" ? { command: v.command } : {}),
             });
+            setOpen(false);
             reload();
           }}
         >
           <label className="field">
-            <span>Email of an existing customer</span>
-            <input name="email" type="email" required />
+            <span className="field__label">Action</span>
+            <select className="input select" name="kind" value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="backup">{scheduleLabel.backup}</option>
+              {minecraft && <option value="command">{scheduleLabel.command}</option>}
+            </select>
           </label>
-          <div className="checks">
-            {["view", "console", "files", "backups", "manage"].map((p, i) => (
-              <label key={p}>
-                <input type="checkbox" name={p} defaultChecked={i === 0} />{" "}
-                {
-                  (
-                    {
-                      view: "View",
-                      console: "Console",
-                      files: "Files",
-                      backups: "Backups",
-                      manage: "Manage",
-                    } as Record<string, string>
-                  )[p]
-                }
-              </label>
-            ))}
+          {kind === "command" && (
+            <label className="field">
+              <span className="field__label">Command</span>
+              <input className="input mono" name="command" required maxLength={1024} placeholder="say Restarting in 5 minutes" />
+            </label>
+          )}
+          <div className="field">
+            <span className="field__label">Every</span>
+            <div className="input-group">
+              <input className="input" name="every" type="number" min={1} step={1} defaultValue={6} required aria-label="Interval" />
+              <select className="input select" name="unit" defaultValue="hours" aria-label="Unit">
+                <option value="minutes">minutes</option>
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+            </div>
           </div>
-        </Submit>
-      )}
-      <Err text={error || opError} />
-      {busy ? (
-        <div className="skeleton" />
-      ) : error ? null : !items(data).length ? (
-        <div className="empty">No collaborators added yet.</div>
-      ) : (
-        <DataTable
-          data={items(data)}
-          rowKey={(collaborator) => String(collaborator.userId)}
-          columns={[
-            { id: "email", header: "Customer", value: (collaborator) => collaborator.email || "", render: (collaborator) => <strong className="table-primary-text">{collaborator.email}</strong> },
-            { id: "permissions", header: "Permissions", value: (collaborator) => (collaborator.permissions || []).join(", ") },
-            { id: "actions", header: "Actions", value: () => "", sortable: false, render: (collaborator) => <Btn className="subtle-danger" onClick={async () => { if (!(await confirm(`Remove access for ${collaborator.email}?`))) return; try { await request(`/servers/${id}/collaborators/${collaborator.userId}`, { method: "DELETE" }); reload(); } catch (error) { setOpError((error as Error).message); } }}>Remove</Btn> },
-          ] as DataColumn<Record<string, any>>[]}
-        />
-      )}
-    </section>
+        </Form>
+      </Modal>
+    </>
   );
 }
-function DeleteServer({ id }: { id: string }) {
+
+const permissionLabels: Record<ServerPermission, string> = {
+  view: "View",
+  console: "Console",
+  files: "Files",
+  backups: "Backups",
+  manage: "Manage",
+};
+
+function Access({ id }: { id: string }) {
   const confirm = useConfirm();
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
-    [message, setMessage] = useState("");
-  async function remove() {
-    if (
-      !(await confirm(
-        "Permanently delete this server and all local data? This cannot be undone.",
-      ))
-    )
-      return;
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const { jobId } = await request<{ jobId: string }>(
-        `/servers/${id}?confirm=true`,
-        { method: "DELETE" },
-      );
-      setMessage("Deletion queued. Waiting for the node to remove the server…");
-      for (let attempt = 0; attempt < 25; attempt++) {
-        const jobs = items(
-          await request<Job[]>(`/jobs?serverId=${id}&limit=20`),
-        );
-        const job = jobs.find((j) => j.id === jobId);
-        if (job?.state === "failed")
-          throw new Error(
-            job.error || "The node could not delete this server.",
-          );
-        if (job?.state === "succeeded") {
-          window.location.assign("/servers");
-          return;
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-      setMessage(
-        "Deletion is still queued. Check Recent jobs; the server will disappear after the node confirms removal.",
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const toast = useToast();
+  const { data, error, loading, reload } = useLoad<Row[]>(`/servers/${id}/collaborators`);
+  const [open, setOpen] = useState(false);
+  const columns: DataColumn<Row>[] = [
+    { id: "email", header: "Person", value: (c) => c.email || "", render: (c) => <strong style={{ fontWeight: 500 }}>{c.email}</strong> },
+    {
+      id: "permissions",
+      header: "Can use",
+      value: (c) => (c.permissions || []).join(", "),
+      render: (c) => (
+        <span className="muted">{(c.permissions || []).map((p: ServerPermission) => permissionLabels[p] || p).join(", ")}</span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      align: "end",
+      sortable: false,
+      value: () => "",
+      render: (c) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="row-hover"
+          onClick={async () => {
+            if (!(await confirm("They lose access to this server immediately.", { title: `Remove ${c.email}?`, confirmLabel: "Remove" }))) return;
+            try {
+              await request(`/servers/${id}/collaborators/${c.userId}`, { method: "DELETE" });
+              toast({ tone: "ok", title: `Removed ${c.email}` });
+              reload();
+            } catch (e) {
+              toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
+            }
+          }}
+        >
+          Remove
+        </Button>
+      ),
+    },
+  ];
   return (
-    <div className="delete-server">
-      <Btn className="subtle-danger" disabled={busy} onClick={remove}>
-        {busy ? "Deleting…" : "Delete server"}
-      </Btn>
-      <Err text={error} />
-      {message && <Notice status="success">{message}</Notice>}
-    </div>
+    <>
+      <Toolbar>
+        <span />
+        <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+          <Plus /> Invite
+        </Button>
+      </Toolbar>
+      <Card flush>
+        <State loading={loading} error={error}>
+          <DataTable data={items(data)} rowKey={(c) => String(c.userId)} columns={columns} empty="Only the owner and administrators can use this server." />
+        </State>
+      </Card>
+      <Modal open={open} onOpenChange={setOpen} title="Invite to this server" description="They need an existing customer account. No email is sent.">
+        <Form
+          submit="Invite"
+          success="Access granted"
+          onSubmit={async (v) => {
+            const permissions = (Object.keys(permissionLabels) as ServerPermission[]).filter((p) => v[p]);
+            if (!permissions.length) throw new Error("Choose at least one permission.");
+            await json("POST", `/servers/${id}/collaborators`, { email: v.email, permissions });
+            setOpen(false);
+            reload();
+          }}
+        >
+          <label className="field">
+            <span className="field__label">Email</span>
+            <input className="input" name="email" type="email" required autoFocus />
+          </label>
+          <div className="field">
+            <span className="field__label">Can use</span>
+            <div className="checks">
+              {(Object.keys(permissionLabels) as ServerPermission[]).map((p) => (
+                <CheckChip key={p} name={p} label={permissionLabels[p]} defaultChecked={p === "view"} />
+              ))}
+            </div>
+          </div>
+        </Form>
+      </Modal>
+    </>
   );
 }
+
 function ServerSettings({
   id,
   server,
@@ -953,152 +625,160 @@ function ServerSettings({
   reload: () => void;
   action: (kind: string, extra?: Record<string, unknown>) => Promise<void>;
 }) {
-  const {
-    data: templates,
-    error: templateError,
-    busy: templateBusy,
-  } = useData<Template[]>("/templates");
-  const editable =
-    items(templates).find((t) => t.id === server.templateId)
-      ?.editableVariables || [];
+  const { data: templates, error: templateError, loading } = useLoad<(Template & { env?: Record<string, string> })[]>("/templates");
+  const template = items(templates).find((t) => t.id === server.templateId);
+  const editable = template?.editableVariables || [];
   return (
     <>
-      <section className="section">
-        <div className="section-title">
-          <div>
-            <h2>Startup variables</h2>
-            <p className="muted">
-              Changing these values recreates the container with its existing
-              data and causes downtime. Leave a field blank to keep its current
-              value.
-            </p>
-          </div>
-        </div>
-        <Err text={templateError} />
-        {templateBusy ? (
-          <div className="skeleton" />
-        ) : templateError ? null : editable.length ? (
-          <Submit
-            label="Update startup variables"
-            onRun={async (v) => {
-              const variables = Object.fromEntries(
-                editable
-                  .filter(
-                    (k) =>
+      <Card title="Startup variables" description="Saving recreates the container with its files, so the server restarts.">
+        <State loading={loading} error={templateError}>
+          {editable.length ? (
+            <Form
+              submit="Save"
+              success="Saved — the server is being recreated"
+              onSubmit={async (v) => {
+                const variables = Object.fromEntries(
+                  editable
+                    .filter((k) =>
                       v[k] !== undefined &&
-                      (server.variables?.[k] === undefined
-                        ? v[k] !== ""
-                        : v[k] !== server.variables[k]),
-                  )
-                  .map((k) => [k, v[k]]),
-              );
-              if (!Object.keys(variables).length)
-                throw new Error("No changes to save.");
-              await json("PATCH", `/servers/${id}/settings`, { variables });
-              reload();
-            }}
-          >
-            <div className="form-grid">
-              {editable.map((key) => (
-                <label className="field" key={key}>
-                  <span>{key}</span>
-                  <input
-                    name={key}
-                    defaultValue={server.variables?.[key] || ""}
-                  />
-                </label>
-              ))}
-            </div>
-          </Submit>
-        ) : (
-          <div className="empty">This template has no editable variables.</div>
-        )}
-      </section>
-      {admin && (
-        <section className="section">
-          <div className="section-title">
-            <div>
-              <h2>Administrative actions</h2>
-              <p className="muted">
-                Resource changes are checked against reserved capacity.
-              </p>
-            </div>
-          </div>
-          <Submit
-            label="Update server"
-            onRun={async (v) => {
-              await json("PATCH", `/servers/${id}`, {
-                name: v.name,
-                memoryMb: Number(v.memoryMb),
-                cpuPercent: Number(v.cpuPercent),
-                diskMb: Number(v.diskMb),
-              });
-              reload();
-            }}
-          >
-            <div className="form-grid">
-              <label className="field">
-                <span>Name</span>
-                <input name="name" defaultValue={server.name} required />
-              </label>
-              <label className="field">
-                <span>RAM (MB)</span>
-                <input
-                  name="memoryMb"
-                  type="number"
-                  min="1"
-                  defaultValue={server.memoryMb}
-                  required
-                />
-              </label>
-              <label className="field">
-                <span>CPU (%)</span>
-                <input
-                  name="cpuPercent"
-                  type="number"
-                  min="1"
-                  defaultValue={server.cpuPercent}
-                  required
-                />
-              </label>
-              <label className="field">
-                <span>Disk (MB)</span>
-                <input
-                  name="diskMb"
-                  type="number"
-                  min="1"
-                  defaultValue={server.diskMb}
-                  required
-                />
-              </label>
-            </div>
-          </Submit>
-          <div className="danger-zone">
-            <Btn
-              onClick={() => action(server.suspended ? "unsuspend" : "suspend")}
+                      (server.variables?.[k] === undefined ? v[k] !== "" : v[k] !== server.variables[k]),
+                    )
+                    .map((k) => [k, v[k]]),
+                );
+                if (!Object.keys(variables).length) throw new Error("Nothing changed.");
+                await json("PATCH", `/servers/${id}/settings`, { variables });
+                reload();
+              }}
             >
-              {server.suspended ? "Unsuspend" : "Suspend"}
-            </Btn>
-            <Btn className="subtle-danger" onClick={() => action("reinstall")}>
-              Reinstall
-            </Btn>
-            <DeleteServer id={id} />
-          </div>
-        </section>
+              <div className="form-grid">
+                {editable.map((key) => (
+                  <label className="field" key={key}>
+                    <span className="field__label mono">{key}</span>
+                    <input
+                      className="input"
+                      name={key}
+                      defaultValue={server.variables?.[key] || ""}
+                      placeholder={template?.env?.[key] || "Template default"}
+                    />
+                  </label>
+                ))}
+              </div>
+            </Form>
+          ) : (
+            <p className="muted">This template has no variables you can change.</p>
+          )}
+        </State>
+      </Card>
+      {admin && (
+        <>
+          <Card title="Resources">
+            <Form
+              submit="Save"
+              onSubmit={async (v) => {
+                await json("PATCH", `/servers/${id}`, {
+                  name: v.name,
+                  memoryMb: Math.round(Number(v.memoryGb) * 1024),
+                  cpuPercent: Math.round(Number(v.cores) * 100),
+                  diskMb: Math.round(Number(v.diskGb) * 1024),
+                });
+                reload();
+              }}
+            >
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field__label">Name</span>
+                  <input className="input" name="name" defaultValue={server.name} required />
+                </label>
+                <UnitField label="Memory" name="memoryGb" unit="GB" step={0.5} defaultValue={server.memoryMb / 1024} />
+                <UnitField label="CPU" name="cores" unit="cores" step={0.25} defaultValue={server.cpuPercent / 100} />
+                <UnitField label="Disk" name="diskGb" unit="GB" step={1} defaultValue={server.diskMb / 1024} />
+              </div>
+            </Form>
+          </Card>
+          <Card title="Danger zone" flush>
+            <div className="danger-list">
+              <div className="danger-row">
+                <div>
+                  <strong>{server.suspended ? "Unsuspend" : "Suspend"}</strong>
+                  <p>
+                    {server.suspended
+                      ? "Let the owner start and use this server again."
+                      : "Stop the server and prevent its owner from starting it."}
+                  </p>
+                </div>
+                <div>
+                  <Button size="sm" onClick={() => action(server.suspended ? "unsuspend" : "suspend")}>
+                    {server.suspended ? "Unsuspend" : "Suspend"}
+                  </Button>
+                </div>
+              </div>
+              <div className="danger-row">
+                <div>
+                  <strong>Reinstall</strong>
+                  <p>Delete all files and set the server up from its template again.</p>
+                </div>
+                <div>
+                  <Button size="sm" variant="danger" onClick={() => action("reinstall")}>
+                    Reinstall
+                  </Button>
+                </div>
+              </div>
+              <DeleteServer id={id} name={server.name} />
+            </div>
+          </Card>
+        </>
       )}
     </>
   );
 }
 
-async function waitTransfer(serverId: string, id: string) {
-  const end = Date.now() + 30 * 60 * 1000;
-  while (Date.now() < end) {
-    const t = await request<{ state: string; error?: string }>(
-      `/servers/${serverId}/transfers/${id}`,
-    );
-    if (t.state === "succeeded") return;
-    if (t.state === "failed") throw new Error(t.error || "Transfer failed");
-    await new Promise((r) => setTimeout(r, 2000));
+function DeleteServer({ id, name }: { id: string; name: string }) {
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [message, setMessage] = useState("");
+  async function remove() {
+    if (
+      !(await confirm(`${name} and all of its files are deleted from the node. This can’t be undone.`, {
+        title: `Delete ${name}?`,
+        confirmLabel: "Delete server",
+      }))
+    )
+      return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const { jobId } = await request<{ jobId: string }>(`/servers/${id}?confirm=true`, { method: "DELETE" });
+      setMessage("Waiting for the node to remove the server…");
+      for (let attempt = 0; attempt < 25; attempt++) {
+        const job = items(await request<Job[]>(`/jobs?serverId=${id}&limit=20`)).find((j) => j.id === jobId);
+        if (job?.state === "failed") throw new Error(job.error || "The node couldn’t delete this server.");
+        if (job?.state === "succeeded") {
+          window.location.assign("/servers");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      setMessage("Deletion is still queued. The server disappears once its node confirms.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
-  throw new Error("Transfer is still pending. Check recent jobs.");
+  return (
+    <div className="danger-row">
+      <div>
+        <strong>Delete</strong>
+        <p>{message || "Permanently remove the server and its files from the node."}</p>
+      </div>
+      <div>
+        <Button size="sm" variant="danger" busy={busy} onClick={remove}>
+          Delete
+        </Button>
+        {error ? <span className="inline-error">{error}</span> : null}
+      </div>
+    </div>
+  );
 }

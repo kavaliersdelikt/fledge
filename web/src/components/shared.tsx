@@ -1,162 +1,620 @@
 "use client";
 import { request } from "@/lib/api";
-import { RefreshCw } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, LoaderCircle, TriangleAlert } from "lucide-react";
 import {
-useCallback,
-useEffect,
-useRef,
-useState,
-type FormEvent,
-type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
 } from "react";
 import { useConfirm } from "./feedback";
-import { Button as PrimitiveButton } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useGlide } from "./motion";
+import { useToast } from "./toast";
+
 export type Row = Record<string, any>;
-export type NoticeStatus = "default" | "accent" | "success" | "warning" | "danger";
+export type Tone = "neutral" | "ok" | "warn" | "bad" | "busy";
 
-export function Notice({
-  children,
-  status = "default",
-  title,
-  className = "",
-  role = status === "danger" ? "alert" : "status",
-}: {
-  children: ReactNode;
-  status?: NoticeStatus;
-  title?: string;
-  className?: string;
-  role?: "alert" | "status";
-}) {
-  return (
-    <Alert className={`fledge-alert alert--${status} ${className}`} role={role}>
-      {title ? <AlertTitle>{title}</AlertTitle> : null}
-      <AlertDescription className="alert__description">{children}</AlertDescription>
-    </Alert>
-  );
+/* ---------- Buttons ---------- */
+
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "md" | "sm" | "icon";
+
+export function btn(variant: ButtonVariant = "secondary", size: ButtonSize = "md", extra = "") {
+  return `btn btn--${variant}${size === "md" ? "" : ` btn--${size}`}${extra ? ` ${extra}` : ""}`;
 }
 
-export function ErrorBox({ message }: { message: string }) {
-  return <Notice status="danger" title="Something went wrong">{message}</Notice>;
-}
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty-state">{children}</div>;
-}
 export function Button({
   children,
   busy = false,
-  variant,
+  variant = "secondary",
+  size = "md",
+  className = "",
+  type = "button",
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   busy?: boolean;
-  variant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "link";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }) {
-  const oldClassName = props.className || "";
-  const resolvedVariant = variant || (
-    oldClassName.includes("primary") ? "default" :
-    oldClassName.includes("danger") ? "destructive" :
-    oldClassName.includes("subtle") ? "ghost" : "outline"
-  );
-  const className = oldClassName.replace(/\b(primary|danger|subtle-danger)\b/g, "");
-  const toneClass = resolvedVariant === "default" ? "primary" : resolvedVariant === "destructive" ? "danger" : oldClassName.includes("subtle-danger") ? "subtle-danger" : "";
   return (
-    <PrimitiveButton
+    <button
       {...props}
+      type={type}
       disabled={busy || props.disabled}
-      variant={resolvedVariant}
-      className={`btn ${toneClass} ${className}`}
+      aria-busy={busy || undefined}
+      className={btn(variant, size, className)}
     >
-      {busy ? <RefreshCw size={15} className="spin" /> : null}
+      {busy ? <LoaderCircle className="spin" /> : null}
       {children}
-    </PrimitiveButton>
+    </button>
   );
 }
+
+/* ---------- Page structure ---------- */
+
+export function PageHeader({
+  title,
+  description,
+  actions,
+  meta,
+  crumb,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  meta?: ReactNode;
+  crumb?: ReactNode;
+}) {
+  return (
+    <header className="page-header">
+      <div className="page-header__text">
+        {crumb}
+        <h1>{title}</h1>
+        {description ? <p>{description}</p> : null}
+        {meta ? <div className="page-header__meta">{meta}</div> : null}
+      </div>
+      {actions ? <div className="page-header__actions">{actions}</div> : null}
+    </header>
+  );
+}
+
+export function Card({
+  title,
+  description,
+  actions,
+  children,
+  flush = false,
+  className = "",
+  id,
+}: {
+  title?: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  children?: ReactNode;
+  flush?: boolean;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <section id={id} className={`card${flush ? " card--flush" : ""}${className ? ` ${className}` : ""}`}>
+      {title || actions ? (
+        <div className="card__head">
+          <div>
+            {title ? <h2>{title}</h2> : null}
+            {description ? <p>{description}</p> : null}
+          </div>
+          {actions ? <div className="card__actions">{actions}</div> : null}
+        </div>
+      ) : null}
+      {children ? <div className="card__body">{children}</div> : null}
+    </section>
+  );
+}
+
+export function Toolbar({ children }: { children: ReactNode }) {
+  return <div className="toolbar">{children}</div>;
+}
+
+export function SearchInput({
+  value,
+  onChange,
+  placeholder = "Search",
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  label: string;
+}) {
+  return (
+    <input
+      type="search"
+      className="input input--search"
+      aria-label={label}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  label,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: { value: T; label: ReactNode }[];
+  label: string;
+}) {
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  useGlide(box, '[aria-pressed="true"]', value);
+  return (
+    <div className="segmented glide" role="group" aria-label={label} ref={setBox}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Feedback ---------- */
+
+export function Notice({
+  children,
+  tone = "neutral",
+  title,
+  action,
+  className = "",
+}: {
+  children?: ReactNode;
+  tone?: Tone;
+  title?: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`notice notice--${tone}${className ? ` ${className}` : ""}`}
+      role={tone === "bad" ? "alert" : "status"}
+    >
+      <NoticeIcon tone={tone} />
+      <div className="notice__text">
+        {title ? <strong>{title}</strong> : null}
+        {children ? <div>{children}</div> : null}
+      </div>
+      {action ? <div className="notice__action">{action}</div> : null}
+    </div>
+  );
+}
+
+function NoticeIcon({ tone }: { tone: Tone }) {
+  const Icon = { ok: CircleCheck, warn: TriangleAlert, bad: CircleAlert, busy: LoaderCircle, neutral: Info }[tone];
+  return <Icon className={`notice__icon${tone === "busy" ? " spin" : ""}`} aria-hidden="true" />;
+}
+
+export function ErrorNotice({ message }: { message?: string }) {
+  return message ? <Notice tone="bad">{message}</Notice> : null;
+}
+
+export function Empty({
+  title,
+  children,
+  action,
+}: {
+  title: ReactNode;
+  children?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="empty">
+      <strong>{title}</strong>
+      {children ? <p>{children}</p> : null}
+      {action ? <div className="empty__action">{action}</div> : null}
+    </div>
+  );
+}
+
+export function Skeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="skeleton" aria-label="Loading" role="status">
+      {Array.from({ length: rows }, (_, i) => (
+        <span key={i} />
+      ))}
+    </div>
+  );
+}
+
+export function State({
+  loading,
+  error,
+  children,
+  rows,
+}: {
+  loading: boolean;
+  error: string;
+  children: ReactNode;
+  rows?: number;
+}) {
+  if (loading) return <Skeleton rows={rows} />;
+  if (error) return <ErrorNotice message={error} />;
+  return <>{children}</>;
+}
+
+/* ---------- Status ---------- */
+
+const statusCopy: Record<string, string> = {
+  connected: "Connected",
+  disconnected: "Offline",
+  unreachable: "Unreachable",
+  running: "Running",
+  stopped: "Stopped",
+  failed: "Failed",
+  queued: "Queued",
+  provisioning: "Provisioning",
+  succeeded: "Succeeded",
+  draining: "Draining",
+  active: "Active",
+  suspended: "Suspended",
+  deleting: "Deleting",
+  missing: "Missing",
+  pending: "Pending",
+};
+
+export function toneOf(value: string): Tone {
+  if (["connected", "running", "succeeded", "active"].includes(value)) return "ok";
+  if (["failed", "disconnected", "unreachable", "missing"].includes(value)) return "bad";
+  if (["draining", "suspended", "stopped"].includes(value)) return value === "stopped" ? "neutral" : "warn";
+  if (["queued", "provisioning", "deleting", "pending", "starting", "restarting", "stopping"].includes(value)) return "busy";
+  return "neutral";
+}
+
+export function Status({
+  value,
+  label,
+  tone,
+  live = false,
+  pill = false,
+}: {
+  value?: string;
+  label?: ReactNode;
+  tone?: Tone;
+  /** Adds a slow breathing halo to an "ok" dot. Use once per screen, for the thing being watched. */
+  live?: boolean;
+  pill?: boolean;
+}) {
+  const v = value || "unknown";
+  const t = tone || toneOf(v);
+  const text = statusCopy[v] ?? v[0].toUpperCase() + v.slice(1);
+  return (
+    <span
+      className={`status status--${t}${live && t === "ok" ? " status--live" : ""}${pill ? " status-pill" : ""}`}
+      title={label === "" ? text : undefined}
+    >
+      <span className="status__dot" aria-hidden="true" />
+      {label === "" ? <span className="sr-only">{text}</span> : (label ?? text)}
+    </span>
+  );
+}
+
+export function Meter({
+  value,
+  max,
+  label,
+}: {
+  value: number;
+  max: number;
+  label: string;
+}) {
+  const percent = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  const tone = percent >= 90 ? "bad" : percent >= 75 ? "warn" : "ok";
+  return (
+    <div
+      className={`meter meter--${tone}`}
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={value}
+    >
+      <span style={{ width: `${percent}%` }} />
+    </div>
+  );
+}
+
+/** Accessible on/off toggle. */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  busy = false,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  busy?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="switch"
+      aria-checked={checked}
+      aria-label={label}
+      aria-busy={busy || undefined}
+      disabled={disabled || busy}
+      onClick={() => onChange(!checked)}
+    />
+  );
+}
+
+/** Toggle chip for a checkbox in a group (e.g. permissions). */
+export function CheckChip({ name, label, defaultChecked }: { name: string; label: string; defaultChecked?: boolean }) {
+  return (
+    <label className="check">
+      <input type="checkbox" name={name} defaultChecked={defaultChecked} />
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="m3.5 8.5 3 3 6-7" />
+      </svg>
+      {label}
+    </label>
+  );
+}
+
+/* ---------- Forms ---------- */
+
+/** Number input with its unit shown inside the field. */
+export function UnitField({
+  label,
+  name,
+  unit,
+  step,
+  defaultValue,
+  value,
+  onChange,
+  min,
+}: {
+  label: string;
+  name: string;
+  unit: string;
+  step: number;
+  defaultValue?: number;
+  value?: number;
+  onChange?: (n: number) => void;
+  min?: number;
+}) {
+  return (
+    <label className="field">
+      <span className="field__label">{label}</span>
+      <span className="input-unit">
+        <input
+          className="input"
+          name={name}
+          type="number"
+          min={min ?? step}
+          step={step}
+          required
+          defaultValue={defaultValue}
+          value={value === undefined ? undefined : Number.isFinite(value) ? value : ""}
+          onChange={onChange ? (e) => onChange(e.target.valueAsNumber) : undefined}
+        />
+        <span aria-hidden="true">{unit}</span>
+      </span>
+    </label>
+  );
+}
+
+
 export function Field({
   label,
   name,
   type = "text",
   required = false,
   min,
+  max,
   defaultValue,
   placeholder,
+  hint,
+  autoComplete,
+  pattern,
 }: {
   label: string;
   name: string;
   type?: string;
   required?: boolean;
   min?: number;
+  max?: number;
   defaultValue?: string | number;
   placeholder?: string;
+  hint?: ReactNode;
+  autoComplete?: string;
+  pattern?: string;
 }) {
   return (
     <label className="field">
-      <span>{label}</span>
+      <span className="field__label">{label}</span>
       <input
+        className="input"
         name={name}
         type={type}
         required={required}
         min={min}
+        max={max}
         minLength={type === "password" && !required ? 12 : undefined}
         defaultValue={defaultValue}
         placeholder={placeholder}
+        autoComplete={autoComplete}
+        pattern={pattern}
       />
+      {hint ? <span className="field__hint">{hint}</span> : null}
     </label>
   );
 }
+
 export function Select({
   label,
   name,
   children,
   required = true,
   defaultValue,
+  hint,
 }: {
   label: string;
   name: string;
   children: ReactNode;
   required?: boolean;
   defaultValue?: string;
+  hint?: ReactNode;
 }) {
   return (
     <label className="field">
-      <span>{label}</span>
-      <select name={name} required={required} defaultValue={defaultValue}>
+      <span className="field__label">{label}</span>
+      <select className="input select" name={name} required={required} defaultValue={defaultValue}>
         {children}
       </select>
+      {hint ? <span className="field__hint">{hint}</span> : null}
     </label>
   );
 }
-export function Badge({ value }: { value?: string }) {
-  const s = value || "unknown";
-  const tone = ["connected", "running", "succeeded", "active"].includes(s)
-    ? "good"
-    : ["failed", "disconnected", "unreachable", "suspended"].includes(s)
-      ? "bad"
-      : "neutral";
+
+export function Form({
+  children,
+  onSubmit,
+  submit = "Save",
+  danger = false,
+  success = "Saved",
+  secondary,
+}: {
+  children: ReactNode;
+  onSubmit: (values: Row) => Promise<void | string>;
+  submit?: string;
+  danger?: boolean;
+  success?: string | false;
+  secondary?: ReactNode;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false),
+    [err, setErr] = useState("");
+  async function run(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    try {
+      const message = await onSubmit(
+        Object.fromEntries(new FormData(e.currentTarget).entries()),
+      );
+      if (success !== false) toast({ tone: "ok", title: message || success });
+    } catch (ex) {
+      setErr((ex as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <span className={`badge ${tone}`} role="status">
-      <span className="dot" />
-      {(
-        {
-          connected: "Connected",
-          disconnected: "Unreachable",
-          unreachable: "Node unreachable",
-          running: "Running",
-          stopped: "Stopped",
-          failed: "Failed",
-          queued: "Queued",
-          provisioning: "Provisioning",
-          succeeded: "Succeeded",
-          draining: "Draining",
-        } as Row
-      )[s] || s}
-    </span>
+    <form onSubmit={run} className="form">
+      {children}
+      <ErrorNotice message={err} />
+      <div className="form__actions">
+        <Button type="submit" busy={busy} variant={danger ? "danger" : "primary"}>
+          {submit}
+        </Button>
+        {secondary}
+      </div>
+    </form>
   );
 }
+
+/** Runs an async action behind a confirmation dialog and reports failures inline. */
+export function Confirm({
+  text,
+  onConfirm,
+  children,
+  danger = true,
+  confirmLabel,
+  variant,
+  size = "sm",
+}: {
+  text: string;
+  onConfirm: () => Promise<void>;
+  children: ReactNode;
+  danger?: boolean;
+  confirmLabel?: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      busy={busy}
+      size={size}
+      variant={variant || (danger ? "danger" : "secondary")}
+      onClick={async () => {
+        if (!(await confirm(text, { danger, confirmLabel }))) return;
+        setBusy(true);
+        try {
+          await onConfirm();
+        } catch (e) {
+          toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {children}
+    </Button>
+  );
+}
+
+export function Pager({
+  offset,
+  setOffset,
+  count,
+  size = 50,
+}: {
+  offset: number;
+  setOffset: (n: number) => void;
+  count: number;
+  size?: number;
+}) {
+  if (offset === 0 && count < size) return null;
+  return (
+    <div className="pager">
+      <span>{count ? `${offset + 1}–${offset + count}` : "No entries"}</span>
+      <div>
+        <Button size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - size))}>
+          Previous
+        </Button>
+        <Button size="sm" disabled={count < size} onClick={() => setOffset(offset + size)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Data ---------- */
+
 export function useLoad<T>(path: string | null, interval = 0) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
-    sequence = useRef(0);
+    sequence = useRef(0),
+    loaded = useRef(false);
   const reload = useCallback(async () => {
     if (!path) {
       setLoading(false);
@@ -166,11 +624,14 @@ export function useLoad<T>(path: string | null, interval = 0) {
     try {
       const value = await request<T>(path);
       if (sequence.current === ticket) {
+        loaded.current = true;
         setData(value);
         setError("");
       }
     } catch (e) {
-      if (sequence.current === ticket) {
+      // A failed background refresh keeps what's on screen; only a failed
+      // first load (or a changed path) shows the error.
+      if (sequence.current === ticket && !loaded.current) {
         setData(null);
         setError((e as Error).message);
       }
@@ -180,6 +641,7 @@ export function useLoad<T>(path: string | null, interval = 0) {
   }, [path]);
   useEffect(() => {
     ++sequence.current;
+    loaded.current = false;
     setLoading(true);
     setData(null);
     setError("");
@@ -191,183 +653,4 @@ export function useLoad<T>(path: string | null, interval = 0) {
     };
   }, [reload, interval]);
   return { data, error, loading, reload };
-}
-export function State({
-  loading,
-  error,
-  children,
-}: {
-  loading: boolean;
-  error: string;
-  children: ReactNode;
-}) {
-  return (
-    <>
-      {loading ? <div className="skeleton" aria-label="Loading data" /> : null}
-      {error ? <ErrorBox message={error} /> : null}
-      {!loading && !error && children}
-    </>
-  );
-}
-export function Section({
-  title,
-  description,
-  children,
-  action,
-  className = "",
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-  action?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`section ${className}`}>
-      <div className="section-title">
-        <div>
-          <h2>{title}</h2>
-          {description && <p className="muted">{description}</p>}
-        </div>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-export function Form({
-  children,
-  onSubmit,
-  submit = "Save",
-  danger = false,
-}: {
-  children: ReactNode;
-  onSubmit: (values: Row) => Promise<void>;
-  submit?: string;
-  danger?: boolean;
-}) {
-  const [busy, setBusy] = useState(false),
-    [err, setErr] = useState(""),
-    [ok, setOk] = useState("");
-  async function run(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
-    setErr("");
-    setOk("");
-    try {
-      await onSubmit(
-        Object.fromEntries(new FormData(e.currentTarget).entries()),
-      );
-      setOk("Request succeeded.");
-    } catch (ex) {
-      setErr((ex as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <form onSubmit={run} className="form">
-      {children}
-      {err && <ErrorBox message={err} />}
-      <div className="form-actions">
-        <Button
-          type="submit"
-          busy={busy}
-          className={danger ? "danger" : "primary"}
-        >
-          {submit}
-        </Button>
-        {ok && (
-          <Notice status="success" className="form-success">
-            {ok}
-          </Notice>
-        )}
-      </div>
-    </form>
-  );
-}
-export function Confirm({
-  text,
-  onConfirm,
-  children,
-  danger = true,
-}: {
-  text: string;
-  onConfirm: () => Promise<void>;
-  children: ReactNode;
-  danger?: boolean;
-}) {
-  const confirm = useConfirm();
-  const [busy, setBusy] = useState(false),
-    [err, setErr] = useState("");
-  return (
-    <>
-      <Button
-        type="button"
-        busy={busy}
-        className={danger ? "subtle-danger" : ""}
-        onClick={async () => {
-          if (!(await confirm(text))) return;
-          setBusy(true);
-          setErr("");
-          try {
-            await onConfirm();
-          } catch (e) {
-            setErr((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {children}
-      </Button>
-      {err && <ErrorBox message={err} />}
-    </>
-  );
-}
-export function Pager({
-  offset,
-  setOffset,
-  count,
-}: {
-  offset: number;
-  setOffset: (n: number) => void;
-  count: number;
-}) {
-  return (
-    <div className="pager">
-      <Button
-        disabled={offset === 0}
-        onClick={() => setOffset(Math.max(0, offset - 50))}
-      >
-        Back
-      </Button>
-      <span>{count ? `${offset + 1}–${offset + count}` : "No entries"}</span>
-      <Button disabled={count < 50} onClick={() => setOffset(offset + 50)}>
-        Next
-      </Button>
-    </div>
-  );
-}
-export function Heading({
-  eyebrow,
-  title,
-  subtitle,
-  action,
-}: {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="heading">
-      <div>
-        <div className="eyebrow">{eyebrow}</div>
-        <h1>{title}</h1>
-        <p className="muted">{subtitle}</p>
-      </div>
-      {action}
-    </div>
-  );
 }

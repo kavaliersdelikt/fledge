@@ -15,8 +15,12 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return <TabsPrimitive.Tab data-slot="tabs-trigger" className={cn("ui-tabs-trigger", className)} {...props} />;
 }
 
+function TabsIndicator({ className, ...props }: TabsPrimitive.Indicator.Props) {
+  return <TabsPrimitive.Indicator data-slot="tabs-indicator" className={cn("ui-tabs-indicator", className)} {...props} />;
+}
+
 function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return <TabsPrimitive.Panel data-slot="tabs-content" className={cn("ui-tabs-content", className)} {...props} />;
 }
 
-export { Tabs, TabsContent, TabsList, TabsTrigger };
+export { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger };

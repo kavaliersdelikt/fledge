@@ -1,10 +1,12 @@
 "use client";
-import { API,fmtDate,fmtSize,json,request } from "@/lib/api";
-import { useCallback,useEffect,useState,type FormEvent } from "react";
-import { Button as SharedButton, Notice } from "./shared";
-
-import { useConfirm } from "./feedback";
+import { API, json, request } from "@/lib/api";
+import { fmtAgo, fmtBytes, fmtTime } from "@/lib/format";
+import { Download, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import DataTable, { type DataColumn } from "./DataTable";
+import { useConfirm } from "./feedback";
+import { Button, Card, ErrorNotice, Skeleton, Status, Switch, Toolbar, btn } from "./shared";
+import { useToast } from "./toast";
 
 type Backup = {
   id: string;
@@ -13,7 +15,7 @@ type Backup = {
   error?: string;
   createdAt: string;
 };
-type Policy = { retentionDays: number };
+type Verification = { intervalHours: number; latest?: { state: string; error?: string } };
 
 export default function BackupManager({
   id,
@@ -25,184 +27,233 @@ export default function BackupManager({
   canRestore: boolean;
 }) {
   const confirm = useConfirm();
-  const [backups, setBackups] = useState<Backup[]>([]),
-    [policy, setPolicy] = useState<Policy | null>(null),
-    [days, setDays] = useState(0);
-  const [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState(false),
-    [verification, setVerification] = useState<{
-      intervalHours: number;
-      latest?: { state: string; error?: string };
-    } | null>(null);
+  const [backups, setBackups] = useState<Backup[] | null>(null),
+    [retention, setRetention] = useState<number | null>(null),
+    [days, setDays] = useState(0),
+    [verification, setVerification] = useState<Verification | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState("");
+  const policyLoaded = useRef(false);
+
   const reload = useCallback(async () => {
     try {
-      const [list, p] = await Promise.all([
+      const [list, policy, verify] = await Promise.all([
         request<Backup[]>(`/servers/${id}/backups`),
-        request<Policy>(`/servers/${id}/backups/policy`),
+        request<{ retentionDays: number }>(`/servers/${id}/backups/policy`),
+        request<Verification>(`/servers/${id}/verification`),
       ]);
-      setVerification(await request(`/servers/${id}/verification`));
       setBackups(list);
-      setPolicy(p);
-      setDays(p.retentionDays);
+      setRetention(policy.retentionDays);
+      if (!policyLoaded.current) {
+        policyLoaded.current = true;
+        setDays(policy.retentionDays);
+      }
+      setVerification(verify);
       setError("");
     } catch (e) {
       setError((e as Error).message);
+      setBackups((current) => current ?? []);
     }
   }, [id]);
   useEffect(() => {
-    reload();
+    void reload();
     const timer = setInterval(reload, 12000);
     return () => clearInterval(timer);
   }, [reload]);
-  async function run(task: () => Promise<unknown>, message: string) {
-    setBusy(true);
-    setError("");
-    setNotice("");
+
+  const toast = useToast();
+  async function run(label: string, task: () => Promise<unknown>, message: string) {
+    setBusy(label);
     try {
       await task();
-      setNotice(message);
+      toast({ tone: "ok", title: message });
       await reload();
     } catch (e) {
-      setError((e as Error).message);
+      toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   }
   async function savePolicy(e: FormEvent) {
     e.preventDefault();
     if (!Number.isInteger(days) || days < 0 || days > 3650) {
-      setError("Enter a value from 0 to 3650 days.");
+      toast({ tone: "bad", title: "Enter a number of days from 0 to 3650" });
       return;
     }
-    await run(
-      () =>
-        json("PATCH", `/servers/${id}/backups/policy`, { retentionDays: days }),
-      "Retention policy saved.",
-    );
+    await run("policy", () => json("PATCH", `/servers/${id}/backups/policy`, { retentionDays: days }), "Retention saved");
   }
-  return (
-    <section className="section">
-      <div className="section-title">
-        <div>
-          <h2>Backups</h2>
-          <p className="muted">
-            The game stops cleanly while its files are archived, then restarts.
-            Forced shutdowns abort the backup.
-          </p>
+
+  const columns: DataColumn<Backup>[] = [
+    {
+      id: "created",
+      header: "Created",
+      value: (b) => b.createdAt,
+      render: (b) => (
+        <div className="cell-main">
+          <span title={fmtTime(b.createdAt)}>{fmtTime(b.createdAt)}</span>
+          <small>{fmtAgo(b.createdAt)}</small>
         </div>
-        <SharedButton
-          variant="default"
-          disabled={busy}
-          onClick={() =>
-            run(
-              () => json("POST", `/servers/${id}/backups`),
-              "Backup job queued.",
-            )
-          }
-        >
-          Create backup
-        </SharedButton>
-      </div>
-      <details className="backup-policy">
-        <summary>Retention & restore verification</summary>
-        {policy && (
-          <Notice status="accent" title="Automatic retention">
-            {policy.retentionDays === 0
-              ? "Off (default)"
-              : `${policy.retentionDays} days`}
-            . The latest successful backup is never deleted automatically.
-            Expired objects and metadata are removed in the background.
-          </Notice>
-        )}
-        {canManage && (
-          <form className="form" onSubmit={savePolicy}>
-            <label className="field">
-              <span>
-                Automatically delete backups after this many days (0 = off)
-              </span>
-              <input
-                type="number"
-                min="0"
-                max="3650"
-                value={days}
-                onChange={(e) => setDays(Number(e.target.value))}
-                required
-              />
-            </label>
-            <div className="form-actions">
-              <SharedButton variant="outline" disabled={busy || !policy} type="submit">
-                Save retention policy
-              </SharedButton>
-            </div>
-          </form>
-        )}
-        {canManage && (
-          <Notice status="default" title="Restore verification">
-            <p>
-              Periodically restore the latest backup into a temporary directory
-              and validate its contents. Your live server stays untouched. This
-              does not test game boot.
-            </p>
-            <SharedButton
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                run(
-                  () =>
-                    json("PATCH", `/servers/${id}/verification`, {
-                      intervalHours: verification?.intervalHours ? 0 : 24,
-                    }),
-                  "Verification schedule saved.",
-                )
-              }
+      ),
+    },
+    {
+      id: "state",
+      header: "Status",
+      value: (b) => b.state,
+      render: (b) => (
+        <div className="cell-main">
+          <Status value={b.state} tone={b.state === "running" ? "busy" : undefined} />
+          {b.error ? <small style={{ color: "var(--bad)" }}>{b.error}</small> : null}
+        </div>
+      ),
+    },
+    {
+      id: "size",
+      header: "Size",
+      align: "end",
+      value: (b) => b.sizeBytes || 0,
+      render: (b) => <span className="num muted">{fmtBytes(b.sizeBytes)}</span>,
+    },
+    {
+      id: "actions",
+      header: "",
+      align: "end",
+      sortable: false,
+      value: () => "",
+      render: (b) => (
+        <span className="row-actions">
+          {b.state === "succeeded" && (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!!busy}
+                onClick={() => run("verify", () => json("POST", `/servers/${id}/backups/${b.id}/verify`), "Restore check queued — see the Jobs tab")}
+              >
+                Verify
+              </Button>
+              {canRestore && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!!busy}
+                  onClick={async () => {
+                    if (await confirm(`Every file on the server is replaced with the backup from ${fmtTime(b.createdAt)}.`, { confirmLabel: "Restore" }))
+                      void run(
+                        "restore",
+                        () => json("POST", `/servers/${id}/actions`, { action: "restore", backupId: b.id, confirm: true }),
+                        "Restore queued",
+                      );
+                  }}
+                >
+                  Restore
+                </Button>
+              )}
+              <a
+                className={btn("ghost", "icon", "btn--sm")}
+                href={`${API}/api/servers/${id}/backups/${b.id}/download`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Download backup from ${fmtTime(b.createdAt)}`}
+              >
+                <Download />
+              </a>
+            </>
+          )}
+          {["succeeded", "failed"].includes(b.state) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!!busy}
+              onClick={async () => {
+                if (await confirm("The backup is deleted from storage. The most recent successful backup is always kept.", { confirmLabel: "Delete backup" }))
+                  void run("delete", () => request(`/servers/${id}/backups/${b.id}`, { method: "DELETE" }), "Backup deleted");
+              }}
             >
-              {verification?.intervalHours
-                ? "Disable daily verification"
-                : "Enable daily verification"}
-            </SharedButton>
-            {verification?.latest && (
-              <p className="small">
-                Last job: {verification.latest.state}
-                {verification.latest.error
-                  ? ` · ${verification.latest.error}`
-                  : ""}
-              </p>
-            )}
-          </Notice>
+              Delete
+            </Button>
+          )}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      {error && <ErrorNotice message={error} />}
+      <Toolbar>
+        <span />
+        <Button
+          size="sm"
+          variant="primary"
+          busy={busy === "create"}
+          onClick={async () => {
+            if (await confirm("The server stops cleanly while its files are archived, then starts again.", { danger: false, confirmLabel: "Back up now" }))
+              void run("create", () => json("POST", `/servers/${id}/backups`), "Backup queued");
+          }}
+        >
+          {busy === "create" ? null : <Plus />} Back up now
+        </Button>
+      </Toolbar>
+      <Card flush>
+        {backups === null ? (
+          <Skeleton rows={3} />
+        ) : (
+          <DataTable data={backups} columns={columns} rowKey={(b) => b.id} empty="No backups yet." />
         )}
-      </details>
-      {error && <Notice status="danger">{error}</Notice>}
-      {notice && (
-        <Notice status="success">{notice}</Notice>
+      </Card>
+      {canManage && (
+        <Card title="Retention and verification">
+          <div className="stack" style={{ gap: 18 }}>
+            <form className="setting-row" onSubmit={savePolicy}>
+              <div>
+                <strong>Delete old backups</strong>
+                <p>
+                  {retention ? `After ${retention} days.` : "Off — backups are kept until you delete them."} The latest successful backup is never removed.
+                </p>
+              </div>
+              <div className="btn-group">
+                <input
+                  className="input"
+                  style={{ width: 90 }}
+                  type="number"
+                  min={0}
+                  max={3650}
+                  aria-label="Days to keep backups, 0 to keep forever"
+                  value={Number.isFinite(days) ? days : ""}
+                  onChange={(e) => setDays(e.target.valueAsNumber)}
+                  required
+                />
+                <span className="muted small">days</span>
+                <Button size="sm" type="submit" busy={busy === "policy"} disabled={days === retention}>
+                  Save
+                </Button>
+              </div>
+            </form>
+            <div className="setting-row">
+              <div>
+                <strong>Daily restore check</strong>
+                <p>
+                  Restores the latest backup into a temporary folder and validates it. The live server isn’t touched.
+                  {verification?.latest ? ` Last check: ${verification.latest.state}${verification.latest.error ? ` — ${verification.latest.error}` : ""}.` : ""}
+                </p>
+              </div>
+              <Switch
+                label="Daily restore check"
+                checked={!!verification?.intervalHours}
+                busy={busy === "verification"}
+                disabled={!verification}
+                onChange={(on) =>
+                  run(
+                    "verification",
+                    () => json("PATCH", `/servers/${id}/verification`, { intervalHours: on ? 24 : 0 }),
+                    on ? "Daily restore check on" : "Daily restore check off",
+                  )
+                }
+              />
+            </div>
+          </div>
+        </Card>
       )}
-      <div className="section-title">
-        <h3>Saved backups</h3>
-        <SharedButton variant="outline" onClick={reload} disabled={busy}>
-          Refresh
-        </SharedButton>
-      </div>
-      {!backups.length ? (
-        <div className="empty">No backups found.</div>
-      ) : (
-        <DataTable
-          data={backups}
-          rowKey={(backup) => backup.id}
-          columns={[
-            { id: "created", header: "Created", value: (backup) => backup.createdAt, render: (backup) => <div>{fmtDate(backup.createdAt)}<small className="table-subline mono">{backup.id}</small></div> },
-            { id: "state", header: "Status", value: (backup) => backup.state, render: (backup) => <div className={`backup-state backup-state--${backup.state}`}>{backup.state}{backup.error && <small className="table-subline danger-text">{backup.error}</small>}</div> },
-            { id: "size", header: "Size", value: (backup) => backup.sizeBytes || 0, render: (backup) => fmtSize(backup.sizeBytes ?? undefined) },
-            { id: "actions", header: "Actions", value: () => "", sortable: false, render: (backup) => <div className="table-row-actions">
-              {backup.state === "succeeded" && <>
-                <a className="btn" href={`${API}/api/servers/${id}/backups/${backup.id}/download`} target="_blank" rel="noreferrer">Download</a>
-                <SharedButton variant="outline" disabled={busy} onClick={() => run(() => json("POST", `/servers/${id}/backups/${backup.id}/verify`), "Restore verification queued.")}>Verify</SharedButton>
-                {canRestore && <SharedButton variant="outline" disabled={busy} onClick={async () => { if (await confirm("Restore replaces all files on the target server. Continue?")) run(() => json("POST", `/servers/${id}/actions`, { action: "restore", backupId: backup.id, confirm: true }), "Restore job queued."); }}>Restore</SharedButton>}
-              </>}
-              {["succeeded", "failed"].includes(backup.state) && <SharedButton variant="destructive" disabled={busy} onClick={async () => { if (await confirm("Permanently delete this backup? The latest successful backup is protected.")) run(() => request(`/servers/${id}/backups/${backup.id}`, { method: "DELETE" }), "Backup deleted."); }}>Delete</SharedButton>}
-            </div> },
-          ] as DataColumn<Backup>[]}
-        />
-      )}
-    </section>
+    </>
   );
 }

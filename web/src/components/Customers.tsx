@@ -1,144 +1,212 @@
 "use client";
+import { items, json } from "@/lib/api";
+import { fmtDay, fmtTime } from "@/lib/format";
+import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import {
-fmtDate,
-items,
-json
-} from "@/lib/api";
-import {
-Plus
-} from "lucide-react";
-import {
-useState
-} from "react";
-
-import { CopyButton,Modal } from "./feedback";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import DataTable, { type DataColumn } from "./DataTable";
+import { Drawer, Modal, Secret, useConfirm } from "./feedback";
+import { useToast } from "./toast";
 import {
-Badge,
-Button,
-Confirm,
-Empty,
-Field,
-Form,
-Heading,
-Notice,
-Pager,
-Row,
-Section,
-State,
-useLoad
+  Button,
+  Card,
+  Empty,
+  Field,
+  Form,
+  PageHeader,
+  Pager,
+  Row,
+  SearchInput,
+  State,
+  Toolbar,
+  btn,
+  useLoad,
 } from "./shared";
+
 export default function Customers() {
+  const confirm = useConfirm();
   const [offset, setOffset] = useState(0),
-    [password, setPassword] = useState(""),
-    [create, setCreate] = useState(false),
-    [filter, setFilter] = useState("");
-  const { data, error, loading, reload } = useLoad<Row[]>(
-    `/customers?limit=50&offset=${offset}`,
-  );
+    [creating, setCreating] = useState(false),
+    [password, setPassword] = useState<{ email: string; value: string } | null>(null),
+    [query, setQuery] = useState(""),
+    toast = useToast();
+  const { data, error, loading, reload } = useLoad<Row[]>(`/customers?limit=50&offset=${offset}`);
+  const all = items(data);
+  const list = all.filter((c) => c.email.toLowerCase().includes(query.toLowerCase()));
+
+  async function act(fn: () => Promise<unknown>, done?: string) {
+    try {
+      await fn();
+      if (done) toast({ tone: "ok", title: done });
+      reload();
+    } catch (e) {
+      toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
+    }
+  }
+
+  const columns: DataColumn<Row>[] = [
+    {
+      id: "email",
+      header: "Email",
+      value: (c) => c.email,
+      render: (c) => (
+        <span className="ident">
+          <strong style={{ fontWeight: 500 }}>{c.email}</strong>
+          {c.disabled ? <span className="tag">Suspended</span> : null}
+        </span>
+      ),
+    },
+    {
+      id: "servers",
+      header: "Servers",
+      align: "end",
+      value: (c) => c.serverCount ?? 0,
+      render: (c) => <span className="num">{c.serverCount ?? 0}</span>,
+    },
+    {
+      id: "created",
+      header: "Joined",
+      optional: true,
+      value: (c) => c.createdAt || "",
+      render: (c) => (
+        <time className="muted" title={fmtTime(c.createdAt)}>
+          {fmtDay(c.createdAt)}
+        </time>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      align: "end",
+      sortable: false,
+      value: () => "",
+      render: (c) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger className={btn("ghost", "icon", "btn--sm")} aria-label={`Actions for ${c.email}`}>
+            <MoreHorizontal />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="menu">
+            <DropdownMenuItem
+              onClick={async () => {
+                if (
+                  await confirm(
+                    `${c.email} gets a new password and is signed out everywhere. You’ll see the password once.`,
+                    { confirmLabel: "Reset password" },
+                  )
+                )
+                  void act(async () => {
+                    const next = crypto.randomUUID() + crypto.randomUUID();
+                    await json("PATCH", `/customers/${c.id}`, { password: next });
+                    setPassword({ email: c.email, value: next });
+                  });
+              }}
+            >
+              <KeyRound /> Reset password
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={c.disabled ? undefined : "is-danger"}
+              onClick={async () => {
+                if (
+                  await confirm(
+                    c.disabled
+                      ? `${c.email} can sign in again.`
+                      : `${c.email} can’t sign in until you enable the account again.`,
+                    { danger: !c.disabled, confirmLabel: c.disabled ? "Enable" : "Suspend" },
+                  )
+                )
+                  void act(
+                    () => json("PATCH", `/customers/${c.id}`, { disabled: !c.disabled }),
+                    c.disabled ? `${c.email} enabled` : `${c.email} suspended`,
+                  );
+              }}
+            >
+              {c.disabled ? <UserCheck /> : <UserX />} {c.disabled ? "Enable account" : "Suspend account"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
   return (
     <>
-      <Heading
-        eyebrow="Workspace / Customers"
+      <PageHeader
         title="Customers"
-        subtitle="Manage the people and permissions across your workspace."
-        action={
-          <Button className="primary" onClick={() => setCreate(true)}>
-            <Plus size={16} />
-            Create customer
+        actions={
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus /> New customer
           </Button>
         }
       />
-      <Sheet
-        open={create}
-        onOpenChange={setCreate}
+      {all.length > 8 && (
+        <Toolbar>
+          <span />
+          <SearchInput label="Search customers" placeholder="Search by email" value={query} onChange={setQuery} />
+        </Toolbar>
+      )}
+      <Card flush>
+        <State loading={loading} error={error} rows={5}>
+          {list.length ? (
+            <DataTable data={list} rowKey={(c) => c.id} columns={columns} />
+          ) : all.length ? (
+            <Empty title="No matching customers" />
+          ) : (
+            <Empty
+              title="No customers yet"
+              action={
+                <Button size="sm" onClick={() => setCreating(true)}>
+                  Create a customer
+                </Button>
+              }
+            >
+              Every server belongs to a customer account.
+            </Empty>
+          )}
+          <Pager offset={offset} setOffset={setOffset} count={all.length} />
+        </State>
+      </Card>
+
+      <Drawer
+        open={creating}
+        onOpenChange={setCreating}
+        title="New customer"
+        description="Leave the password empty to generate one. Nothing is emailed — you share the details yourself."
       >
-        <SheetContent className="form-sheet" side="right">
-          <SheetHeader>
-            <SheetTitle>Create customer</SheetTitle>
-            <SheetDescription>Customers can access only owned or explicitly shared servers. A temporary password is shown once if you leave the password blank.</SheetDescription>
-          </SheetHeader>
-          <Form
+        <Form
           submit="Create customer"
+          success={false}
           onSubmit={async (v) => {
             const r = (await json("POST", "/customers", {
               email: v.email,
               password: v.password || undefined,
             })) as Row;
-            setPassword(r.temporaryPassword || "");
-            setCreate(false);
+            setCreating(false);
+            if (r.temporaryPassword) setPassword({ email: r.email, value: r.temporaryPassword });
             reload();
           }}
         >
-          <Field label="Email" name="email" type="email" required />
-          <Field
-            label="Password (optional, min. 12 characters)"
-            name="password"
-            type="password"
-          />
-          <Notice>
-            If you leave the password blank, the API creates a one-time
-            temporary password. It is not sent by email.
-          </Notice>
-          </Form>
-        </SheetContent>
-      </Sheet>
+          <Field label="Email" name="email" type="email" required autoComplete="off" />
+          <Field label="Password" name="password" type="password" autoComplete="new-password" hint="Optional. At least 12 characters." />
+        </Form>
+        <p className="faint small">
+          After creating the account, assign it a server from <Link href="/servers?new=1" className="text-button">New server</Link>.
+        </p>
+      </Drawer>
+
       <Modal
         open={!!password}
-        onOpenChange={(open) => {
-          if (!open) setPassword("");
-        }}
-        title="Save this password"
-        description="Shown only once. Share it securely with the customer; no email is sent."
+        onOpenChange={(o) => !o && setPassword(null)}
+        title="Password for this account"
+        description={password ? `Share it with ${password.email} securely. It isn’t shown again.` : undefined}
       >
-        <code className="secret-value">{password}</code>
-        <CopyButton value={password} />
+        {password && <Secret label="Password" value={password.value} />}
       </Modal>
-      <Section
-        title="Customer accounts"
-        action={
-          <input
-            className="search"
-            aria-label="Search customer accounts"
-            placeholder="Search this page…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        }
-      >
-        <State loading={loading} error={error}>
-          {!items(data).filter((c) =>
-            c.email.toLowerCase().includes(filter.toLowerCase()),
-          ).length ? (
-            <Empty>No customer accounts found.</Empty>
-          ) : (
-            <DataTable
-              data={items(data).filter((customer) => customer.email.toLowerCase().includes(filter.toLowerCase()))}
-              rowKey={(customer) => customer.id}
-              columns={[
-                { id: "email", header: "Customer", value: (customer) => customer.email, render: (customer) => <strong className="table-primary-text">{customer.email}</strong> },
-                { id: "servers", header: "Servers", value: (customer) => customer.serverCount },
-                { id: "created", header: "Created", value: (customer) => customer.createdAt || "", render: (customer) => fmtDate(customer.createdAt) },
-                { id: "access", header: "Access", value: (customer) => customer.disabled ? "suspended" : "active", render: (customer) => <Badge value={customer.disabled ? "suspended" : "active"} /> },
-                { id: "actions", header: "Actions", value: () => "", sortable: false, render: (customer) => <div className="table-row-actions"><Confirm danger={false} text={`Account ${customer.email} ${customer.disabled ? "enable" : "block"}?`} onConfirm={async () => { await json("PATCH", `/customers/${customer.id}`, { disabled: !customer.disabled }); reload(); }}>{customer.disabled ? "Enable" : "Suspend"}</Confirm><Confirm text={`Reset the password for ${customer.email}? The new password is shown once and all sessions will end.`} onConfirm={async () => { const nextPassword = crypto.randomUUID() + crypto.randomUUID(); await json("PATCH", `/customers/${customer.id}`, { password: nextPassword }); setPassword(nextPassword); reload(); }}>Reset password</Confirm></div> },
-              ] as DataColumn<Row>[]}
-              empty="No customer accounts found."
-            />
-          )}
-          <Pager
-            offset={offset}
-            setOffset={setOffset}
-            count={items(data).length}
-          />
-        </State>
-      </Section>
     </>
   );
 }

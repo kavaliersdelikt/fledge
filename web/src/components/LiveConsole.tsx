@@ -1,265 +1,157 @@
 "use client";
-import { API,json } from "@/lib/api";
-import { Send } from "lucide-react";
-import { useEffect,useRef,useState,type FormEvent } from "react";
-import { Button as SharedButton, Notice } from "./shared";
+import { json } from "@/lib/api";
+import { ArrowDown } from "lucide-react";
+import { memo, useEffect, useRef, useState, type FormEvent } from "react";
+import { Button, ErrorNotice, Status } from "./shared";
+import type { Line, LiveServer } from "./useLiveServer";
 
-type Frame = {
-  type: "status" | "log" | "sample";
-  connected?: boolean;
-  data?: string;
-  cpuPercent?: number;
-  memoryBytes?: number;
-  memoryLimitBytes?: number;
-  sampledAt?: string;
-};
+const levelOf = (text: string) =>
+  /\b(ERROR|SEVERE|FATAL)\b|Exception/.test(text) ? "is-error" : /\bWARN(ING)?\b/.test(text) ? "is-warn" : "";
+
+const LogLine = memo(function LogLine({ line, fresh }: { line: Line; fresh: boolean }) {
+  const cls = `console__line${fresh ? " is-new" : ""}${line.kind === "echo" ? " is-echo" : ` ${levelOf(line.text)}`}`;
+  const ts = /^(\[\d{2}:\d{2}:\d{2}\]\s?)(.*)$/.exec(line.text);
+  return (
+    <span className={cls}>
+      {ts ? (
+        <>
+          <span className="ts">{ts[1]}</span>
+          {ts[2]}
+        </>
+      ) : (
+        line.text || " "
+      )}
+    </span>
+  );
+});
+
 export default function LiveConsole({
   id,
+  live,
   minecraft,
   reachable,
 }: {
   id: string;
+  live: LiveServer;
   minecraft: boolean;
   reachable: boolean;
 }) {
-  const [output, setOutput] = useState(""),
-    [connection, setConnection] = useState<
-      "connecting" | "connected" | "disconnected"
-    >("connecting");
-  const [sample, setSample] = useState<Frame | null>(null),
-    [now, setNow] = useState(Date.now()),
-    [command, setCommand] = useState(""),
-    [commandResult, setCommandResult] = useState(""),
+  const { connection, lines, echo } = live;
+  const [command, setCommand] = useState(""),
+    [ack, setAck] = useState(""),
     [error, setError] = useState(""),
-    [pending, setPending] = useState(false);
-  const [following, setFollowing] = useState(true);
-  const tail = useRef<HTMLPreElement>(null);
+    [pending, setPending] = useState(false),
+    [following, setFollowing] = useState(true),
+    [history, setHistory] = useState<string[]>([]),
+    [cursor, setCursor] = useState(-1);
+  const box = useRef<HTMLPreElement>(null);
+  // Lines that existed when the console opened don't animate in again.
+  const seen = useRef(lines.length ? lines[lines.length - 1].id : 0);
+  const connected = connection === "connected";
+
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  useEffect(() => {
-    setOutput("");
-    setSample(null);
-    setConnection("connecting");
-    let stopped = false,
-      ws: WebSocket | null = null,
-      retry: ReturnType<typeof setTimeout> | undefined,
-      attempt = 0,
-      decoder = new TextDecoder();
-    const connect = () => {
-      if (stopped || !reachable) {
-        setConnection("disconnected");
-        return;
-      }
-      setConnection("connecting");
-      ws = new WebSocket(
-        `${API.replace(/^http:/, "ws:").replace(/^https:/, "wss:")}/api/servers/${id}/live`,
-      );
-      ws.onopen = () => {
-        attempt = 0;
-      };
-      ws.onmessage = (e) => {
-        try {
-          const f = JSON.parse(e.data) as Frame;
-          if (f.type === "status") {
-            setConnection(f.connected ? "connected" : "disconnected");
-            if (!f.connected) setSample(null);
-          } else if (f.type === "log" && typeof f.data === "string") {
-            const raw = atob(f.data),
-              bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
-            const text = decoder.decode(bytes, { stream: true });
-            setOutput((prev) => (prev + text).slice(-120000));
-          } else if (
-            f.type === "sample" &&
-            typeof f.cpuPercent === "number" &&
-            typeof f.memoryBytes === "number" &&
-            typeof f.memoryLimitBytes === "number"
-          ) {
-            setSample(f);
-          }
-        } catch {
-          setError("Unable to read live data.");
-        }
-      };
-      ws.onclose = () => {
-        setConnection("disconnected");
-        setSample(null);
-        decoder = new TextDecoder();
-        if (!stopped) {
-          retry = setTimeout(
-            connect,
-            Math.min(15000, 1000 * 2 ** Math.min(attempt++, 4)),
-          );
-        }
-      };
-      ws.onerror = () => ws?.close();
-    };
-    connect();
-    return () => {
-      stopped = true;
-      if (retry) clearTimeout(retry);
-      ws?.close();
-    };
-  }, [id, reachable]);
-  useEffect(() => {
-    if (following)
-      tail.current?.scrollTo({
-        top: tail.current.scrollHeight,
-        behavior: "smooth",
-      });
-  }, [output, following]);
-  const fresh =
-    connection === "connected" &&
-    sample?.sampledAt &&
-    now - Date.parse(sample.sampledAt) < 15000;
+    if (following && box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [lines, following]);
+
   async function send(e: FormEvent) {
     e.preventDefault();
     const value = command.trim();
     if (!value) return;
     setPending(true);
     setError("");
-    setCommandResult("");
+    setAck("");
     try {
-      const result = (await json("POST", `/servers/${id}/console`, {
-        command: value,
-      })) as { output?: string };
-      setOutput((prev) => (prev + `\n> ${value}\n`).slice(-120000));
-      setCommandResult(result.output || "Input sent to the server.");
+      const result = (await json("POST", `/servers/${id}/console`, { command: value })) as { output?: string };
+      echo(value);
+      setAck(result.output || "");
+      setHistory((h) => [value, ...h.filter((x) => x !== value)].slice(0, 50));
+      setCursor(-1);
       setCommand("");
+      setFollowing(true);
     } catch (ex) {
       setError((ex as Error).message);
     } finally {
       setPending(false);
     }
   }
+
   return (
-    <section className="section" aria-label="Live console">
-      <div className="section-title">
-        <div>
-          <h2>Live console</h2>
-          <p className="muted" role="status">
-            {connection === "connected"
-              ? "Connected — live Docker logs and resource samples"
-              : connection === "connecting"
-                ? "Connecting…"
-                : "No live connection; retrying."}
-          </p>
-        </div>
-      </div>
-      <div className="detail-stats">
-        <div>
-          <span>CPU (Docker)</span>
-          <strong>{fresh ? `${sample!.cpuPercent!.toFixed(2)} %` : "—"}</strong>
-        </div>
-        <div>
-          <span>RAM (Docker)</span>
-          <strong>
-            {fresh
-              ? `${(sample!.memoryBytes! / 1048576).toFixed(1)} / ${(sample!.memoryLimitBytes! / 1048576).toFixed(1)} MiB`
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span>Sample time</span>
-          <strong>
-            {fresh
-              ? new Date(sample!.sampledAt!).toLocaleTimeString("en-US")
-              : "No recent sample"}
-          </strong>
-        </div>
-      </div>
-      <div className="console-stream">
-        <div className="console-toolbar">
-          <span
-            className={`signal ${connection !== "connected" ? "off" : ""}`}
-            aria-hidden="true"
-          >
-            <i />
-            <i />
-            <i />
-          </span>
-          <span>
-            {connection === "connected" ? "LIVE STREAM" : "AWAITING CONNECTION"}
-          </span>
-          <SharedButton
-            type="button"
-            variant="outline"
-            aria-pressed={following}
-            onClick={() => setFollowing(!following)}
-          >
-            {following ? "Pause scrolling" : "Follow output"}
-          </SharedButton>
-        </div>
-        <pre
-          ref={tail}
-          className="console"
-          aria-label="Live server log"
-          style={{
-            maxHeight: 480,
-            overflow: "auto",
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-          }}
-        >
-          {output || "Waiting for log data…"}
-          {connection === "connected" && (
-            <span className="console-caret" aria-hidden="true" />
-          )}
-        </pre>
-        {commandResult && (
-          <div className="console-ack" role="status">
-            <span>{minecraft ? "RCON" : "STDIN"}</span>
-            {commandResult}
+    <div className="stack" style={{ gap: 12 }}>
+      <section className="console" aria-label="Console" style={{ position: "relative" }}>
+        {connected ? null : (
+          <div className="console__bar">
+            <Status value={reachable ? "pending" : "disconnected"} label={reachable ? "Connecting to the server log" : "Node offline"} />
           </div>
         )}
-        <form className="console-input" onSubmit={send}>
-          <label className="sr-only" htmlFor={`console-command-${id}`}>
-            {minecraft ? "Minecraft command" : "Server console input"}
-          </label>
-          <span className="console-prompt" aria-hidden="true">
-            ›
-          </span>
-          <input
-            id={`console-command-${id}`}
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            required
-            maxLength={1024}
-            placeholder={
-              minecraft ? "say Hello" : "Enter a command or console input…"
-            }
-            disabled={!reachable || connection !== "connected" || pending}
-          />
-          <SharedButton
-            variant="default"
-            type="submit"
-            disabled={
-              !reachable ||
-              connection !== "connected" ||
-              pending ||
-              !command.trim()
-            }
-            aria-label="Send console input"
+        <pre
+          ref={box}
+          className="console__lines"
+          aria-label="Server log"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+            if (atBottom !== following) setFollowing(atBottom);
+          }}
+        >
+          {lines.length ? (
+            lines.map((line) => <LogLine key={line.id} line={line} fresh={line.id > seen.current} />)
+          ) : connected ? (
+            <span className="console__placeholder">No output yet.</span>
+          ) : null}
+        </pre>
+        {!following && lines.length ? (
+          <Button
+            size="sm"
+            className="console__jump"
+            onClick={() => {
+              setFollowing(true);
+              box.current?.scrollTo({ top: box.current.scrollHeight, behavior: "smooth" });
+            }}
           >
-            {pending ? (
-              "Sending…"
-            ) : (
-              <>
-                <Send size={15} />
-                Send
-              </>
-            )}
-          </SharedButton>
+            <ArrowDown /> Jump to latest
+          </Button>
+        ) : null}
+        {ack ? (
+          <div className="console__note" role="status">
+            <strong>{minecraft ? "rcon" : "stdin"}</strong>
+            {ack}
+          </div>
+        ) : null}
+        <form className="console__in" onSubmit={send}>
+          <span aria-hidden="true">›</span>
+          <label className="sr-only" htmlFor={`console-${id}`}>
+            {minecraft ? "Minecraft command" : "Console input"}
+          </label>
+          <input
+            id={`console-${id}`}
+            value={command}
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={1024}
+            onChange={(e) => setCommand(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp" && history.length) {
+                e.preventDefault();
+                const next = Math.min(cursor + 1, history.length - 1);
+                setCursor(next);
+                setCommand(history[next]);
+              } else if (e.key === "ArrowDown" && cursor >= 0) {
+                e.preventDefault();
+                const next = cursor - 1;
+                setCursor(next);
+                setCommand(next >= 0 ? history[next] : "");
+              }
+            }}
+            placeholder={!reachable || !connected ? "Console unavailable" : minecraft ? "list" : "Type a line and press Enter"}
+            disabled={!reachable || !connected}
+            readOnly={pending}
+          />
+          <Button type="submit" size="sm" busy={pending} disabled={!reachable || !connected || !command.trim()}>
+            Send
+          </Button>
         </form>
-        {error && <Notice status="danger" className="console-error">{error}</Notice>}
-        {!minecraft && (
-          <p className="console-caption">
-            Sends one line to the container’s standard input. The server
-            software must support console input this way.
-          </p>
-        )}
-      </div>
-    </section>
+      </section>
+      <ErrorNotice message={error || live.error} />
+    </div>
   );
 }

@@ -1,11 +1,8 @@
 "use client";
-import { ApiError,json,request,type User } from "@/lib/api";
-import { Button as SharedButton, Notice } from "./shared";
-import { buttonVariants } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { ApiError, json, request, type User } from "@/lib/api";
 import Link from "next/link";
-import { usePathname,useRouter,useSearchParams } from "next/navigation";
-import { useEffect,useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import ActivityPage from "./ActivityPage";
 import Auth from "./Auth";
 import Customers from "./Customers";
@@ -18,6 +15,8 @@ import Templates from "./Templates";
 import UpdateCenter from "./UpdateCenter";
 import Workspace from "./Workspace";
 import { ConfirmationProvider } from "./feedback";
+import { ToastProvider } from "./toast";
+import { Button, Empty, Notice, btn } from "./shared";
 
 export default function Panel() {
   const router = useRouter(),
@@ -45,20 +44,20 @@ export default function Panel() {
   }, []);
   if (loading)
     return (
-      <div className="center-loader">
-        <RefreshCw className="spin" />
-        Opening your workspace…
+      <div className="splash" role="status" aria-label="Loading">
+        <img src="/fledge-symbol.png" alt="" />
       </div>
     );
   if (error)
     return (
-      <div className="center-loader">
-        <div className="connection-error">
-          <h1>Connection unavailable</h1>
-          <Notice status="danger">{error}</Notice>
-          <SharedButton variant="default" onClick={() => location.reload()}>
+      <div className="splash">
+        <div className="splash__box">
+          <img src="/fledge-symbol.png" alt="" />
+          <h1>Can’t reach the panel API</h1>
+          <Notice tone="bad">{error}</Notice>
+          <Button variant="primary" onClick={() => location.reload()}>
             Try again
-          </SharedButton>
+          </Button>
         </div>
       </div>
     );
@@ -75,21 +74,20 @@ export default function Panel() {
   const admin = user.role === "admin",
     seg = pathname.split("/").filter(Boolean);
   const forbidden =
-    ["nodes", "templates", "customers", "activity", "updates"].includes(
-      seg[0],
-    ) && !admin;
+    ["nodes", "templates", "customers", "activity", "updates"].includes(seg[0]) && !admin;
   let page;
   if (forbidden)
     page = (
-      <div className="empty-page">
-        <h1>Administrator access required</h1>
-        <p className="muted">
-          This section is available to workspace administrators.
-        </p>
-        <Link href="/servers" className={`${buttonVariants({ variant: "default" })} btn primary`}>
-          Back to your servers
-        </Link>
-      </div>
+      <Empty
+        title="Administrator access required"
+        action={
+          <Link href="/servers" className={btn("primary")}>
+            Back to your servers
+          </Link>
+        }
+      >
+        This section is only available to panel administrators.
+      </Empty>
     );
   else if (seg[0] === "servers" && seg[1] && seg.length === 2)
     page = (
@@ -130,6 +128,7 @@ export default function Panel() {
         break;
     }
   return (
+    <ToastProvider>
     <ConfirmationProvider>
       <Workspace
         user={user}
@@ -140,18 +139,19 @@ export default function Panel() {
         }}
       >
         {page || (
-          <div className="empty-page">
-            <span className="eyebrow">404 / Page unavailable</span>
-            <h1>This page doesn’t exist.</h1>
-            <p className="muted">
-              Return to your servers to pick up where you left off.
-            </p>
-            <Link href="/servers" className={`${buttonVariants({ variant: "default" })} btn primary`}>
-              View servers
-            </Link>
-          </div>
+          <Empty
+            title="Page not found"
+            action={
+              <Link href={admin ? "/" : "/servers"} className={btn("primary")}>
+                Go back
+              </Link>
+            }
+          >
+            There’s nothing at {pathname}.
+          </Empty>
         )}
       </Workspace>
     </ConfirmationProvider>
+    </ToastProvider>
   );
 }

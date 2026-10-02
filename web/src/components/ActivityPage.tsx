@@ -1,49 +1,104 @@
 "use client";
 
-import { fmtDate, items } from "@/lib/api";
-import { Search } from "lucide-react";
-import { useState } from "react";
-import DataTable, { type DataColumn } from "./DataTable";
-import { Empty, Heading, Pager, Row, Section, State, useLoad } from "./shared";
+import { items, type Node, type Server, type User } from "@/lib/api";
+import { fmtAction, fmtClock, fmtTime, shortId } from "@/lib/format";
+import Link from "next/link";
+import { Fragment, useMemo, useState } from "react";
+import { Card, Empty, PageHeader, Pager, Row, SearchInput, Segmented, State, Toolbar, useLoad } from "./shared";
+
+function dayLabel(value: string) {
+  const d = new Date(value);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+}
 
 export default function ActivityPage() {
   const [offset, setOffset] = useState(0);
-  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<"changes" | "all">("changes");
   const { data, error, loading } = useLoad<Row[]>(`/activity?limit=50&offset=${offset}`, 15000);
-  const filtered = items(data).filter((event) =>
-    `${event.action || ""} ${event.target_type || event.entity_type || ""} ${event.actor_id || ""}`
-      .toLowerCase()
-      .includes(filter.toLowerCase()),
+  // Names for the IDs in the audit log; IDs that can't be resolved are shown shortened.
+  const { data: me } = useLoad<User>("/auth/me");
+  const { data: customers } = useLoad<Row[]>("/customers?limit=100");
+  const { data: servers } = useLoad<Server[]>("/servers?limit=100&offset=0");
+  const { data: nodes } = useLoad<Node[]>("/nodes");
+  const names = useMemo(() => {
+    const map: Record<string, string> = {
+      ...Object.fromEntries(items(customers).map((c) => [c.id, c.email])),
+      ...Object.fromEntries(items(servers).map((s) => [s.id, s.name])),
+      ...Object.fromEntries(items(nodes).map((n) => [n.id, n.name])),
+    };
+    if (me) map[me.id] = me.email;
+    return map;
+  }, [customers, servers, nodes, me]);
+  const serverIds = useMemo(() => new Set(items(servers).map((s) => s.id)), [servers]);
+
+  const when = (e: Row) => e.created_at || e.createdAt || "";
+  const actor = (e: Row) => e.actor_id || e.actorId || "";
+  const targetId = (e: Row) => e.target_id || e.entity_id || e.targetId || "";
+  const label = (id: string) => (id ? names[id] || shortId(id) : "");
+  const list = items(data).filter(
+    (e) =>
+      (scope === "all" || e.action !== "login") &&
+      `${fmtAction(e.action)} ${e.action} ${label(targetId(e))} ${label(actor(e))}`.toLowerCase().includes(query.toLowerCase()),
   );
-  const columns: DataColumn<Row>[] = [
-    { id: "time", header: "Time", value: (event) => event.created_at || event.createdAt || "", render: (event) => fmtDate(event.created_at || event.createdAt) },
-    { id: "action", header: "Action", value: (event) => event.action || "", render: (event) => <span className="mono">{String(event.action || "—").replaceAll(".", " / ")}</span> },
-    { id: "object", header: "Object", value: (event) => event.target_type || event.entity_type || event.targetType || "", render: (event) => <span>{event.target_type || event.entity_type || event.targetType || "—"}<small className="table-subline mono">{event.target_id || event.entity_id || event.targetId || ""}</small></span> },
-    { id: "actor", header: "Actor", value: (event) => event.actor_id || event.actorId || "", render: (event) => <span className="mono small">{event.actor_id || event.actorId || "—"}</span> },
-  ];
 
   return (
     <>
-      <Heading eyebrow="Workspace / Activity" title="Activity" subtitle="Auditable actions by administrators and customers." />
-      <div className="summary-strip" aria-label="Activity context">
-        <div><span>Events on this page</span><strong>{items(data).length}</strong></div>
-        <div><span>Search matches</span><strong>{filtered.length}</strong></div>
-        <div><span>Auto refresh</span><strong>15 sec</strong></div>
-      </div>
-      <Section
-        title="Audit trail"
-        description="Search covers the currently loaded page of up to 50 events."
-        action={<label className="search-control"><Search size={15} /><input className="search" aria-label="Search activity" placeholder="Search actions, targets, actors…" value={filter} onChange={(event) => setFilter(event.target.value)} /></label>}
-      >
-        <State loading={loading} error={error}>
-          {filtered.length ? (
-            <DataTable data={filtered} rowKey={(event) => String(event.id || event.created_at || event.createdAt)} columns={columns} empty="No activity on this page." />
+      <PageHeader title="Activity" />
+      <Toolbar>
+        <Segmented
+          label="Show"
+          value={scope}
+          onChange={setScope}
+          options={[
+            { value: "changes", label: "Changes" },
+            { value: "all", label: "Everything" },
+          ]}
+        />
+        <SearchInput label="Search activity" placeholder="Search activity" value={query} onChange={setQuery} />
+      </Toolbar>
+      <Card flush>
+        <State loading={loading} error={error} rows={8}>
+          {list.length ? (
+            <div className="log">
+              {list.map((e, i) => {
+                const day = dayLabel(when(e));
+                const target = targetId(e);
+                const by = actor(e);
+                return (
+                  <Fragment key={String(e.id || when(e))}>
+                    {i === 0 || dayLabel(when(list[i - 1])) !== day ? <div className="log__day">{day}</div> : null}
+                    <div className="log__row" style={{ ["--i" as string]: i }}>
+                      <time dateTime={when(e)} title={fmtTime(when(e))}>
+                        {fmtClock(when(e))}
+                      </time>
+                      <span className="log__what" title={e.action}>
+                        {fmtAction(e.action)}
+                        {target ? (
+                          serverIds.has(target) ? (
+                            <Link href={`/servers/${target}`}>{label(target)}</Link>
+                          ) : (
+                            <span className={names[target] ? "log__target" : "log__target mono"}>{label(target)}</span>
+                          )
+                        ) : null}
+                      </span>
+                      <span className="log__by">{by && by !== target && by !== me?.id ? label(by) : null}</span>
+                    </div>
+                  </Fragment>
+                );
+              })}
+            </div>
           ) : (
-            <Empty>{filter ? "No activity matches this search." : "No events yet."}</Empty>
+            <Empty title={query ? "Nothing matches your search" : "No activity yet"} />
           )}
           <Pager offset={offset} setOffset={setOffset} count={items(data).length} />
         </State>
-      </Section>
+      </Card>
     </>
   );
 }

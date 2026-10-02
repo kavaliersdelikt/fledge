@@ -1,211 +1,155 @@
 "use client";
-import { API,json,request,type Node as NodeInfo } from "@/lib/api";
-import {
-Check,
-Copy,
-LoaderCircle,
-RefreshCw,
-Terminal
-} from "lucide-react";
-import { useEffect,useMemo,useState } from "react";
-
-import { CopyButton,useConfirm } from "./feedback";
-import { Button as SharedButton, Notice } from "./shared";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { API, json, request, type Node as NodeInfo } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { CopyButton, Secret, useConfirm } from "./feedback";
+import { Button, ErrorNotice, Notice, Segmented, Skeleton } from "./shared";
 
 type Enrollment = { nodeId: string; token: string; expiresInSeconds: number };
 const repository = "kavaliersdelikt/fledge";
-function shellQuote(value: string) {
-  return "'" + value.replace(/'/g, "'\\''") + "'";
-}
-function psQuote(value: string) {
-  return "'" + value.replace(/'/g, "''") + "'";
-}
-export default function NodeConnector() {
+const shellQuote = (value: string) => "'" + value.replace(/'/g, "'\\''") + "'";
+const psQuote = (value: string) => "'" + value.replace(/'/g, "''") + "'";
+
+export default function NodeConnector({ initialNodeId, onIssued }: { initialNodeId?: string; onIssued?: () => void }) {
   const confirm = useConfirm();
-  const [nodes, setNodes] = useState<NodeInfo[]>([]),
+  const [nodes, setNodes] = useState<NodeInfo[] | null>(null),
     [nodeId, setNodeId] = useState(""),
     [platform, setPlatform] = useState<"linux" | "windows">("linux"),
     [token, setToken] = useState<Enrollment | null>(null),
-    [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
-    [copied, setCopied] = useState(false),
     [error, setError] = useState("");
   const apiUrl = API.replace(/\/+$/, "");
-  async function loadNodes() {
-    setLoading(true);
-    setError("");
-    try {
-      const values = await request<NodeInfo[]>("/nodes");
-      setNodes(values);
-      if (!values.some((n) => n.id === nodeId)) setNodeId(values[0]?.id || "");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+
   useEffect(() => {
-    loadNodes();
-  }, []);
+    request<NodeInfo[]>("/nodes")
+      .then((values) => {
+        setNodes(values);
+        setNodeId((current) =>
+          values.some((n) => n.id === current)
+            ? current
+            : values.some((n) => n.id === initialNodeId)
+              ? initialNodeId!
+              : (values.find((n) => n.status !== "connected") || values[0])?.id || "",
+        );
+      })
+      .catch((e) => {
+        setNodes([]);
+        setError((e as Error).message);
+      });
+  }, [initialNodeId]);
+
   const command = useMemo(() => {
     if (!token || !/^https?:\/\/[A-Za-z0-9.:/_-]+$/.test(apiUrl)) return "";
     const raw = `https://raw.githubusercontent.com/${repository}/main/agent/`;
+    const insecure = apiUrl.startsWith("http://");
     if (platform === "linux")
-      return `curl --proto '=https' --tlsv1.2 -fsSL ${shellQuote(raw + "connect.sh")} -o /tmp/fledge-connect.sh && sudo sh /tmp/fledge-connect.sh --api ${shellQuote(apiUrl)} --node ${shellQuote(token.nodeId)} --repo ${shellQuote(repository)}${apiUrl.startsWith("http://") ? " --allow-insecure-http" : ""}`;
-    return `$p=Join-Path $env:TEMP 'fledge-connect.ps1'; Invoke-WebRequest -UseBasicParsing -Uri ${psQuote(raw + "connect-wsl.ps1")} -OutFile $p; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p -ApiUrl ${psQuote(apiUrl)} -NodeId ${psQuote(token.nodeId)} -Repository ${psQuote(repository)}${apiUrl.startsWith("http://") ? " -AllowInsecureHttp" : ""}; if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'WSL connector failed.' }; Remove-Item -LiteralPath $p -Force`;
+      return [
+        `curl --proto '=https' --tlsv1.2 -fsSL \\`,
+        `  ${shellQuote(raw + "connect.sh")} \\`,
+        `  -o /tmp/fledge-connect.sh \\`,
+        `  && sudo sh /tmp/fledge-connect.sh \\`,
+        `    --api ${shellQuote(apiUrl)} \\`,
+        `    --node ${shellQuote(token.nodeId)} \\`,
+        `    --repo ${shellQuote(repository)}${insecure ? " \\\n    --allow-insecure-http" : ""}`,
+      ].join("\n");
+    return `$p=Join-Path $env:TEMP 'fledge-connect.ps1'; Invoke-WebRequest -UseBasicParsing -Uri ${psQuote(raw + "connect-wsl.ps1")} -OutFile $p; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p -ApiUrl ${psQuote(apiUrl)} -NodeId ${psQuote(token.nodeId)} -Repository ${psQuote(repository)}${insecure ? " -AllowInsecureHttp" : ""}; if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'WSL connector failed.' }; Remove-Item -LiteralPath $p -Force`;
   }, [token, apiUrl, platform]);
+
   async function issue() {
-    if (!nodeId) return;
-    const selected = nodes.find((n) => n.id === nodeId);
+    const selected = nodes?.find((n) => n.id === nodeId);
+    if (!selected) return;
     if (
-      selected?.status === "connected" &&
-      !(await confirm(
-        "This rotates the node credential and briefly disconnects its current agent. Continue?",
-      ))
+      selected.status === "connected" &&
+      !(await confirm(`${selected.name} is online. A new token replaces its credential and disconnects the running agent.`, {
+        confirmLabel: "Replace credential",
+      }))
     )
       return;
     setBusy(true);
     setError("");
-    setCopied(false);
     try {
-      const result = (await json(
-        "POST",
-        `/nodes/${nodeId}/enrollment`,
-      )) as Enrollment;
-      setToken(result);
-      await loadNodes();
+      setToken((await json("POST", `/nodes/${nodeId}/enrollment`)) as Enrollment);
+      onIssued?.();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setError(
-        "Clipboard access was blocked. Select and copy the command manually.",
-      );
-    }
-  }
+
+  if (!nodes) return <Skeleton rows={3} />;
+  if (!nodes.length)
+    return error ? (
+      <ErrorNotice message={error} />
+    ) : (
+      <Notice title="Add a node first">Close this panel and use “Add node” to describe the host, then come back here.</Notice>
+    );
+
   return (
-    <section className="section node-connector">
-      <div className="section-title">
-        <div>
-          <div className="eyebrow">QUICK CONNECT / AGENT</div>
-          <h2>Connect a node</h2>
-          <p className="muted">
-            Create a short-lived enrollment token and install the
-            checksum-verified Linux agent with one command. A fresh token
-            replaces the selected node’s existing credential.
-          </p>
-        </div>
-        <SharedButton variant="outline" onClick={loadNodes} disabled={loading}>
-          <RefreshCw size={15} className={loading ? "spin" : ""} /> Refresh
-          nodes
-        </SharedButton>
+    <div className="form">
+      <div className="form-group">
+        <h3><span className="step is-done">1</span>Choose the node</h3>
+        <select
+          className="input select"
+          aria-label="Node"
+          value={nodeId}
+          onChange={(e) => {
+            setNodeId(e.target.value);
+            setToken(null);
+          }}
+        >
+          {nodes.map((n) => (
+            <option key={n.id} value={n.id}>
+              {n.name} · {n.location} {n.status === "connected" ? "(online)" : ""}
+            </option>
+          ))}
+        </select>
       </div>
-      {loading ? (
-        <div className="skeleton" aria-label="Loading nodes" />
-      ) : error && !nodes.length ? (
-        <Notice status="danger">{error}</Notice>
-      ) : !nodes.length ? (
-        <Notice status="accent" title="No nodes registered">
-          Register a node first from the Nodes page. You can return here to
-          issue its one-time connection token.
-        </Notice>
-      ) : (
-        <>
-          <div className="form-grid node-connect-options">
-            <label className="field">
-              <span>Node</span>
-              <select
-                value={nodeId}
-                onChange={(e) => {
-                  setNodeId(e.target.value);
-                  setToken(null);
-                }}
-              >
-                {nodes.map((n) => (
-                  <option key={n.id} value={n.id}>
-                    {n.name} · {n.location}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="field">
-              <span>Agent source repository</span>
-              <strong>{repository}</strong>
-              <small>Official Fledge release source</small>
-            </div>
+      <div className="form-group">
+        <h3><span className={`step${token ? " is-done" : ""}`}>2</span>Create a one-time token</h3>
+        <p className="muted small">The connector asks for it in a hidden prompt, so it never appears in your shell history.</p>
+        {token ? (
+          <Secret label={`Token · expires in ${Math.floor(token.expiresInSeconds / 60)} minutes`} value={token.token} />
+        ) : (
+          <div>
+            <Button variant="primary" busy={busy} onClick={issue}>
+              Create token
+            </Button>
           </div>
-          <div className="form-actions">
-            <SharedButton
-              variant="default"
-              onClick={issue}
-              disabled={busy || !nodeId}
-            >
-              {busy ? <LoaderCircle size={16} className="spin" /> : null}
-              Generate one-time connector
-            </SharedButton>
-            <span className="muted small">
-              The latest published release must exist in the Fledge repository.
-            </span>
-          </div>
-          {error && nodes.length > 0 && (
-            <Notice status="danger">{error}</Notice>
-          )}
-          {token && (
-            <div className="connector-result" role="status">
-              <Notice status="warning" className="token-notice" title={`Enrollment token · expires in ${Math.floor(token.expiresInSeconds / 60)} minutes · shown once`}>
-                <p>
-                  Copy this token now. The installer asks for it through a
-                  hidden terminal prompt; it is not included in the command.
-                </p>
-                <code>{token.token}</code>
-                <CopyButton value={token.token} label="Copy enrollment token" />
-              </Notice>
-              <Tabs
-                value={platform}
-                onValueChange={(value: string) => setPlatform(value as "linux" | "windows")}
-                className="connector-tabs"
-              >
-                <TabsList aria-label="Node operating system">
-                  <TabsTrigger value="linux">Linux</TabsTrigger>
-                  <TabsTrigger value="windows">Windows with WSL2</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <div className="connector-command">
-                <Terminal size={16} />
-                <code>
-                  {command ||
-                    "Connector command is unavailable for this panel URL."}
-                </code>
+        )}
+        <ErrorNotice message={error} />
+      </div>
+      <div className="form-group">
+        <h3><span className="step">3</span>Run the connector on the host</h3>
+        <Segmented
+          label="Host operating system"
+          value={platform}
+          onChange={setPlatform}
+          options={[
+            { value: "linux", label: "Linux" },
+            { value: "windows", label: "Windows (WSL2)" },
+          ]}
+        />
+        {token ? (
+          command ? (
+            <>
+              <div className="command">
+                <pre className="code-block code-block--command">{command}</pre>
+                <CopyButton value={command} size="icon" label="Copy command" />
               </div>
-              {command && (
-                <SharedButton variant="outline" onClick={copy}>
-                  {copied ? <Check size={15} /> : <Copy size={15} />}{" "}
-                  {copied ? "Copied" : "Copy one-line command"}
-                </SharedButton>
-              )}
-              {platform === "windows" && (
-                <p className="muted small">
-                  Requires WSL2 Ubuntu and Docker Desktop WSL integration. The
-                  agent runs inside Linux; this does not install a native
-                  Windows service.
-                </p>
-              )}
-              <button className="text-button" onClick={() => setToken(null)}>
-                Hide token
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </section>
+            </>
+          ) : (
+            <Notice tone="warn">
+              The panel’s API address ({apiUrl}) can’t be used in a connector command. Set NEXT_PUBLIC_API_URL to a reachable URL.
+            </Notice>
+          )
+        ) : (
+          <p className="faint small">The command appears once you’ve created a token.</p>
+        )}
+        <p className="faint small">
+          Downloads the checksum-verified agent from the latest {repository} release.
+          {platform === "windows" ? " Needs WSL2 with Ubuntu and Docker Desktop’s WSL integration; the agent runs inside Linux." : " Needs Docker Engine and root access."}
+        </p>
+      </div>
+    </div>
   );
 }
