@@ -29,7 +29,10 @@ let cache:{at:number;value:Sections}|undefined;
 export async function settings():Promise<Sections>{
  if(cache&&Date.now()-cache.at<5000)return cache.value;
  const value=envDefaults();
- const rows=(await pool.query('SELECT key,value,secret FROM settings')).rows;
+ let rows:any[];
+ // Without a reachable database the environment-derived defaults apply, so release checks and
+ // other read-only paths keep working (and can be tested without PostgreSQL).
+ try{rows=(await pool.query('SELECT key,value,secret FROM settings')).rows;}catch{cache={at:Date.now(),value};return value;}
  for(const row of rows){
   if(!(row.key in value))continue;
   const key=row.key as Section,merged:any={...value[key],...row.value};
