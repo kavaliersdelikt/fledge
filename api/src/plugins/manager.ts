@@ -12,7 +12,7 @@ import {invokeHost,HostUnavailable} from './host-client.js';
 // plugin host; this module decides whether, with what settings, and what happens to the result.
 
 export type Tier='bundled'|'verified'|'community';
-export const panelVersion=()=> (process.env.APP_VERSION||'0.6.2.1').replace(/^v/i,'');
+export const panelVersion=()=> (process.env.APP_VERSION||'0.7.1.1').replace(/^v/i,'');
 export const atLeast=(have:string,need:string)=>have===need||newer(have,need);
 const AUTO_DISABLE_AFTER=5;
 const FATAL_CODES=new Set(['timeout','script-error','too-large','host-error','bad-method']);
@@ -62,7 +62,7 @@ export function publicPlugin(p:PluginRow){
  const secrets=storedSecrets(p);
  return {
   id:p.id,name:p.name,version:p.version,tier:p.tier,source:p.source,description:p.manifest.description,author:p.manifest.author,license:p.manifest.license,homepage:p.manifest.homepage||null,
-  icon:p.icon,enabled:p.enabled,catalogs:p.manifest.catalogs,hooks:p.manifest.hooks,
+  icon:p.icon,enabled:p.enabled,catalogs:p.manifest.catalogs,hooks:p.manifest.hooks,payments:p.manifest.payments||null,
   permissions:p.manifest.permissions.map(id=>({id,text:describePermission(id),granted:p.granted_permissions.includes(id)})),
   settingsSchema:p.manifest.settings,
   settings:Object.fromEntries(p.manifest.settings.map(f=>[f.key,f.type==='secret'?{set:!!secrets[f.key]}:(p.settings[f.key]??f.default??null)])),

@@ -5,7 +5,7 @@ import vm from 'node:vm';
 // The two scripts are compiled once: only running them is time-limited, so a busy machine cannot make a good pattern fail.
 const scripts={valid:new vm.Script('new RegExp(p),true'),test:new vm.Script('new RegExp(p).test(v)')};
 const inContext=(script:vm.Script,p:string,v=''):boolean=>{
- try{return script.runInContext(vm.createContext({p,v}),{timeout:100})===true;}catch{return false;}
+ try{return script.runInContext(vm.createContext({p,v}),{timeout:300})===true;}catch{return false;}
 };
 export function validPattern(pattern:string){
  if(typeof pattern!=='string'||!pattern||pattern.length>200)return false;
