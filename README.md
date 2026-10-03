@@ -33,7 +33,7 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.6.x (Roost)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.6.x (Roost, Plumage)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
@@ -81,9 +81,10 @@ flowchart TB
 | **Autopilot** | Schedules with cron and task chains (command, wait, backup, restart), automatic restart after crashes with crash-loop protection, a notification inbox with Discord, Slack, webhook and email delivery. |
 | **Templates v2** | Typed variables, import and export, versions with "update servers", extra ports, clone server. |
 | **Accounts** | Passkeys, signed-in devices, email invitations and password reset, per-customer quotas, an optional admin network allow-list, audit filters and export. |
+| **Your own brand** | Rename the panel, add a logo, pick colours and a font, offer light and dark, restyle the sign-in page, add sidebar links and an announcement. Readable colours are enforced, a 60-second preview rolls itself back, and the last 20 versions are kept. |
 | **History and API** | CPU and memory history (1 hour to 30 days), Prometheus metrics, an OpenAPI description with an in-panel API reference. |
 
-> **New in v0.6.1.1 "Roost":** a plugin system (sandboxed, signed, one-click) with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas, passkeys and more. Update the node agents to 0.6.1.1 to use add-ons. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). Earlier: v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel.
+> **New in v0.6.2.1 "Plumage", the Customizing Update:** make the panel your own from **Settings, Appearance**: name, logo, colours, fonts, light and dark, a restyled sign-in page, sidebar links and announcements, with readability checks, a preview that undoes itself, version history and a safe mode. Nothing changes until you save something. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.2.1) and the [Appearance guide](https://kavaliersdelikt.github.io/fledge/panel/appearance). Earlier: v0.6.1.1 "Roost" added the plugin system with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas and passkeys (update node agents to 0.6.1.1 or newer for add-ons); v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel. Release notes: [v0.6.1.1](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). a plugin system (sandboxed, signed, one-click) with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas, passkeys and more. Update the node agents to 0.6.1.1 to use add-ons. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). Earlier: v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel.
 
 ## Quick start
 
@@ -153,6 +154,7 @@ Everything is documented at **<https://kavaliersdelikt.github.io/fledge/>** (bui
 | Understand what Fledge is and how it fits together | [What is Fledge?](https://kavaliersdelikt.github.io/fledge/guide/what-is-fledge) and [Concepts](https://kavaliersdelikt.github.io/fledge/guide/concepts) |
 | Install, put it behind TLS, update, back up, monitor | [Operate](https://kavaliersdelikt.github.io/fledge/operate/install) |
 | Use servers, schedules, crash protection, notifications, quotas, templates | [Panel guide](https://kavaliersdelikt.github.io/fledge/panel/servers) |
+| Brand the panel: name, logo, colours, light and dark | [Appearance](https://kavaliersdelikt.github.io/fledge/panel/appearance) and [recovering from a bad theme](https://kavaliersdelikt.github.io/fledge/operate/branding-recovery) |
 | Connect and run nodes, disk limits, the WSL2 evaluation setup | [Node agent](https://kavaliersdelikt.github.io/fledge/agent/) |
 | Install or write plugins | [Plugins](https://kavaliersdelikt.github.io/fledge/plugins/) and the [tutorial](https://kavaliersdelikt.github.io/fledge/plugins/tutorial) |
 | Integrate with the HTTP API | [API](https://kavaliersdelikt.github.io/fledge/api/) and the generated [endpoint reference](https://kavaliersdelikt.github.io/fledge/api/reference/) |
@@ -170,6 +172,7 @@ and each release's notes). Highlights:
 - Failover is backup-based: data written since the newest backup is lost.
 - Disk limits need a Linux node with root, loop devices and `e2fsprogs`.
 - Plugin sandboxing reduces risk but is not a formal guarantee; downloaded mod and plugin files are not scanned.
+- Appearance is one look per panel (no different brand per domain); only the sidebar pages can be renamed; custom CSS can hide parts of the panel (safe mode and `BRANDING_DISABLED` recover).
 - Native Windows and macOS nodes are not supported; WSL2 with Docker Desktop is for local evaluation only.
 
 ## Development
@@ -177,7 +180,7 @@ and each release's notes). Highlights:
 ```sh
 cd api && npm ci && npm run check && npm run test:unit      # more suites: see the docs
 cd plugins/host && npm ci && npm test
-cd web && npm ci && npm run check && npm run build
+cd web && npm ci && npm run check && npx tsx --test src/lib/*.test.ts && npm run build
 cd agent && go vet ./... && go test ./...
 ```
 
