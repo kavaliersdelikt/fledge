@@ -47,7 +47,7 @@ export const passwordHash=(s:string)=>bcrypt.hash(s,12);
 export const passwordCheck=(s:string,h:string)=>bcrypt.compare(s,h);
 export async function migrate(){const schema=readFileSync(fileURLToPath(new URL('../../db/schema.sql',import.meta.url)),'utf8');await pool.query(schema);}
 export async function authenticate(req:FastifyRequest,reply:FastifyReply){
- const url=req.url.split('?')[0];if(url==='/api/health'||['/api/auth/bootstrap','/api/auth/status','/api/auth/login','/api/auth/challenge','/api/auth/recover','/api/auth/forgot','/api/auth/token/accept','/api/auth/passkey/options','/api/auth/passkey/verify'].includes(url)||url.startsWith('/api/agent/'))return;
+ const url=req.url.split('?')[0];if(url==='/api/health'||(req.method==='GET'&&(url==='/api/branding'||/^\/api\/branding\/assets\/(?:mark|wordmark|favicon|login)$/.test(url)))||['/api/auth/bootstrap','/api/auth/status','/api/auth/login','/api/auth/challenge','/api/auth/recover','/api/auth/forgot','/api/auth/token/accept','/api/auth/passkey/options','/api/auth/passkey/verify'].includes(url)||url.startsWith('/api/agent/'))return;
  const cookie=(req.cookies as any)?.fledge_session; const auth=req.headers.authorization;const bearer=auth?.startsWith('Bearer ');
  // An explicit bearer token must never silently inherit a browser cookie's
  // broader permissions (including secret-bearing admin detail responses).

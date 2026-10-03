@@ -355,3 +355,15 @@ CREATE TABLE IF NOT EXISTS server_metrics(
  disk_bytes bigint, n integer NOT NULL DEFAULT 0, PRIMARY KEY(server_id,res,bucket)
 );
 CREATE INDEX IF NOT EXISTS server_metrics_age ON server_metrics(res,bucket);
+
+-- 0.6.2.1 "Plumage": appearance. The document is the settings row "branding"; uploaded images and the last 20 versions live here.
+CREATE TABLE IF NOT EXISTS branding_blobs(
+ sha256 text NOT NULL, kind text NOT NULL, mime text NOT NULL, bytes bytea NOT NULL, width integer, height integer,
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(sha256,kind)
+);
+CREATE TABLE IF NOT EXISTS branding_history(
+ id bigserial PRIMARY KEY, revision integer NOT NULL, at timestamptz NOT NULL DEFAULT now(),
+ by uuid REFERENCES users(id) ON DELETE SET NULL, reason text NOT NULL, value jsonb NOT NULL
+);
+-- A person's own light or dark choice follows their account.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{}'::jsonb;

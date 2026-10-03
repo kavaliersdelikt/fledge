@@ -35,6 +35,7 @@ import {adminNetworkPolicy} from './netpolicy.js';
 import {metricsRoutes,flushMetrics,trimMetrics} from './metrics.js';
 import {captureRoutes,openapiRoutes} from './openapi.js';
 import {accountRoutes} from './accounts.js';
+import {brandingRoutes,sweepBranding} from './branding.js';
 import {syncBundled} from './plugins/manager.js';
 import {hostConfigured,hostToken} from './plugins/host-client.js';
 if(!process.env.DATABASE_URL||!process.env.ENCRYPTION_KEY||!/^[a-f0-9]{64}$/i.test(process.env.ENCRYPTION_KEY))throw Error('DATABASE_URL and a random 32-byte hex ENCRYPTION_KEY are required');
@@ -48,7 +49,7 @@ const trustProxy:any=(v=>!v||v==='false'?false:v==='true'?true:/^\d+$/.test(v)?N
 const app=Fastify({logger:true,bodyLimit:12*1024*1024,trustProxy});
 captureRoutes(app);
 // Defensive headers on every API answer; the panel sets its own for pages.
-app.addHook('onSend',async(req,reply,payload)=>{reply.header('x-content-type-options','nosniff').header('referrer-policy','no-referrer').header('x-frame-options','DENY').header('content-security-policy',"default-src 'none'; frame-ancestors 'none'");if(!reply.hasHeader('cache-control')&&req.url.startsWith('/api/')&&!req.url.startsWith('/api/agent/'))reply.header('cache-control','no-store');return payload;});
+app.addHook('onSend',async(req,reply,payload)=>{reply.header('x-content-type-options','nosniff').header('referrer-policy','no-referrer').header('x-frame-options','DENY').header('content-security-policy',reply.getHeader('content-security-policy')||"default-src 'none'; frame-ancestors 'none'");if(!reply.hasHeader('cache-control')&&req.url.startsWith('/api/')&&!req.url.startsWith('/api/agent/'))reply.header('cache-control','no-store');return payload;});
 app.addContentTypeParser('application/octet-stream',(req,payload,done)=>done(null,payload));
 await app.register(cookie);await registerPanelCors(app,WEB_ORIGIN);await app.register(multipart,{limits:{fileSize:8*1024*1024}});
 
@@ -58,7 +59,7 @@ app.addHook('preHandler',async(req,reply)=>{await authenticate(req,reply);await 
 app.setErrorHandler((err,req,reply)=>{req.log.error(err);const sql=(err as any).code;const code=sql==='23505'||sql==='23503'?409:sql==='22P02'?400:(err as any).statusCode||500;reply.code(code).send({error:(err as any).error||(code===500?'internal_error':'request_failed'),message:code>=500&&code!==502&&code!==503&&code!==504?'Internal server error':safeError(err),...((err as any).details&&code<500?{details:(err as any).details}:{})});});
 verificationRoutes(app);recoveryRoutes(app);sftpRoutes(app);transferRoutes(app);authRoutes(app);providerRoutes(app);serverRoutes(app);agentRoutes(app);registerLive(app);
 registerUpdates(app);settingsRoutes(app);
-app.get('/api/storage/status',async()=>({enabled:await backupEnabled()}));agentUpdateRoutes(app);failoverRoutes(app);pluginRoutes(app);addonRoutes(app);templateRoutes(app);portRoutes(app);cloneRoutes(app);automationRoutes(app);crashRoutes(app);notificationRoutes(app);auditRoutes(app);accountRoutes(app);metricsRoutes(app);openapiRoutes(app);
+app.get('/api/storage/status',async()=>({enabled:await backupEnabled()}));agentUpdateRoutes(app);failoverRoutes(app);pluginRoutes(app);addonRoutes(app);templateRoutes(app);portRoutes(app);cloneRoutes(app);automationRoutes(app);crashRoutes(app);notificationRoutes(app);auditRoutes(app);accountRoutes(app);brandingRoutes(app);metricsRoutes(app);openapiRoutes(app);
 app.post('/api/settings/storage/test',async(req)=>{admin(req);const b=req.body as any,cur=(await settings()).storage;if(!b||typeof b!=='object')fail(400,'Expected an object');return testStorage({enabled:true,endpoint:String(b.endpoint??cur.endpoint),region:String(b.region||cur.region),bucket:String(b.bucket??cur.bucket),accessKey:String(b.accessKey??cur.accessKey),forcePathStyle:b.forcePathStyle??cur.forcePathStyle,secretKey:b.secretKey?String(b.secretKey):cur.secretKey});});
 // Job claims and schedule claims use PostgreSQL row locks; console interests and events are shared in PostgreSQL across API replicas.
 let sweeping=false,lastSlow=0;
@@ -79,7 +80,7 @@ async function sweep(){if(sweeping)return;sweeping=true;try{
  await step('automation',()=>sweepAutomation());
  await step('crashes',()=>withAdvisoryLock(727101,sweepCrashes));
  await step('addons',()=>sweepAddons());
- if(Date.now()-lastSlow>(Number(process.env.SLOW_SWEEP_MS)||60_000)){lastSlow=Date.now();await step('alerts',()=>withAdvisoryLock(727102,sweepAlerts));await step('notifications',()=>sweepNotifications());await step('audit',()=>sweepAudit());await step('metrics-trim',()=>withAdvisoryLock(727103,trimMetrics));}
+ if(Date.now()-lastSlow>(Number(process.env.SLOW_SWEEP_MS)||60_000)){lastSlow=Date.now();await step('alerts',()=>withAdvisoryLock(727102,sweepAlerts));await step('notifications',()=>sweepNotifications());await step('audit',()=>sweepAudit());await step('branding',()=>sweepBranding());await step('metrics-trim',()=>withAdvisoryLock(727103,trimMetrics));}
  }catch(e){app.log.error(e,'sweeper failed');}finally{sweeping=false;}}
 setInterval(sweep,Number(process.env.SWEEP_INTERVAL_MS)||15000).unref();await sweep();
 await app.listen({host:process.env.HOST||'0.0.0.0',port:PORT});

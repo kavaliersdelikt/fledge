@@ -12,9 +12,10 @@ export type FailoverSettings={enabled:boolean;graceMinutes:number;maxConcurrent:
 export type PluginSettings={registryUrl:string;trustedKeys:string[];allowCommunity:boolean};
 export type EmailSettings={enabled:boolean;host:string;port:number;security:'none'|'starttls'|'tls';user:string;password:string;from:string};
 export type SecuritySettings={adminAllowedCidrs:string[];auditRetentionDays:number};
-type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings;plugins:PluginSettings;email:EmailSettings;security:SecuritySettings};
+// `branding` is managed by branding.ts (its own validation, history and images); here it is only stored and read.
+type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings;plugins:PluginSettings;email:EmailSettings;security:SecuritySettings;branding:Record<string,any>};
 type Section=keyof Sections;
-const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl'],plugins:[],email:['password'],security:[]};
+const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl'],plugins:[],email:['password'],security:[],branding:[]};
 const defaultImages='itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/';
 const list=(v:string)=>v.split(',').map(s=>s.trim()).filter(Boolean);
 
@@ -29,6 +30,7 @@ function envDefaults():Sections{
   plugins:{registryUrl:e.PLUGIN_REGISTRY_URL??'https://raw.githubusercontent.com/kavaliersdelikt/fledge/main/plugins/registry/index.json',trustedKeys:[],allowCommunity:false},
   email:{enabled:Boolean(e.SMTP_HOST),host:e.SMTP_HOST||'',port:Number(e.SMTP_PORT)||587,security:(['none','starttls','tls'].includes(e.SMTP_SECURITY||'')?e.SMTP_SECURITY:'starttls') as EmailSettings['security'],user:e.SMTP_USER||'',password:e.SMTP_PASSWORD||'',from:e.SMTP_FROM||''},
   security:{adminAllowedCidrs:[],auditRetentionDays:0},
+  branding:{},
  };
 }
 
@@ -135,7 +137,8 @@ export function publicSettings(s:Sections){
  for(const key of Object.keys(s) as Section[]){
   const section:any={...s[key]};
   for(const f of secretFields[key]){section[`${f}Set`]=!!section[f];delete section[f];}
-  out[key]=section;
+  // Appearance has its own endpoints (and can be large); it is not part of the generic settings document.
+  if(key!=='branding')out[key]=section;
  }
  return out;
 }
@@ -144,7 +147,7 @@ export function settingsRoutes(app:FastifyInstance,hooks:{onSave?:(section:Secti
  app.get('/api/settings',async(req)=>{admin(req);const s=await settings();const saved=(await pool.query("SELECT key,updated_at FROM settings WHERE key<>'failover_engine'")).rows;return {...publicSettings(s),saved:Object.fromEntries(saved.map(r=>[r.key,r.updated_at]))};});
  app.put('/api/settings/:section',async(req)=>{
   admin(req);const section=(req.params as any).section as Section;
-  if(!(section in secretFields))fail(404,'Unknown settings section');
+  if(!(section in secretFields)||section==='branding')fail(404,'Unknown settings section');
   const current=await settings(),value=validate(section,req.body,current);
   if(section==='security'&&value.adminAllowedCidrs.length&&process.env.ADMIN_IP_ALLOW_DISABLE!=='true'&&!ipAllowed(req.ip,value.adminAllowedCidrs))fail(400,`Your own address (${req.ip}) is not in this list, so saving it would lock you out. Add it first.`);
   await saveSection(section,value,req.actor!.id);
