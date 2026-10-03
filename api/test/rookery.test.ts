@@ -82,6 +82,8 @@ test('settings: defaults are valid and safe',()=>{
  assert.throws(()=>validateRookery('billing',{...defaultBilling(),terminateAfterDays:3,suspendAfterDays:7},{}),'termination must follow suspension');
  assert.throws(()=>validateRookery('billing',{...defaultBilling(),currency:'euro'},{}));
  assert.throws(()=>validateRookery('store',{...defaultStore(),termsUrl:'javascript:alert(1)'},{}));
+ assert.equal(validateRookery('store',{...defaultStore(),companyEmail:'billing@example.com'},{}).companyEmail,'billing@example.com');
+ assert.throws(()=>validateRookery('store',{...defaultStore(),companyEmail:'!@!.'.repeat(50)},{}));
  assert.equal(validateRookery('signup',{...defaultSignup(),blockedDomains:['@Spam.Example']},cur).blockedDomains[0],'spam.example');
 });
 

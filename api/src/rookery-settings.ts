@@ -1,4 +1,4 @@
-import {fail} from './core.js';
+import {fail,looksLikeEmail} from './core.js';
 
 // Settings sections added in 0.7.1.1 "Rookery": sign-up, self-service servers, limits,
 // billing and the store. Defaults describe a panel that behaves exactly like 0.6.2.1:
@@ -167,7 +167,7 @@ export function validateRookery(section:string,body:any,current:any):any{
     defaultInterval:oneOf(body.defaultInterval,'Default interval',['month','quarter','semiannual','year'] as const),soldOut:oneOf(body.soldOut,'Sold-out plans',['show','hide'] as const),
     requireVerifiedEmail:bool(body.requireVerifiedEmail,'Require a verified email'),maxActivePerCustomer:int(body.maxActivePerCustomer,'Active subscriptions per customer',1,1000),
    };
-   if(v.companyEmail&&!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v.companyEmail))fail(400,'Company email must look like billing@example.com');
+   if(v.companyEmail&&!looksLikeEmail(v.companyEmail))fail(400,'Company email must look like billing@example.com');
    return v;
   }
  }

@@ -17,6 +17,7 @@ export type SecuritySettings={adminAllowedCidrs:string[];auditRetentionDays:numb
 type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings;plugins:PluginSettings;email:EmailSettings;security:SecuritySettings;branding:Record<string,any>;signup:SignupSettings;selfService:SelfServiceSettings;limits:LimitsSettings;billing:BillingSettings;store:StoreSettings};
 type Section=keyof Sections;
 const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl'],plugins:[],email:['password'],security:[],branding:[],signup:['captchaSecret'],selfService:[],limits:[],billing:[],store:[]};
+const writableSections=['storage','nodes','agentUpdates','updates','failover','plugins','email','security','signup','selfService','limits','billing','store'] as const satisfies readonly Exclude<Section,'branding'>[];
 const defaultImages='itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/';
 const list=(v:string)=>v.split(',').map(s=>s.trim()).filter(Boolean);
 
@@ -156,8 +157,9 @@ export const settingsGuard=(section:Section,fn:Guard)=>{guards.set(section,fn);}
 export function settingsRoutes(app:FastifyInstance,hooks:{onSave?:(section:Section)=>void}={}){
  app.get('/api/settings',async(req)=>{admin(req);const s=await settings();const saved=(await pool.query("SELECT key,updated_at FROM settings WHERE key<>'failover_engine'")).rows;return {...publicSettings(s),saved:Object.fromEntries(saved.map(r=>[r.key,r.updated_at]))};});
  app.put('/api/settings/:section',async(req)=>{
-  admin(req);const section=(req.params as any).section as Section;
-  if(!(section in secretFields)||section==='branding')fail(404,'Unknown settings section');
+  admin(req);const requested=(req.params as {section?:unknown}).section;
+  const section=writableSections.find(candidate=>candidate===requested);
+  if(!section)return fail(404,'Unknown settings section');
   const current=await settings(),value=validate(section,req.body,current);
   await guards.get(section)?.(value,current);
   if(section==='security'&&value.adminAllowedCidrs.length&&process.env.ADMIN_IP_ALLOW_DISABLE!=='true'&&!ipAllowed(req.ip,value.adminAllowedCidrs))fail(400,`Your own address (${req.ip}) is not in this list, so saving it would lock you out. Add it first.`);
