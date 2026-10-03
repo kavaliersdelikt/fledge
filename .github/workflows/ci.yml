@@ -21,15 +21,26 @@ jobs:
     defaults:
       run:
         working-directory: api
+    env:
+      # The integration tests create and drop their own throw-away databases (the CI user is a superuser).
+      TEST_DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: |
+            api/package-lock.json
+            plugins/host/package-lock.json
+            plugins/tools/package-lock.json
       - run: npm ci
+      - run: npm ci
+        working-directory: plugins/host
+      - run: npm ci
+        working-directory: plugins/tools
       - run: npm run check
+      - run: npm run test:unit
       - run: npm run test:cors
       - run: npm run test:updates
       - run: npm run test:templates
@@ -47,6 +58,32 @@ jobs:
           done
           curl --fail http://localhost:4172/api/health
           node test/smoke.mjs
+      - name: Plugin system (sandbox, store, Modrinth add-ons, trust)
+        run: npm run test:plugins
+      - name: Templates v2
+        run: npm run test:templates-v2
+      - name: Quotas, extra ports, clone
+        run: npm run test:fit
+      - name: Schedules, crash policy, notifications
+        run: npm run test:autopilot
+      - name: Sessions, email, passkeys, audit, OpenAPI
+        run: npm run test:accounts
+  plugin-host:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/host
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: plugins/host/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - name: Sandbox and network guard tests
+        run: npm test
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -61,6 +98,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run check
+      - name: Unit tests for the web helpers
+        run: npx --yes tsx --test src/lib/*.test.ts
       - run: npm run build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:4000
@@ -75,13 +114,34 @@ jobs:
         with:
           go-version-file: agent/go.mod
           cache: false
+      - run: go vet ./...
       - run: go test ./...
       - run: go build ./...
       - name: Validate installer and node connector scripts
         working-directory: ${{ github.workspace }}
         run: |
-          sh -n install.sh update.sh agent/connect.sh tests/install-smoke.sh tests/connector-smoke.sh tests/update-smoke.sh
+          sh -n install.sh update.sh agent/connect.sh tests/install-smoke.sh tests/connector-smoke.sh tests/update-smoke.sh tests/update-flow-smoke.sh
           sh tests/install-smoke.sh
           sh tests/update-smoke.sh
+          sh tests/update-flow-smoke.sh
           sh tests/connector-smoke.sh
           sh tests/release-build-smoke.sh
+  compose:
+    # Builds every image and starts the real stack, including the plugin host, with the installer.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with the installer (waits for the API, the panel and the plugin host)
+        run: sh ./install.sh
+      - name: Plugin host is healthy, hardened and reachable only from the API
+        run: |
+          docker compose ps
+          docker compose exec -T plugins node -e "fetch('http://127.0.0.1:4020/health').then(r=>r.json()).then(j=>{console.log(j);process.exit(j.ok?0:1)})"
+          test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$(docker compose ps -q plugins)")" = true
+          if docker compose port plugins 4020 2>/dev/null | grep -q .; then echo 'plugin host must not publish a port' >&2; exit 1; fi
+          docker compose exec -T postgres sh -c 'true'
+          if docker compose exec -T plugins node -e "require('net').connect(5432,'postgres').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"; then echo 'plugin host can reach the database' >&2; exit 1; fi
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail 80

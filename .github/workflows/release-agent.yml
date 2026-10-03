@@ -9,8 +9,40 @@ on:
     types: [published]
 permissions:
   contents: write
+  id-token: write       # keyless signing (cosign) and build provenance
+  attestations: write
 jobs:
+  # Dependency tooling (npx, go run) runs here, in a job that can neither sign nor publish anything.
+  sbom:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Software bills of materials
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p sbom
+          for dir in api web plugins/host; do
+            (cd "$dir" && npm ci --no-audit --no-fund && npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --output-file "$GITHUB_WORKSPACE/sbom/sbom-$(basename "$dir").cdx.json" --ignore-npm-errors)
+          done
+          (cd agent && go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest mod -json -output "$GITHUB_WORKSPACE/sbom/sbom-agent.cdx.json")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/
   release:
+    needs: sbom
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +50,9 @@ jobs:
         with:
           go-version-file: agent/go.mod
           cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Build supported Linux agents and checksums
         shell: bash
         run: |
@@ -35,6 +70,50 @@ jobs:
           cd release
           sha256sum fledge-agent_linux_amd64 fledge-agent_linux_arm64 > SHA256SUMS
           printf '%s\n' "$version" > VERSION
+      - name: Package the bundled plugins (signed when PLUGIN_SIGNING_KEY is configured)
+        shell: bash
+        env:
+          PLUGIN_SIGNING_KEY: ${{ secrets.PLUGIN_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          (cd plugins/tools && npm ci --no-audit --no-fund)
+          sign=""
+          if [ -n "${PLUGIN_SIGNING_KEY:-}" ]; then
+            umask 077
+            printf '%s\n' "$PLUGIN_SIGNING_KEY" > "$RUNNER_TEMP/plugin-signing.key.pem"
+            sign="--sign $RUNNER_TEMP/plugin-signing.key.pem"
+          else
+            echo "PLUGIN_SIGNING_KEY is not set: plugin packages are published unsigned."
+          fi
+          mkdir -p release/plugins
+          for dir in plugins/bundled/*/; do
+            case "$(basename "$dir")" in _*) continue ;; esac
+            node plugins/tools/pack.mjs pack "$dir" --out release/plugins $sign
+          done
+          cp release/plugins/*.fledgeplugin release/
+          (cd release && sha256sum *.fledgeplugin > SHA256SUMS.plugins)
+          rm -rf release/plugins "$RUNNER_TEMP/plugin-signing.key.pem"
+      - name: Collect the SBOMs (best effort)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+          path: release/
+      - name: Sign the checksums (keyless, best effort)
+        continue-on-error: true
+        uses: sigstore/cosign-installer@v3
+      - name: Sign SHA256SUMS
+        continue-on-error: true
+        shell: bash
+        run: |
+          cosign sign-blob --yes --output-signature release/SHA256SUMS.sig --output-certificate release/SHA256SUMS.pem release/SHA256SUMS
+      - name: Build provenance attestations (best effort)
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release/fledge-agent_linux_*
+            release/*.fledgeplugin
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
