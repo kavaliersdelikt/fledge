@@ -85,7 +85,7 @@ const CSS_REJECT:[RegExp,string][]=[
  [/@import/i,'@import loads other files'],[/@namespace/i,'@namespace is not allowed'],[/@font-face/i,'@font-face (custom fonts) is not available'],
  [/@(?:-moz-)?document/i,'@document is not allowed'],[/expression\s*\(/i,'expression() is not allowed'],[/behavior\s*:/i,'behavior is not allowed'],
  [/-moz-binding/i,'-moz-binding is not allowed'],[/(?:java|vb)script\s*:/i,'script URLs are not allowed'],[/<\/?\s*(?:style|script|link|iframe)/i,'HTML tags are not allowed in CSS'],
- [/<!--|-->/,'HTML comments are not allowed in CSS'],[/(?:^|[^a-z-])(?:-webkit-)?image-set\s*\(/i,'image-set() is not allowed'],[/(?:^|[^a-z-])(?:src|image|cross-fade|element)\s*\(/i,'This image function is not allowed'],
+ [/<!--|--(?:!?)>/,'HTML comments are not allowed in CSS'],[/(?:^|[^a-z-])(?:-webkit-)?image-set\s*\(/i,'image-set() is not allowed'],[/(?:^|[^a-z-])(?:src|image|cross-fade|element)\s*\(/i,'This image function is not allowed'],
 ];
 /** Resolves CSS escapes (\41, \a, \"), so a pattern cannot hide behind them. */
 function unescapeCss(s:string):string{
