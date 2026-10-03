@@ -179,3 +179,179 @@ INSERT INTO templates(id,name,image,startup,stop_command,internal_ports,env,memo
 ('php','PHP','php:8.4-cli','cd /data && exec php -S 0.0.0.0:8080 -t "$DOCUMENT_ROOT"','^C','[{"container":8080,"offset":0,"protocol":"tcp"}]','{"DOCUMENT_ROOT":"."}',512,100,5120,ARRAY['DOCUMENT_ROOT'],true),
 ('ruby','Ruby','ruby:3.4-slim','cd /data && if [ -f Gemfile ]; then bundle install || exit 1; fi; exec ruby "$MAIN_FILE"','^C','[{"container":3000,"offset":0,"protocol":"tcp"}]','{"MAIN_FILE":"main.rb","PORT":"3000"}',512,100,5120,ARRAY['MAIN_FILE'],true)
 ON CONFLICT(id) DO NOTHING;
+
+-- ===========================================================================
+-- 0.6.1.1 "Roost": plugins, add-ons and the features around them.
+-- Everything below is additive and safe to run repeatedly.
+-- ===========================================================================
+
+-- Installed plugins. Code lives here (not on disk) so every API replica sees the same
+-- version; the plugin host receives it per call and caches it by checksum.
+CREATE TABLE IF NOT EXISTS plugins(
+ id text PRIMARY KEY CHECK(id ~ '^[a-z0-9][a-z0-9-]{1,48}$'),
+ name text NOT NULL, version text NOT NULL,
+ tier text NOT NULL CHECK(tier IN ('bundled','verified','community')),
+ source text NOT NULL, manifest jsonb NOT NULL, code text NOT NULL, code_sha256 text NOT NULL, package_sha256 text,
+ icon text, readme text, changelog text,
+ enabled boolean NOT NULL DEFAULT false,
+ granted_permissions text[] NOT NULL DEFAULT '{}',
+ settings jsonb NOT NULL DEFAULT '{}'::jsonb, secrets text,
+ previous jsonb,
+ failure_count integer NOT NULL DEFAULT 0, last_error text, disabled_reason text,
+ installed_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ installed_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS plugin_kv(
+ plugin_id text NOT NULL REFERENCES plugins(id) ON DELETE CASCADE, key text NOT NULL, value jsonb NOT NULL,
+ PRIMARY KEY(plugin_id,key)
+);
+CREATE TABLE IF NOT EXISTS plugin_logs(
+ id bigserial PRIMARY KEY, plugin_id text NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+ level text NOT NULL, message text NOT NULL, at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS plugin_logs_recent ON plugin_logs(plugin_id,id DESC);
+
+-- What kind of add-ons a template supports (see api/src/addons.ts). NULL means none.
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS addons jsonb;
+UPDATE templates SET addons='{"versionVar":"VERSION","typeVar":"TYPE","types":{"PAPER":{"kind":"plugin","dir":"/plugins","loaders":["paper","spigot","bukkit"]},"PURPUR":{"kind":"plugin","dir":"/plugins","loaders":["purpur","paper","spigot","bukkit"]},"FOLIA":{"kind":"plugin","dir":"/plugins","loaders":["folia"]},"SPIGOT":{"kind":"plugin","dir":"/plugins","loaders":["spigot","bukkit"]},"BUKKIT":{"kind":"plugin","dir":"/plugins","loaders":["bukkit"]},"PUFFERFISH":{"kind":"plugin","dir":"/plugins","loaders":["paper","spigot","bukkit"]},"FABRIC":{"kind":"mod","dir":"/mods","loaders":["fabric"]},"QUILT":{"kind":"mod","dir":"/mods","loaders":["quilt","fabric"]},"FORGE":{"kind":"mod","dir":"/mods","loaders":["forge"]},"NEOFORGE":{"kind":"mod","dir":"/mods","loaders":["neoforge"]}}}'::jsonb
+ WHERE addons IS NULL AND official AND id IN ('minecraft-java','minecraft-paper','minecraft-purpur','minecraft-folia','minecraft-spigot','minecraft-fabric','minecraft-quilt','minecraft-forge','minecraft-neoforge');
+
+-- Files that plugins installed into servers (mods and plugins), tracked so they can be
+-- updated, disabled and removed. `plugin_id` is not a foreign key on purpose: removing a
+-- catalog plugin leaves the installed files and their records in place.
+CREATE TABLE IF NOT EXISTS server_addons(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ plugin_id text NOT NULL, provider text NOT NULL DEFAULT '', kind text NOT NULL, dir text NOT NULL,
+ project_id text NOT NULL, project_title text NOT NULL, project_slug text, icon_url text,
+ version_id text NOT NULL, version_label text NOT NULL DEFAULT '', filename text NOT NULL,
+ sha512 text, size_bytes bigint, source_url text,
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','installed','failed','removing')),
+ disabled boolean NOT NULL DEFAULT false, pinned boolean NOT NULL DEFAULT false,
+ is_dependency boolean NOT NULL DEFAULT false, error text, job_id uuid,
+ installed_by uuid REFERENCES users(id) ON DELETE SET NULL,
+ installed_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS server_addons_server ON server_addons(server_id,state);
+CREATE UNIQUE INDEX IF NOT EXISTS server_addons_project ON server_addons(server_id,plugin_id,project_id) WHERE state<>'failed';
+
+-- Template v2: typed variables, descriptions, versions and a history for "update servers".
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS description text;
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS variables jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS quick_commands jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS template_version integer NOT NULL DEFAULT 1;
+CREATE TABLE IF NOT EXISTS template_versions(
+ template_id text NOT NULL REFERENCES templates(id) ON DELETE CASCADE, version integer NOT NULL,
+ snapshot jsonb NOT NULL, created_by uuid REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(template_id,version)
+);
+-- Every template gets its version-1 snapshot, so later versions can be compared against it.
+INSERT INTO template_versions(template_id,version,snapshot)
+ SELECT id,version,jsonb_build_object('image',image,'startup',startup,'stopCommand',stop_command,'internalPorts',internal_ports,'env',env)
+ FROM templates ON CONFLICT DO NOTHING;
+-- Typed variable definitions for the preinstalled templates (only where none were set yet).
+UPDATE templates SET variables='[{"key":"TYPE","label":"Server software","type":"select","options":[{"value":"VANILLA","label":"Vanilla"},{"value":"PAPER","label":"Paper"},{"value":"PURPUR","label":"Purpur"},{"value":"FOLIA","label":"Folia"},{"value":"SPIGOT","label":"Spigot"},{"value":"FABRIC","label":"Fabric"},{"value":"QUILT","label":"Quilt"},{"value":"FORGE","label":"Forge"},{"value":"NEOFORGE","label":"NeoForge"}],"description":"Which server software to run. Changing it recreates the server.","userEditable":true},{"key":"VERSION","label":"Minecraft version","type":"string","pattern":"^(LATEST|SNAPSHOT|\\d+(\\.\\d+){1,3}[-\\w.]*)$","description":"For example 1.21.11, or LATEST.","userEditable":true},{"key":"DIFFICULTY","label":"Difficulty","type":"select","options":[{"value":"peaceful","label":"Peaceful"},{"value":"easy","label":"Easy"},{"value":"normal","label":"Normal"},{"value":"hard","label":"Hard"}],"userEditable":true},{"key":"MAX_PLAYERS","label":"Maximum players","type":"number","min":1,"max":1000,"userEditable":true},{"key":"MOTD","label":"Message of the day","type":"string","userEditable":true}]'::jsonb
+ WHERE id='minecraft-java' AND variables='[]'::jsonb;
+UPDATE templates SET variables='[{"key":"VERSION","label":"Minecraft version","type":"string","pattern":"^(LATEST|SNAPSHOT|\\d+(\\.\\d+){1,3}[-\\w.]*)$","description":"For example 1.21.11, or LATEST.","userEditable":true},{"key":"DIFFICULTY","label":"Difficulty","type":"select","options":[{"value":"peaceful","label":"Peaceful"},{"value":"easy","label":"Easy"},{"value":"normal","label":"Normal"},{"value":"hard","label":"Hard"}],"userEditable":true},{"key":"MAX_PLAYERS","label":"Maximum players","type":"number","min":1,"max":1000,"userEditable":true},{"key":"MOTD","label":"Message of the day","type":"string","userEditable":true}]'::jsonb
+ WHERE id IN ('minecraft-paper','minecraft-purpur','minecraft-folia','minecraft-spigot','minecraft-fabric','minecraft-quilt','minecraft-forge','minecraft-neoforge') AND variables='[]'::jsonb;
+UPDATE templates SET variables='[{"key":"SERVER_NAME","label":"Server name","type":"string","description":"Shown in the server browser.","userEditable":true},{"key":"WORLD_NAME","label":"World name","type":"string","pattern":"^[A-Za-z0-9_ -]{1,40}$","userEditable":true},{"key":"SERVER_PASS","label":"Server password","type":"string","secret":true,"min":5,"description":"At least 5 characters.","userEditable":true},{"key":"PUBLIC","label":"List publicly","type":"select","options":[{"value":"1","label":"Yes"},{"value":"0","label":"No"}],"userEditable":true}]'::jsonb
+ WHERE id='valheim' AND variables='[]'::jsonb;
+UPDATE templates SET variables='[{"key":"SERVER_NAME","label":"Server name","type":"string","userEditable":true},{"key":"GAMEMODE","label":"Game mode","type":"select","options":[{"value":"survival","label":"Survival"},{"value":"creative","label":"Creative"},{"value":"adventure","label":"Adventure"}],"userEditable":true},{"key":"DIFFICULTY","label":"Difficulty","type":"select","options":[{"value":"peaceful","label":"Peaceful"},{"value":"easy","label":"Easy"},{"value":"normal","label":"Normal"},{"value":"hard","label":"Hard"}],"userEditable":true},{"key":"MAX_PLAYERS","label":"Maximum players","type":"number","min":1,"max":200,"userEditable":true}]'::jsonb
+ WHERE id='minecraft-bedrock' AND variables='[]'::jsonb;
+-- Handy console lines for Minecraft Java servers (shown as quick buttons; editable per template).
+UPDATE templates SET quick_commands='[{"label":"Save world","command":"save-all"},{"label":"Who is online","command":"list"},{"label":"Say hello","command":"say Hello from the panel"}]'::jsonb
+ WHERE image LIKE 'itzg/minecraft-server:%' AND quick_commands='[]'::jsonb;
+
+-- Per-customer limits ({} = unlimited) and extra port mappings per server (offsets from the
+-- server's base port, like the template's own ports).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS quota jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS extra_ports jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+-- ===========================================================================
+-- Autopilot: schedules with cron and task chains, crash policy, notification center.
+-- ===========================================================================
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS name text;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS cron text;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'UTC';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS tasks jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS missed text NOT NULL DEFAULT 'skip';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS last_run_at timestamptz;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS last_status text;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS last_error text;
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_kind_check;
+ALTER TABLE schedules ADD CONSTRAINT schedules_kind_check CHECK(kind IN ('backup','command','chain'));
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_interval_minutes_check;
+ALTER TABLE schedules ADD CONSTRAINT schedules_interval_minutes_check CHECK(interval_minutes>=0);
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_missed_check;
+ALTER TABLE schedules ADD CONSTRAINT schedules_missed_check CHECK(missed IN ('skip','run'));
+CREATE TABLE IF NOT EXISTS schedule_runs(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), schedule_id uuid NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+ server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ state text NOT NULL DEFAULT 'running' CHECK(state IN ('running','succeeded','failed','skipped')),
+ step integer NOT NULL DEFAULT 0, next_step_at timestamptz, results jsonb NOT NULL DEFAULT '[]'::jsonb, error text,
+ trigger text NOT NULL DEFAULT 'schedule', started_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS schedule_runs_due ON schedule_runs(next_step_at) WHERE state='running';
+CREATE INDEX IF NOT EXISTS schedule_runs_schedule ON schedule_runs(schedule_id,started_at DESC);
+-- A schedule never has two runs in flight at once.
+CREATE UNIQUE INDEX IF NOT EXISTS schedule_runs_one_running ON schedule_runs(schedule_id) WHERE state='running';
+
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS crash_policy jsonb NOT NULL DEFAULT '{"mode":"off"}'::jsonb;
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS crash_state jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS last_exit jsonb;
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS alert_state jsonb NOT NULL DEFAULT '{}'::jsonb;
+CREATE TABLE IF NOT EXISTS server_events(
+ id bigserial PRIMARY KEY, server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ kind text NOT NULL, message text NOT NULL, detail jsonb NOT NULL DEFAULT '{}'::jsonb, at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS server_events_recent ON server_events(server_id,id DESC);
+
+CREATE TABLE IF NOT EXISTS notification_channels(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), scope text NOT NULL CHECK(scope IN ('panel','user')),
+ user_id uuid REFERENCES users(id) ON DELETE CASCADE, name text NOT NULL,
+ kind text NOT NULL CHECK(kind IN ('webhook','discord','slack','email')),
+ config jsonb NOT NULL DEFAULT '{}'::jsonb, secret text, events text[] NOT NULL DEFAULT '{}', server_ids uuid[],
+ enabled boolean NOT NULL DEFAULT true, last_status text, last_error text, last_sent_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notification_channels_user ON notification_channels(user_id);
+CREATE TABLE IF NOT EXISTS notifications(
+ id bigserial PRIMARY KEY, user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+ kind text NOT NULL, severity text NOT NULL DEFAULT 'info' CHECK(severity IN ('info','warn','bad','ok')),
+ title text NOT NULL, body text NOT NULL DEFAULT '', server_id uuid REFERENCES servers(id) ON DELETE SET NULL, node_id uuid,
+ data jsonb NOT NULL DEFAULT '{}'::jsonb, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id,id DESC);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications_seen_id bigint NOT NULL DEFAULT 0;
+
+-- ===========================================================================
+-- Account security: session details, one-time email links, passkeys.
+-- ===========================================================================
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip text;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent text;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NOT NULL DEFAULT now();
+CREATE TABLE IF NOT EXISTS user_tokens(
+ token_hash text PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ kind text NOT NULL CHECK(kind IN ('invite','reset')), expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_tokens_user ON user_tokens(user_id,kind);
+CREATE TABLE IF NOT EXISTS passkeys(
+ id text PRIMARY KEY, user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ public_key bytea NOT NULL, counter bigint NOT NULL DEFAULT 0, transports text[] NOT NULL DEFAULT '{}',
+ name text NOT NULL, device_type text, backed_up boolean NOT NULL DEFAULT false,
+ created_at timestamptz NOT NULL DEFAULT now(), last_used_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys(user_id);
+CREATE TABLE IF NOT EXISTS webauthn_challenges(
+ user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind text NOT NULL, challenge text NOT NULL, expires_at timestamptz NOT NULL,
+ PRIMARY KEY(user_id,kind)
+);
+
+-- Resource history per server: 1-minute buckets (24 h), 5-minute (7 days) and hourly (30 days).
+CREATE TABLE IF NOT EXISTS server_metrics(
+ server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE, res smallint NOT NULL CHECK(res IN (1,2,3)), bucket timestamptz NOT NULL,
+ cpu_sum double precision NOT NULL DEFAULT 0, cpu_max real NOT NULL DEFAULT 0, mem_sum double precision NOT NULL DEFAULT 0, mem_max double precision NOT NULL DEFAULT 0,
+ disk_bytes bigint, n integer NOT NULL DEFAULT 0, PRIMARY KEY(server_id,res,bucket)
+);
+CREATE INDEX IF NOT EXISTS server_metrics_age ON server_metrics(res,bucket);
