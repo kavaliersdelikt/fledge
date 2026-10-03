@@ -1,0 +1,26 @@
+{
+  "id": "stripe",
+  "name": "Stripe Payments",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Take card and wallet payments with Stripe Checkout: subscriptions, trials, plan changes, refunds and the customer portal. Works in test mode with Stripe's test keys.",
+  "author": "Fledge",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://stripe.com",
+  "minPanelVersion": "0.7.1.1",
+  "permissions": ["network:api.stripe.com", "payments", "storage"],
+  "payments": {
+    "id": "stripe",
+    "label": "Stripe",
+    "intervals": ["month", "quarter", "semiannual", "year"],
+    "currencies": [],
+    "features": ["checkout", "portal", "refund", "trial", "tax", "coupons", "change"]
+  },
+  "settings": [
+    { "key": "secretKey", "label": "Secret or restricted API key", "type": "secret", "required": true, "help": "A key that starts with sk_test_ / rk_test_ (test mode) or sk_live_ / rk_live_ (live mode). A restricted key needs write access to Checkout Sessions, Customers, Subscriptions, Products and Billing portal, and read access to Invoices, Charges and Refunds (write for Refunds)." },
+    { "key": "webhookSecret", "label": "Webhook signing secret", "type": "secret", "required": true, "help": "Starts with whsec_. From the endpoint in the Stripe dashboard, or from `stripe listen` when testing locally. Several endpoints can be separated with commas." },
+    { "key": "apiVersion", "label": "Stripe API version", "type": "string", "default": "2024-06-20", "pattern": "^\\d{4}-\\d{2}-\\d{2}(\\.[a-z]+)?$", "help": "Fledge pins the API version so Stripe changes cannot surprise it. Leave this alone unless you know why." },
+    { "key": "portalHeadline", "label": "Billing portal headline", "type": "string", "placeholder": "Manage your subscription", "help": "Shown at the top of Stripe's customer portal when Fledge has to create the portal configuration itself." },
+    { "key": "taxCode", "label": "Product tax code", "type": "string", "default": "txcd_10000000", "pattern": "^txcd_[0-9]{8}$", "help": "Stripe's code for what you sell. The default is general electronically supplied services. Stripe needs a code when Managed Payments or Stripe Tax is on; pick a better fit from Stripe's list of product tax codes if there is one for your product." }
+  ]
+}
