@@ -39,7 +39,10 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PORT: "4000"
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:-0.6.1.1}
+      APP_VERSION: ${APP_VERSION:-0.6.2.1}
+      # Appearance (Settings, Appearance): BRANDING_DISABLED=true shows the built-in look and refuses changes (recovery).
+      BRANDING_DISABLED: ${BRANDING_DISABLED:-false}
+      BRAND_NAME: ${BRAND_NAME:-}
       UPDATER_URL: http://updater:4010
       PLUGIN_HOST_URL: http://plugins:4020
       PLUGIN_TOKEN_FILE: /run/fledge-plugins/token
@@ -93,7 +96,7 @@ services:
     environment:
       PORT: "4020"
       PLUGIN_TOKEN_FILE: /run/fledge-plugins/token
-      APP_VERSION: ${APP_VERSION:-0.6.1.1}
+      APP_VERSION: ${APP_VERSION:-0.6.2.1}
     networks:
       - plugins_net
     volumes:
@@ -136,6 +139,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
         NEXT_PUBLIC_GITHUB_REPOSITORY: ${NEXT_PUBLIC_GITHUB_REPOSITORY:-}
+    environment:
+      # How the panel's server reaches the API to read the appearance settings (the browser uses NEXT_PUBLIC_API_URL).
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
     ports:
       - "${WEB_BIND:-127.0.0.1}:3000:3000"
     depends_on:
