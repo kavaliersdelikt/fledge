@@ -49,7 +49,13 @@ function stripComments(text: string) {
     previous = text;
     text = text.replace(/<!--[\s\S]*?-->/g, "");
   } while (text !== previous);
-  return text.replace(/<!--/g, "");
+
+  do {
+    previous = text;
+    text = text.replace(/<!--/g, "");
+  } while (text !== previous);
+
+  return text;
 }
 
 function stripHtml(text: string) {
