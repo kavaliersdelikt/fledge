@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 var (
@@ -141,6 +142,32 @@ func mountVolume(img, target string) error {
 	_, e := run("mount", "-o", "loop,nodev,nosuid,noatime", "-t", "ext4", img, target)
 	return e
 }
+
+// unmountVolumeStrict unmounts target and waits until the loop device is released too,
+// retrying while something (a stopping container) still holds the mount. Unlike
+// unmountVolume it never falls back to a lazy unmount, which reports success while the
+// filesystem is still mounted somewhere.
+func unmountVolumeStrict(target, img string) error {
+	var last error
+	for i := 0; i < 30; i++ {
+		if isMounted(target) {
+			if _, last = run("umount", target); last != nil && isMounted(target) {
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+		}
+		if _, e := loopDevice(img); e != nil {
+			return nil // no loop device left: fully released
+		}
+		last = errors.New("the volume is still attached to a loop device")
+		time.Sleep(500 * time.Millisecond)
+	}
+	if last == nil {
+		last = errors.New("the volume is still in use")
+	}
+	return fmt.Errorf("could not release the server's disk volume (is the game fully stopped?): %w", last)
+}
+
 func unmountVolume(target string) error {
 	if !isMounted(target) {
 		return nil
@@ -305,14 +332,16 @@ func resizeOffline(id string, mb int) error {
 	if used, _, ok := volumeUsedBytes(root); ok && mb < cur && used+(16<<20) > int64(mb)<<20 {
 		return fmt.Errorf("the server already uses %d MB; a %d MB allowance is too small", used>>20, mb)
 	}
-	if e = unmountVolume(root); e != nil {
-		return e
-	}
 	fail := func(err error) error {
 		if re := mountVolume(img, root); re != nil {
 			return fmt.Errorf("%v; remounting failed: %w", err, re)
 		}
 		return err
+	}
+	// The game has just stopped; give the kernel a moment to let go of the volume. A lazy
+	// unmount is not enough here: the filesystem must really be unmounted before e2fsck.
+	if e = unmountVolumeStrict(root, img); e != nil {
+		return fail(e)
 	}
 	if _, e = run("e2fsck", "-fy", img); e != nil && !strings.Contains(e.Error(), "exit status 1") {
 		return fail(e)

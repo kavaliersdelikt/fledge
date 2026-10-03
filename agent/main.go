@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.5.2.1"
+var version = "0.6.1.1"
 
 const maxTransfer = 8 << 20
 
@@ -230,6 +230,8 @@ func heartbeat() error {
 	running := []string{}
 	ids := []string{}
 	entries := map[string]map[string]interface{}{}
+	stopped := map[string]string{}
+	byName := map[string]map[string]interface{}{}
 	names, e := docker("ps", "-a", "--filter", "label=fledge.server", "--format", "{{.Names}}|{{.Status}}")
 	if e == nil {
 		for _, line := range strings.Split(names, "\n") {
@@ -245,9 +247,12 @@ func heartbeat() error {
 			}
 			entry := map[string]interface{}{"id": strings.TrimPrefix(f[0], "nvr-"), "status": s}
 			ids = append(ids, strings.TrimPrefix(f[0], "nvr-"))
+			byName[f[0]] = entry
 			if s == "running" {
 				running = append(running, f[0])
 				entries[f[0]] = entry
+			} else {
+				stopped[f[0]] = s
 			}
 			sroot := filepath.Join(dataRoot, strings.TrimPrefix(f[0], "nvr-"))
 			if used, _, ok := volumeUsedBytes(sroot); ok {
@@ -265,6 +270,9 @@ func heartbeat() error {
 			}
 		} else {
 			log.Printf("stats: %v", err)
+		}
+		for name, info := range exitInfoFor(stopped) {
+			byName[name]["exit"] = info
 		}
 	} else {
 		log.Printf("docker status: %v", e)
@@ -412,6 +420,13 @@ func execute(j *job) (interface{}, error) {
 			}
 			args = append(args, "-e", k+"="+v)
 		}
+		// The console pipe lets the panel (and the image's own stop logic) reach the console
+		// while the game is still starting, when RCON is not up yet.
+		if minecraftImage(s.Image) {
+			if _, set := s.Env["CREATE_CONSOLE_IN_PIPE"]; !set {
+				args = append(args, "-e", "CREATE_CONSOLE_IN_PIPE=TRUE")
+			}
+		}
 		if s.Startup != "" {
 			args = append(args, "--entrypoint", "/bin/sh")
 		}
@@ -478,6 +493,14 @@ func execute(j *job) (interface{}, error) {
 			// Force IPv4 loopback: on Alpine-based server images localhost may resolve
 			// to ::1 while the Minecraft RCON listener is bound to 0.0.0.0.
 			out, e := docker("exec", n, "rcon-cli", "--host", "127.0.0.1", cmd)
+			if e != nil && strings.Contains(e.Error(), "Failed to connect to RCON") && !containerStopped(n) {
+				// RCON only answers once the world has loaded. Queue the line on the console
+				// pipe so it runs as soon as the server is up.
+				if pe := sendToConsole(n, cmd); pe == nil {
+					return map[string]string{"output": "The server is still starting, so RCON is not ready. The command was queued and runs once the console is up."}, nil
+				}
+				return nil, errors.New("the server is still starting and cannot take commands yet; try again once it has finished loading")
+			}
 			return map[string]string{"output": out}, e
 		}
 		out, e := writeConsoleInput(n, cmd)
@@ -557,6 +580,12 @@ func execute(j *job) (interface{}, error) {
 			return nil, e
 		}
 		return map[string]bool{"ok": true}, extractZip(root, p)
+	case "file.fetch":
+		return fetchFile(j, root, int64(s.DiskMB))
+	case "file.delete":
+		return deleteFiles(j, root)
+	case "file.rename":
+		return renameFile(j, root)
 	default:
 		return nil, fmt.Errorf("unsupported job kind: %s", j.Kind)
 	}
@@ -625,7 +654,7 @@ func resizeData(s *server) error {
 			return e
 		}
 		if state != "true" {
-			docker("stop", "-t", "30", n)
+			stopContainer(n, 30)
 		}
 		return nil
 	}
@@ -641,7 +670,7 @@ func resizeData(s *server) error {
 	}
 	state, _ := docker("inspect", "--format", "{{.State.Running}}", n)
 	if state == "true" {
-		if _, e = docker("stop", "-t", "30", n); e != nil {
+		if e = stopContainer(n, 30); e != nil {
 			return e
 		}
 	}
