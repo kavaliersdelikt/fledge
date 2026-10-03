@@ -37,7 +37,7 @@
   <main id="main">
     <section class="hero">
       <div class="hero-inner">
-        <a class="news intro i1" href="releases/v0.6.2.1">New in 0.6.2.1: your name, your colours, light and dark</a>
+        <a class="news intro i1" href="releases/v0.7.1.1">New in 0.7.1.1 “Rookery”: sign-up, a store and subscriptions</a>
         <h1 class="intro i2"><span class="l1">Your servers,</span><span class="l2">in orbit.</span></h1>
         <p class="lede intro i3">
           Fledge is a self-hosted control panel for game servers on your own Linux Docker hosts. The panel sits at the centre;
@@ -204,6 +204,39 @@
           <div><dt>Outbound traffic</dt><dd>HTTPS to declared public hosts</dd></div>
         </dl>
       </div>
+    </section>
+
+    <section class="block brandsec hostsec" id="host" aria-labelledby="host-h">
+      <div class="tour-head">
+        <h2 id="host-h">Run a hosting business on it.</h2>
+        <div class="tour-tabs host-tabs" role="tablist" aria-label="Hosting features">
+          <button role="tab" aria-selected="true" data-i="0">Store</button>
+          <button role="tab" aria-selected="false" data-i="1" tabindex="-1">Plans</button>
+          <button role="tab" aria-selected="false" data-i="2" tabindex="-1">Billing</button>
+          <button role="tab" aria-selected="false" data-i="3" tabindex="-1">Sign-up</button>
+          <button role="tab" aria-selected="false" data-i="4" tabindex="-1">Emails</button>
+        </div>
+      </div>
+      <div class="brandsec-grid">
+        <div class="brandsec-copy">
+          <p>Let people sign up, create servers within their limits, and buy preset servers by the month, quarter, half-year or year. Stripe is included; payments, late payments and cancellations are handled for you, and nothing is deleted unless you say so.</p>
+          <ul class="points">
+            <li><b>Plans and a store.</b> Fixed servers or allowances, trials, setup fees, stock, free tiers. Prices are read from your database at checkout; the browser only names a plan.</li>
+            <li><b>Subscriptions that protect data.</b> A late payment stops a server after the days you choose and starts it again when the money arrives. Billing never lifts a suspension you made, and never deletes by itself.</li>
+            <li><b>Limits you can explain.</b> Defaults, plans and per-customer overrides, with where each number comes from. Switch them off, or set them to warn only.</li>
+            <li><b>Built to survive bad days.</b> Signed webhooks stored once and re-checked against the provider, a scheduled comparison that repairs anything missed, retrying email with a delivery log.</li>
+          </ul>
+          <div class="cta"><a class="btn btn-line" href="operate/selling">Going live, step by step</a></div>
+        </div>
+        <div class="frame-wrap">
+          <div class="frame" id="host-frame" role="tabpanel">
+            <div class="frame-bar"><i></i><i></i><i></i><span id="host-url">panel.willowhost.example/store</span></div>
+            <img id="host-img" src="screenshots/store.webp" alt="The store with four plans: a free Starter, Friends, the highlighted Community with a free week, and the Creator allowance" width="1360" height="860" loading="lazy" />
+          </div>
+          <p class="tour-caption" id="host-caption" aria-live="polite">What a customer sees: plans with the price for the interval they pick, the size of the server and what is included.</p>
+        </div>
+      </div>
+      <p class="tour-foot">A fictional hosting business on demo data, with Stripe’s test mode behind it. Tax, invoicing rules and consumer law remain your responsibility.</p>
     </section>
 
     <section class="block brandsec" id="brand" aria-labelledby="brand-h">

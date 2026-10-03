@@ -116,6 +116,26 @@ tabs($('.tour-tabs'), (b) => {
   }, reduced ? 0 : 180);
 });
 
+// ---------- Hosting ----------
+const hosting = [
+  { src: 'store', url: 'panel.willowhost.example/store', alt: 'The store with four plans: a free Starter, Friends, the highlighted Community with a free week, and the Creator allowance', cap: 'What a customer sees: plans with the price for the interval they pick, the size of the server and what is included.' },
+  { src: 'billing-plans', url: 'panel.willowhost.example/billing', alt: 'The Plans tab listing each plan with its prices, subscribers and stock', cap: 'Plans with prices for every interval, subscribers, stock and who may see them.' },
+  { src: 'billing-overview', url: 'panel.willowhost.example/billing', alt: 'Billing overview with recurring revenue, active subscriptions, overdue payments and a checklist for opening the store', cap: 'Recurring revenue, trials, overdue payments, and a checklist that keeps the store closed until everything works.' },
+  { src: 'signup-form', url: 'panel.willowhost.example/', alt: 'The sign-up form with terms and a confirmation step by email', cap: 'People create their own account. Nothing can be created until the email address is confirmed.' },
+  { src: 'email-templates', url: 'panel.willowhost.example/settings', alt: 'The email template editor with a live preview of a receipt', cap: 'Every email is a template you can edit, with a live preview and a delivery log with retries.' },
+];
+const himg = $('#host-img'), hcap = $('#host-caption'), hurl = $('#host-url');
+hosting.forEach((s) => { const i = new Image(); i.src = `screenshots/${s.src}.webp`; });
+tabs($('.host-tabs'), (b) => {
+  const s = hosting[Number(b.dataset.i)];
+  himg.classList.add('swap');
+  setTimeout(() => {
+    himg.src = `screenshots/${s.src}.webp`; himg.alt = s.alt;
+    hurl.textContent = s.url; hcap.textContent = s.cap;
+    himg.classList.remove('swap');
+  }, reduced ? 0 : 180);
+});
+
 // ---------- Example themes ----------
 const themes = [
   { src: 'theme-lumen', url: 'panel.lumen.example/servers', alt: 'The server list in the Lumen Hosting theme: dark with a teal accent, the page renamed to Worlds, extra sidebar links and an announcement', cap: 'Lumen Hosting: its own logo, a teal accent, “Servers” renamed to “Worlds”, a status link and a maintenance banner.' },

@@ -305,7 +305,7 @@ h1 .l2 { padding-left: 1.15em; }
 .points li:last-child { border-bottom: 1px solid var(--line); }
 .points b { color: var(--starlight); }
 .points code { font: 0.86em var(--mono); color: var(--starlight); }
-.brandsec .tour-foot { margin-top: 18px; }
+.brandsec .tour-foot, .hostsec .tour-foot { margin-top: 18px; }
 @media (max-width: 960px) { .brandsec-grid { grid-template-columns: 1fr; } }
 
 /* Templates. */
