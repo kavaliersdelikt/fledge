@@ -31,6 +31,7 @@ Unresolved operational limits:
 - Hard quotas cover each server's data directory only, not the container's writable layer.
 - Live migration without downtime; failover is backup-based.
 - Native Windows services and containers; rootless agent operation.
+- Appearance: one look per panel (no different brand per domain), only the sidebar pages can be renamed (not every word), fonts are the bundled set, and HTML emails are not available. Contrast is checked against WCAG ratios, which is a floor, not a guarantee of good design.
 - Passkeys with every browser and security key (verified with a software authenticator).
 - Update rollback cannot reverse a database schema migration. Keep independent backups.
 - Account recovery needs a saved recovery code; without one, an administrator with database access must intervene.

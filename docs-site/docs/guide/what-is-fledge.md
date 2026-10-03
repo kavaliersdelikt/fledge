@@ -51,6 +51,8 @@ The agent connects **out** to the panel. The panel never needs an inbound connec
 - **People**: customers, collaborators with fine-grained permissions, [quotas](/panel/customers), an audit log.
 - **Security**: mandatory two-factor for administrators, [passkeys](/panel/account-security), an optional admin
   network allow-list, scoped API tokens.
+- **Your own brand**: rename the panel, add a logo, pick colours and a font, offer light and dark, restyle the sign-in page, add
+  sidebar links and an announcement, all from [Appearance](/panel/appearance).
 - **Integration**: an [OpenAPI-described HTTP API](/api/), Prometheus metrics, webhooks.
 
 ## Known limits

@@ -18,6 +18,11 @@ Behind a proxy see [Reverse proxy and TLS](/operate/reverse-proxy). After changi
   list under **Settings → Panel → Security**, then remove the variable.
 - Lost recovery codes too: there is no self-service path. Ask in the community channels before editing the database by hand.
 
+## The panel looks wrong after changing the appearance
+
+Use [safe mode](/operate/branding-recovery#safe-mode) (`?safe=1`) to get in, then restore an earlier version or reset. See
+[Recovering from a bad theme](/operate/branding-recovery).
+
 ## A node shows as disconnected
 
 A node is disconnected after 35 seconds without a heartbeat. Game containers keep running independently.

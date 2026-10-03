@@ -25,13 +25,13 @@ administer.
 
 ```sh
 sh ./update.sh              # latest release
-sh ./update.sh v0.6.1.1     # a specific release
+sh ./update.sh v0.6.2.1     # a specific release
 sh ./update.sh --check      # verify prerequisites only
 ```
 
 ```powershell
 .\update.ps1                # latest
-.\update.ps1 -Version v0.6.1.1
+.\update.ps1 -Version v0.6.2.1
 .\update.ps1 -CheckOnly
 ```
 
