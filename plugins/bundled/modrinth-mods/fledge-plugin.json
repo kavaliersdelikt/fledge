@@ -1,0 +1,21 @@
+{
+  "id": "modrinth-mods",
+  "name": "Modrinth Mod Browser",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Search Modrinth and install server-side mods on Fabric, Quilt, Forge and NeoForge servers, with dependency handling and one-click updates.",
+  "author": "Fledge",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://modrinth.com/mods",
+  "minPanelVersion": "0.6.1.1",
+  "minAgentVersion": "0.6.1.1",
+  "permissions": ["network:api.modrinth.com", "network:cdn.modrinth.com", "servers:read", "servers:files.write"],
+  "catalogs": [{ "id": "mods", "label": "Mods", "kind": "mod", "description": "Fabric, Quilt, Forge and NeoForge" }],
+  "settings": [
+    { "key": "releaseChannel", "label": "Release channel", "type": "select", "default": "release", "options": [{ "value": "release", "label": "Stable releases only" }, { "value": "beta", "label": "Releases and betas" }, { "value": "alpha", "label": "Everything, including alphas" }], "help": "Which builds are installed by default and offered as updates." },
+    { "key": "showClientOnly", "label": "Show client-only mods", "type": "boolean", "default": false, "help": "Client-only mods do nothing on a server. Leave this off unless you know you need one." },
+    { "key": "pageSize", "label": "Results per page", "type": "number", "default": 24, "min": 5, "max": 50 },
+    { "key": "contact", "label": "Contact for Modrinth (optional)", "type": "string", "placeholder": "admin@example.com", "help": "Added to the User-Agent so Modrinth can reach you if your panel misbehaves. Never shown to players." }
+  ],
+  "include": ["../_shared/modrinth.js"]
+}
