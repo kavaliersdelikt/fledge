@@ -39,14 +39,27 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PORT: "4000"
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:-0.5.2.1}
+      APP_VERSION: ${APP_VERSION:-0.6.1.1}
       UPDATER_URL: http://updater:4010
+      PLUGIN_HOST_URL: http://plugins:4020
+      PLUGIN_TOKEN_FILE: /run/fledge-plugins/token
       UPDATE_TOKEN_FILE: /run/fledge-updater/token
       TRANSFER_DIR: /var/lib/fledge/transfers
       # Storage, SFTP, allowed images, update source and agent updates are managed in
       # the panel (Settings). The values below only seed first start and are optional.
       GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-kavaliersdelikt/fledge}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      PLUGIN_REGISTRY_URL: ${PLUGIN_REGISTRY_URL-https://raw.githubusercontent.com/kavaliersdelikt/fledge/main/plugins/registry/index.json}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      WEBAUTHN_ORIGINS: ${WEBAUTHN_ORIGINS:-}
+      ADMIN_IP_ALLOW_DISABLE: ${ADMIN_IP_ALLOW_DISABLE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
@@ -58,9 +71,48 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Started with the API (also by older update scripts that only name api and web), but
+      # the panel works without it: plugins are simply unavailable while it is down.
+      plugins:
+        condition: service_started
+        required: false
+    networks:
+      - default
+      - plugins_net
     volumes:
       - update_credentials:/run/fledge-updater
       - transfer_spool:/var/lib/fledge/transfers
+      - plugin_credentials:/run/fledge-plugins
+    restart: unless-stopped
+  # Runs plugin code in a WebAssembly sandbox. It has no database credentials, no Docker
+  # socket and no published port: only the API can call it, using a shared token.
+  plugins:
+    build:
+      context: .
+      dockerfile: plugins/host/Dockerfile
+    environment:
+      PORT: "4020"
+      PLUGIN_TOKEN_FILE: /run/fledge-plugins/token
+      APP_VERSION: ${APP_VERSION:-0.6.1.1}
+    networks:
+      - plugins_net
+    volumes:
+      - plugin_credentials:/run/fledge-plugins:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4020/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
   updater:
     build:
@@ -89,8 +141,12 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+networks:
+  # Shared by the API and the plugin host only (the database is not on it).
+  plugins_net:
 volumes:
   postgres_data:
   s3_data:
   transfer_spool:
   update_credentials:
+  plugin_credentials:

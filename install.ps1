@@ -21,6 +21,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 if ($LASTEXITCODE -ne 0) { throw 'Docker is installed but its engine is not running or reachable.' }
 & docker compose version *> $null
 if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 is required: run docker compose version.' }
+# The plugin host is an optional dependency of the API (required: false), which needs Compose 2.20 or newer.
+$composeVersion = (& docker compose version --short 2>$null | Select-Object -First 1)
+if ($composeVersion -match '^v?(\d+)\.(\d+)') { if ([int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 20)) { throw "Docker Compose 2.20 or newer is required (found $composeVersion). Update Docker." } }
 if ($CheckOnly) {
     Write-Host 'Install prerequisites are ready. No files or containers were changed.'
     exit 0
@@ -104,4 +107,11 @@ while ([DateTime]::UtcNow -lt $deadline -and -not (Test-LocalHttpEndpoint 'http:
 if (-not (Test-LocalHttpEndpoint 'http://localhost:3000/')) {
     throw 'The panel did not become healthy within 5 minutes. Check docker compose logs web.'
 }
+# The plugin host is optional: the panel works without it, so only warn.
+$pluginsHealthy = $false
+for ($i = 0; $i -lt 30 -and -not $pluginsHealthy; $i++) {
+    & docker compose exec -T plugins node -e "fetch('http://127.0.0.1:4020/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" *> $null
+    if ($LASTEXITCODE -eq 0) { $pluginsHealthy = $true } else { Start-Sleep -Seconds 2 }
+}
+if (-not $pluginsHealthy) { Write-Warning 'The plugin host did not become healthy within 60 seconds. The panel works, but plugins are unavailable. Check: docker compose logs plugins' }
 Write-Host 'Fledge is ready at http://localhost:3000. The first visit creates the administrator and enrolls two-factor authentication.'

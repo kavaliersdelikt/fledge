@@ -3,11 +3,15 @@ param([string]$Version, [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 function Invoke-Git([string[]]$GitArgs) { & git @GitArgs; if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed with exit code $LASTEXITCODE" } }
+function Get-AppServices { $services = @('api','web'); $defined = & docker compose config --services 2>$null; if ($LASTEXITCODE -eq 0 -and ($defined -contains 'plugins')) { $services += 'plugins' }; return ,$services }
+function Test-PluginsHealthy { & docker compose exec -T plugins node -e "fetch('http://127.0.0.1:4020/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" *> $null; return ($LASTEXITCODE -eq 0) }
 function Invoke-Compose([string[]]$ComposeArgs) { & docker compose @ComposeArgs; if ($LASTEXITCODE -ne 0) { throw "docker compose $($ComposeArgs -join ' ') failed with exit code $LASTEXITCODE" } }
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot '.git'))) { throw 'Run the updater from a Git checkout of Fledge.' }
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is required.' }
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker is required.' }
 & docker compose version *> $null; if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 is required.' }
+$composeVersion = (& docker compose version --short 2>$null | Select-Object -First 1)
+if ($composeVersion -match '^v?(\d+)\.(\d+)') { if ([int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 20)) { throw "Docker Compose 2.20 or newer is required (found $composeVersion). Update Docker." } }
 $status = & git status --porcelain; if ($LASTEXITCODE -ne 0) { throw 'Could not inspect Git working tree.' }; if ($status) { throw 'Working tree has changes. Commit or stash them before updating.' }
 $previous = (& git rev-parse --verify HEAD).Trim(); if ($LASTEXITCODE -ne 0) { throw 'Could not read current Git revision.' }
 if ($Version -and $Version -notmatch '^v\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') { throw 'Version must look like v1.2.3.' }
@@ -48,7 +52,7 @@ try {
   [IO.File]::WriteAllText($envPath,$config,[Text.UTF8Encoding]::new($false)); $envChanged=$true
   Invoke-Git @('checkout','--detach',$Version)
   Write-Output 'UPDATE_PROGRESS:installing'
-  Invoke-Compose @('up','-d','--build','api','web')
+  Invoke-Compose (@('up','-d','--build') + (Get-AppServices))
   $apiUrl = if ($env:API_HEALTH_URL) { $env:API_HEALTH_URL } else { 'http://127.0.0.1:4000/api/health' }
   $webUrl = if ($env:WEB_HEALTH_URL) { $env:WEB_HEALTH_URL } else { 'http://127.0.0.1:3000/' }
   Write-Output 'UPDATE_PROGRESS:checking-health'
@@ -56,6 +60,11 @@ try {
   for ($i=0; $i -lt 36; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri $apiUrl -TimeoutSec 3 | Out-Null; Invoke-WebRequest -UseBasicParsing -Uri $webUrl -TimeoutSec 3 | Out-Null; $healthy=$true; break } catch { Start-Sleep -Seconds 5 } }
   if (-not $healthy) { throw 'Health checks failed.' }
   Remove-Item -LiteralPath $envBackup -Force
+  if ((& docker compose config --services 2>$null) -contains 'plugins') {
+    $pluginsOk = $false
+    for ($i=0; $i -lt 12 -and -not $pluginsOk; $i++) { if (Test-PluginsHealthy) { $pluginsOk = $true } else { Start-Sleep -Seconds 5 } }
+    if ($pluginsOk) { Write-Host 'Plugin host is healthy.' } else { Write-Warning 'The plugin host is not healthy yet. The panel works, but plugins are unavailable until it is (docker compose logs plugins).' }
+  }
   Get-ChildItem -LiteralPath $backupDir -File -Filter 'fledge-db-*.sql' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 7 | Remove-Item -Force
   Write-Host "Fledge $Version is healthy. PostgreSQL backup: $backup"
   Write-Output 'UPDATE_PROGRESS:complete'
@@ -64,6 +73,6 @@ try {
   if (Test-Path -LiteralPath "$partial.stderr") { Remove-Item -LiteralPath "$partial.stderr" -Force }
   if ($envChanged -and (Test-Path -LiteralPath $envBackup)) { Copy-Item -LiteralPath $envBackup -Destination $envPath -Force }
   if (Test-Path -LiteralPath $envBackup) { Remove-Item -LiteralPath $envBackup -Force }
-  if ((Get-Location).Path -ne $PSScriptRoot -or (& git rev-parse --verify HEAD 2>$null).Trim() -ne $previous) { try { Invoke-Git @('checkout','--detach',$previous); Invoke-Compose @('up','-d','--build','api','web') } catch { Write-Warning 'Automatic code rollback failed; inspect Docker Compose and restore from the database backup if required.' } }
+  if ((Get-Location).Path -ne $PSScriptRoot -or (& git rev-parse --verify HEAD 2>$null).Trim() -ne $previous) { try { Invoke-Git @('checkout','--detach',$previous); Invoke-Compose (@('up','-d','--build') + (Get-AppServices)) } catch { Write-Warning 'Automatic code rollback failed; inspect Docker Compose and restore from the database backup if required.' } }
   throw
 }

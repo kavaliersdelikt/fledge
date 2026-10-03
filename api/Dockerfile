@@ -6,6 +6,7 @@ RUN npm ci --no-audit --no-fund
 COPY api/src ./src
 COPY api/tsconfig.json ./tsconfig.json
 COPY db /app/db
+COPY plugins/bundled /app/plugins/bundled
 RUN npm run check
 ENV NODE_ENV=production
 EXPOSE 4000

@@ -30,6 +30,13 @@ command -v docker >/dev/null 2>&1 || { echo 'Docker is required. Install Docker 
 command -v curl >/dev/null 2>&1 || { echo 'curl is required for health checks.' >&2; exit 11; }
 docker info >/dev/null 2>&1 || { echo 'Docker is installed but its engine is not running or reachable.' >&2; exit 12; }
 docker compose version >/dev/null 2>&1 || { echo 'Docker Compose v2 is required: run `docker compose version`.' >&2; exit 13; }
+# The plugin host is an optional dependency of the API (depends_on required:false), which needs Compose 2.20 or newer.
+compose_version=$(docker compose version --short 2>/dev/null | sed 's/^v//')
+compose_major=${compose_version%%.*}; compose_rest=${compose_version#*.}; compose_minor=${compose_rest%%.*}
+case "$compose_major$compose_minor" in
+  ''|*[!0-9]*) ;;
+  *) if [ "$compose_major" -lt 2 ] || { [ "$compose_major" -eq 2 ] && [ "$compose_minor" -lt 20 ]; }; then echo "Docker Compose 2.20 or newer is required (found $compose_version). Update Docker." >&2; exit 13; fi ;;
+esac
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   echo 'Install prerequisites are ready. No files or containers were changed.'
@@ -88,6 +95,16 @@ until curl --fail --silent http://localhost:3000/ >/dev/null; do
   if [ "$attempt" -ge 60 ]; then
     echo 'The panel did not become healthy within 120 seconds. Check `docker compose logs web`.' >&2
     exit 21
+  fi
+  sleep 2
+done
+# The plugin host is optional: the panel works without it, so only warn.
+attempt=0
+until docker compose exec -T plugins node -e "fetch('http://127.0.0.1:4020/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; do
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge "${INSTALL_PLUGIN_WAIT_ATTEMPTS:-30}" ]; then
+    echo 'Warning: the plugin host did not become healthy within 60 seconds. The panel works, but plugins are unavailable. Check `docker compose logs plugins`.' >&2
+    break
   fi
   sleep 2
 done
