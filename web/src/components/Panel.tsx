@@ -1,5 +1,6 @@
 "use client";
 import { ApiError, json, request, type User } from "@/lib/api";
+import { FeaturesContext, noFeatures, type Features } from "@/lib/commerce";
 import { MarkImage, useBrand } from "@/lib/brand";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -8,6 +9,9 @@ import ActivityPage from "./ActivityPage";
 import ApiDocs from "./ApiDocs";
 import AppearancePage from "./AppearancePage";
 import Auth from "./Auth";
+import Billing from "./Billing";
+import BillingAdmin from "./BillingAdmin";
+import Store, { OrderReturn } from "./Store";
 import Customers from "./Customers";
 import ServerDetail from "./Detail";
 import Nodes from "./Nodes";
@@ -29,6 +33,7 @@ export default function Panel() {
     query = useSearchParams();
   const { brand, setMode } = useBrand();
   const [user, setUser] = useState<User | null>(null),
+    [features, setFeatures] = useState<Features>(noFeatures),
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
   useEffect(() => {
@@ -50,6 +55,18 @@ export default function Panel() {
       active = false;
     };
   }, []);
+  // What the panel offers this person (store, billing, self-service) is loaded once they are signed in.
+  const uid = user?.id;
+  useEffect(() => {
+    if (!uid) return;
+    let live = true;
+    request<Features>("/features")
+      .then((f) => live && setFeatures(f))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [uid]);
   if (loading)
     return (
       <div className="splash" role="status" aria-label="Loading">
@@ -119,7 +136,8 @@ export default function Panel() {
   else
     switch (seg[0]) {
       case undefined:
-        page = admin ? <Overview /> : <Servers admin={false} />;
+        // Coming back from the payment page lands here with ?order=.
+        page = query.get("order") ? <OrderReturn id={query.get("order") as string} /> : query.get("store") ? <Store /> : admin ? <Overview /> : <Servers admin={false} />;
         break;
       case "servers":
         page = <Servers admin={admin} />;
@@ -151,8 +169,15 @@ export default function Panel() {
       case "settings":
         page = <SettingsPage user={user} />;
         break;
+      case "store":
+        page = <Store />;
+        break;
+      case "billing":
+        page = admin ? <BillingAdmin /> : <Billing />;
+        break;
     }
   return (
+    <FeaturesContext.Provider value={features}>
     <ToastProvider>
     <ConfirmationProvider>
       <Workspace
@@ -178,5 +203,6 @@ export default function Panel() {
       </Workspace>
     </ConfirmationProvider>
     </ToastProvider>
+    </FeaturesContext.Provider>
   );
 }

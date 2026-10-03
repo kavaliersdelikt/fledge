@@ -33,6 +33,8 @@ import {
   Search,
   Server,
   Settings,
+  ShoppingBag,
+  Receipt,
   Users,
   type LucideIcon,
   ShieldCheck,
@@ -41,6 +43,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrandMark, useBrand, useDocumentTitle } from "@/lib/brand";
+import { useFeatures } from "@/lib/commerce";
 import type { BrandLink } from "@/lib/brand-types";
 import type { PersonalMode } from "@/lib/brand-init";
 import AboutDialog from "./AboutDialog";
@@ -67,16 +70,21 @@ type Destination = {
   icon: LucideIcon;
   group: "" | "Infrastructure" | "Administration";
   adminOnly: boolean;
+  /** Hidden for customers until the administrator turns the feature on. */
+  feature?: "store" | "billing";
 };
 
 export const destinations: Destination[] = [
   { id: "overview", title: "Overview", url: "/", icon: LayoutGrid, group: "", adminOnly: true },
   { id: "servers", title: "Servers", url: "/servers", icon: Server, group: "", adminOnly: false },
+  { id: "store", title: "Store", url: "/store", icon: ShoppingBag, group: "", adminOnly: false, feature: "store" },
+  { id: "billing", title: "Billing", url: "/billing", icon: Receipt, group: "", adminOnly: false, feature: "billing" },
   { id: "nodes", title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
   { id: "resilience", title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
   { id: "templates", title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
   { id: "plugins", title: "Plugins", url: "/plugins", icon: Puzzle, group: "Infrastructure", adminOnly: true },
   { id: "customers", title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
+  { id: "billing-admin", title: "Billing", url: "/billing", icon: Receipt, group: "Administration", adminOnly: true },
   { id: "activity", title: "Activity", url: "/activity", icon: Activity, group: "Administration", adminOnly: true },
   { id: "api", title: "API", url: "/api-docs", icon: Code2, group: "Administration", adminOnly: true },
   { id: "updates", title: "Updates", url: "/updates", icon: Download, group: "Administration", adminOnly: true },
@@ -151,12 +159,15 @@ export default function Workspace({
   // Customers only see two pages, so they get one unlabeled group.
   const { brand } = useBrand();
   const labels = brand.navigation.labels;
+  const features = useFeatures();
   const allowed = useMemo(
     () =>
       destinations
         .filter((d) => !d.adminOnly || admin)
-        .map((d) => ({ ...d, title: labels[d.id] || d.title, group: admin ? d.group : ("" as const) })),
-    [admin, labels],
+        // Administrators manage billing from the Administration group; customers see their own pages once they exist.
+        .filter((d) => (admin ? d.feature === undefined && (d.id !== "billing-admin" || features.billing.visible) : !d.feature || (d.feature === "store" ? features.store.enabled : features.billing.visible)))
+        .map((d) => ({ ...d, title: labels[d.id === "billing-admin" ? "billing" : d.id] || (d.id === "store" ? features.store.title : d.title), group: admin ? d.group : ("" as const) })),
+    [admin, labels, features],
   );
   const current = allowed.find((d) => isActive(pathname, d.url));
   useDocumentTitle(current?.title);

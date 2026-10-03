@@ -6,6 +6,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import DataTable, { type DataColumn } from "./DataTable";
 import { Drawer } from "./feedback";
+import { useFeatures } from "@/lib/commerce";
+import { CreateMyServer, UsageStrip } from "./SelfServer";
 import { CpuCell, MemoryCell, liveUsage } from "./ServerUsage";
 import {
   Button,
@@ -39,7 +41,10 @@ export default function Servers({ admin }: { admin: boolean }) {
   const status = (["running", "stopped", "attention"].includes(params.get("status") || "")
     ? params.get("status")
     : "all") as Filter;
-  const creating = admin && params.get("new") === "1";
+  const features = useFeatures();
+  const canCreateOwn = !admin && features.selfService.mode === "custom";
+  const canStore = !admin && (features.store.enabled || features.selfService.mode === "presets");
+  const creating = (admin || canCreateOwn) && params.get("new") === "1";
   const setParams = (next: Record<string, string | null>) => {
     const p = new URLSearchParams(params.toString());
     for (const [k, v] of Object.entries(next)) v === null ? p.delete(k) : p.set(k, v);
@@ -82,7 +87,7 @@ export default function Servers({ admin }: { admin: boolean }) {
       value: (s) => s.status,
       render: (s) => (
         <div className="cell-main">
-          <Status value={s.suspended ? "suspended" : s.status} />
+          {s.pendingDeleteAt ? <Status tone="warn" label="Deleting soon" /> : s.suspended && s.suspendedReason === "billing" ? <Status tone="warn" label="Payment overdue" /> : <Status value={s.suspended ? "suspended" : s.status} />}
           {s.status === "unreachable" ? <small>Last seen {s.observedStatus}</small> : null}
         </div>
       ),
@@ -105,13 +110,21 @@ export default function Servers({ admin }: { admin: boolean }) {
         nav="servers"
         title="Servers"
         actions={
-          admin ? (
-            <Button variant="primary" onClick={() => setParams({ new: "1" })}>
-              <Plus /> New server
-            </Button>
+          admin || canCreateOwn ? (
+            <span className="btn-group">
+              {canStore ? <Link className={btn("secondary")} href="/store">{features.store.title || "Store"}</Link> : null}
+              <Button variant="primary" onClick={() => setParams({ new: "1" })}>
+                <Plus /> New server
+              </Button>
+            </span>
+          ) : canStore ? (
+            <Link className={btn("primary")} href="/store">
+              <Plus /> Get a server
+            </Link>
           ) : undefined
         }
       />
+      {!admin && features.limits.showUsage ? <UsageStrip /> : null}
       {showFilters || showSearch ? (
       <Toolbar>
         {showFilters ? (
@@ -142,11 +155,13 @@ export default function Servers({ admin }: { admin: boolean }) {
           ) : (
             <Empty
               title="No servers yet"
-              action={admin ? <Button size="sm" onClick={() => setParams({ new: "1" })}>Create a server</Button> : undefined}
+              action={admin || canCreateOwn ? <Button size="sm" onClick={() => setParams({ new: "1" })}>Create a server</Button> : canStore ? <Link className={btn("primary", "sm")} href="/store">Get a server</Link> : undefined}
             >
               {admin
                 ? "Servers are placed on a connected node with enough free capacity."
-                : "Servers you own or are invited to will appear here."}
+                : canCreateOwn || canStore
+                  ? "Create your first server in a minute."
+                  : "Servers you own or are invited to will appear here."}
             </Empty>
           )}
           <Pager offset={offset} setOffset={setOffset} count={all.length} />
@@ -159,6 +174,7 @@ export default function Servers({ admin }: { admin: boolean }) {
           onCreated={reload}
         />
       )}
+      {canCreateOwn && <CreateMyServer open={creating} onOpenChange={(open) => setParams({ new: open ? "1" : null })} onCreated={reload} />}
     </>
   );
 }

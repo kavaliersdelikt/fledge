@@ -30,6 +30,8 @@ import DataTable, { type DataColumn } from "./DataTable";
 import { Modal, useConfirm } from "./feedback";
 import { Num } from "./motion";
 import { useToast } from "./toast";
+import { useFeatures } from "@/lib/commerce";
+import { PendingDelete } from "./SelfServer";
 import { useLiveServer, type Sample } from "./useLiveServer";
 import {
   DropdownMenu,
@@ -252,9 +254,20 @@ export default function ServerDetail({
           Last reported as {s.observedStatus}. The server may still be running; power actions are paused until the node reconnects.
         </Notice>
       )}
-      {s.suspended && (
-        <Notice tone="warn" title="Suspended">
-          {admin ? "The owner can’t start this server until you unsuspend it in Settings." : "An administrator suspended this server."}
+      {s.pendingDeleteAt ? <PendingDelete server={{ id: s.id, name: s.name, pendingDeleteAt: s.pendingDeleteAt }} onChange={reload} /> : null}
+      {s.suspended && !s.pendingDeleteAt && (
+        <Notice
+          tone="warn"
+          title={s.suspendedReason === "billing" ? "Suspended: a payment is overdue" : "Suspended"}
+          action={!admin && s.suspendedReason === "billing" ? <Link className={btn("primary", "sm")} href="/billing">Open billing</Link> : undefined}
+        >
+          {admin
+            ? s.suspendedReason === "billing"
+              ? "Held because the subscription is unpaid or ended. It starts again by itself when a payment arrives, or open the subscription in Billing."
+              : "The owner can’t start this server until you unsuspend it in Settings."
+            : s.suspendedReason === "billing"
+              ? "Your files are safe. Pay the open invoice and the server starts again by itself."
+              : "An administrator suspended this server."}
         </Notice>
       )}
 
@@ -290,7 +303,7 @@ export default function ServerDetail({
             ) : activeTab === "jobs" ? (
               <Jobs id={id} />
             ) : (
-              <ServerSettings id={id} server={s} admin={admin} reload={reload} action={action} ports={ports.data} reloadPorts={ports.reload} />
+              <ServerSettings id={id} server={s} admin={admin} owner={s.ownerId === actorId} reload={reload} action={action} ports={ports.data} reloadPorts={ports.reload} />
             )}
           </TabsContent>
         </Tabs>
@@ -523,6 +536,7 @@ function ServerSettings({
   id,
   server,
   admin,
+  owner,
   reload,
   action,
   ports,
@@ -531,6 +545,7 @@ function ServerSettings({
   id: string;
   server: Server;
   admin: boolean;
+  owner: boolean;
   reload: () => void;
   action: (kind: string, extra?: Record<string, unknown>) => Promise<void>;
   ports: ServerPorts | null;
@@ -615,7 +630,58 @@ function ServerSettings({
           </Card>
         </>
       )}
+      {!admin && owner ? <OwnerZone server={server} /> : null}
     </>
+  );
+}
+
+/** What a customer may do with their own server: delete it, within what the panel allows. */
+function OwnerZone({ server }: { server: Server }) {
+  const f = useFeatures();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (server.pendingDeleteAt) return null;
+  if (server.subscriptionId)
+    return (
+      <Card title="This server comes with a subscription">
+        <p className="muted">It is removed when the subscription ends. To stop paying, cancel it in <Link href="/billing" className="text-button">Billing</Link>.</p>
+      </Card>
+    );
+  if (!f.selfService.canDelete) return null;
+  return (
+    <Card title="Danger zone" flush>
+      <div className="danger-list">
+        <div className="danger-row">
+          <div>
+            <strong>Delete this server</strong>
+            <p>{f.selfService.coolingHours ? `It is stopped now and deleted after ${f.selfService.coolingHours} hours. Until then you can bring it back.` : "Its files are removed right away."}</p>
+          </div>
+          <div>
+            <Button
+              size="sm"
+              variant="danger"
+              busy={busy}
+              onClick={async () => {
+                if (!(await confirm(`${server.name} and all of its files will be deleted.`, { title: `Delete ${server.name}?`, confirmLabel: "Delete server" }))) return;
+                setBusy(true);
+                try {
+                  const r = (await json("DELETE", `/me/servers/${server.id}`, { confirm: true })) as { deleted: boolean };
+                  toast({ tone: "ok", title: r.deleted ? "Server is being deleted" : "Server stopped and scheduled for deletion" });
+                  if (r.deleted) window.location.assign("/servers");
+                  else window.location.reload();
+                } catch (e) {
+                  toast({ tone: "bad", title: "Could not delete", description: (e as Error).message });
+                  setBusy(false);
+                }
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 
