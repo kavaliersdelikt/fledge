@@ -1,3 +1,5 @@
+import { appearanceShots } from './shots.appearance.mjs';
+
 // One entry per screenshot. Each receives { page, save, sleep, WEB, seeded, demo, seedConsole }.
 // Keep them short and resilient: wait for visible text, not for fixed times.
 
@@ -10,7 +12,7 @@ const go = async ({ page, WEB, sleep }, path, text) => {
 
 const card = (page, title) => page.locator('section.card').filter({ has: page.getByRole('heading', { name: title, exact: true }) }).first();
 
-export const shots = {
+const baseShots = {
   async nodes(ctx) { await go(ctx, '/nodes', 'frankfurt-01'); await ctx.save('nodes'); },
   async customers(ctx) { await go(ctx, '/customers', 'alex@orbit-games.example'); await ctx.save('customers'); },
   async activity(ctx) { await go(ctx, '/activity', 'Activity'); await ctx.save('activity'); },
@@ -111,3 +113,5 @@ export const shots = {
     await ctx.save('addons-plan');
   },
 };
+
+export const shots = { ...baseShots, ...appearanceShots };

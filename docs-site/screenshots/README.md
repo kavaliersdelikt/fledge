@@ -29,7 +29,10 @@ Files are written to `docs/public/screenshots/*.webp` (encoded by the browser, n
 - `demo.mjs`: boots the stack and seeds the data (nodes, customers, servers, add-ons, schedules, notifications, history). The simulated agents
   heartbeat, answer jobs and stream console lines like real ones.
 - `shots.mjs`: one function per screenshot. Wait for visible text rather than fixed times.
+- `shots.appearance.mjs`: the appearance screenshots and the themed panels used on the landing page. They come last because they change the look of the whole demo panel; they use a fictional brand ("Lumen Hosting", logo in `assets/lumen-mark.svg`) and wait a few seconds after each change because the panel caches the appearance briefly.
 - `run.mjs`: the runner (browser, sign-in, WebP encoding).
+- `keep.mjs`: starts the same seeded demo and keeps it running (it writes the session cookie to `demo-session.json`), for looking around by hand.
+- `regress.mjs`: records the computed style of every element on every screen and compares two recordings, to prove that a stylesheet refactor changes nothing (see [Tests](../docs/dev/tests.md)).
 
 ## Adding a screenshot
 

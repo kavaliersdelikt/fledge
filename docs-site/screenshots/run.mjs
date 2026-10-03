@@ -27,8 +27,8 @@ try {
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
 
-  const save = async (name, locator, clip) => {
-    const png = locator ? await locator.screenshot() : await page.screenshot(clip ? { clip } : undefined);
+  const save = async (name, locator, clip, shotPage = page) => {
+    const png = locator ? await locator.screenshot() : await shotPage.screenshot(clip ? { clip } : undefined);
     // WebP through the browser's own encoder: no extra dependencies.
     const conv = await context.newPage();
     const b64 = await conv.evaluate(async (data) => {
