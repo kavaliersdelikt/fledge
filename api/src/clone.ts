@@ -34,7 +34,7 @@ export function cloneRoutes(app:FastifyInstance){
    await c.query('BEGIN');
    const r=await pickNode(c,{memory:src.memory_mb,cpu:src.cpu_percent,disk:src.disk_mb,ports:[...src.internal_ports,...extras],location:typeof b?.location==='string'&&b.location?b.location:src.location},{exclude:[],sameLocationOnly:false,preferNode:b?.nodeId?asId(b.nodeId):null});
    if(!r.node)fail(409,`No eligible node: ${r.rejected.join('; ')}`);
-   await enforceQuota(ownerId,{servers:1,memoryMb:src.memory_mb,cpuPercent:src.cpu_percent,diskMb:src.disk_mb,extraPorts:extras.length},{db:c,force:b?.force===true});
+   await enforceQuota(ownerId,{servers:1,memoryMb:src.memory_mb,cpuPercent:src.cpu_percent,diskMb:src.disk_mb,extraPorts:extras.length},{db:c,force:b?.force===true,actorIsAdmin:true,change:{server:{memoryMb:src.memory_mb,cpuPercent:src.cpu_percent,diskMb:src.disk_mb},templateId:src.template_id,running:1}});
    const variables={...(src.variables||{})};
    if(variables.RCON_PASSWORD)variables.RCON_PASSWORD=randomBytes(24).toString('base64url');
    const server=(await c.query("INSERT INTO servers(name,owner_id,node_id,template_id,memory_mb,cpu_percent,disk_mb,port,observed_status,variables,template_version,extra_ports,failover_enabled,backup_retention_days) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'provisioning',$9,$10,$11,$12,$13) RETURNING *",

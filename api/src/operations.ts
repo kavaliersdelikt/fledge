@@ -19,7 +19,7 @@ async function extraMetrics(){
 export function registerOperations(app:FastifyInstance){
  app.addHook('onRequest',async(req,reply)=>{
   if(req.url.split('?')[0]==='/api/health'||req.method==='OPTIONS')return;
-  const agent=req.url.startsWith('/api/agent/'),auth=req.url.startsWith('/api/auth/'),write=!['GET','HEAD'].includes(req.method);
+  const agent=req.url.startsWith('/api/agent/')||req.url.startsWith('/api/billing/webhooks/'),auth=req.url.startsWith('/api/auth/'),write=!['GET','HEAD'].includes(req.method);
   const identity=agent?`${req.ip}:${req.headers['x-node-id']||''}`:req.ip;
   const limit=agent?1200:auth&&write?(Number(process.env.RATE_LIMIT_AUTH_WRITE)||40):write?180:600;
   const key=hash(`${identity}:${agent?'agent':auth?'auth':write?'write':'read'}:${Math.floor(Date.now()/60000)}`);

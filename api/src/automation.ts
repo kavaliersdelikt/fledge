@@ -4,6 +4,7 @@ import {pool,fail,txt,asId,enqueue,audit,serverAccess} from './core.js';
 import {backupEnabled} from './storage.js';
 import {active,requireManage} from './servers.js';
 import {enforceQuota} from './quota.js';
+import {requireFlag} from './limits.js';
 import {emit} from './notifications.js';
 
 // Schedules: cron or interval triggers that run a chain of tasks on a server (power actions,
@@ -83,7 +84,7 @@ async function execStep(server:any,task:Task):Promise<string>{
   case 'command':await enqueue(server.node_id,server.id,'command',{command:task.command});return 'command sent';
   case 'backup':{
    if(!(await backupEnabled()))throw new Error('Backups need object storage (turned off)');
-   await enforceQuota(server.owner_id,{backups:1});
+   await enforceQuota(server.owner_id,{backups:1,backupMb:1},{change:{backupsOnServer:Number((await pool.query("SELECT count(*) n FROM backups WHERE server_id=$1 AND state<>'failed'",[server.id])).rows[0].n)}});
    const c=await pool.connect();
    try{
     await c.query('BEGIN');
@@ -210,6 +211,8 @@ export function automationRoutes(app:FastifyInstance){
   const s=await requireManage(req,(req.params as any).id),p=await parseSchedule(req.body);
   const n=(await pool.query('SELECT count(*)::int n FROM schedules WHERE server_id=$1',[s.id])).rows[0].n;
   if(n>=MAX_SCHEDULES)fail(409,`A server can have at most ${MAX_SCHEDULES} schedules`);
+  await requireFlag(s.owner_id,'schedules','Scheduled tasks are not part of your plan.',{actorIsAdmin:req.actor!.role==='admin'});
+  await enforceQuota(s.owner_id,{},{actorIsAdmin:req.actor!.role==='admin',change:{schedulesOnServer:n}});
   const tasks=p.tasks as Task[];
   if(tasks.some(t=>t.action==='backup')&&!(await backupEnabled()))fail(503,'Backups need object storage — an administrator can turn it on in Settings');
   const kind=tasks.length===1&&tasks[0].action==='backup'&&!p.cron?'backup':tasks.length===1&&tasks[0].action==='command'&&!p.cron?'command':'chain';
