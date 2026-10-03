@@ -33,7 +33,7 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.6.x (Roost, Plumage)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.7.1.1 (Rookery)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
@@ -80,11 +80,18 @@ flowchart TB
 | **Plugins and add-ons** | A plugin store with one-click install, permission review and a settings wizard. The bundled **Modrinth Mod Browser** and **Modrinth Plugin Browser** add a Mods or Plugins tab to matching Minecraft servers: search, dependencies, install, update, disable, remove. |
 | **Autopilot** | Schedules with cron and task chains (command, wait, backup, restart), automatic restart after crashes with crash-loop protection, a notification inbox with Discord, Slack, webhook and email delivery. |
 | **Templates v2** | Typed variables, import and export, versions with "update servers", extra ports, clone server. |
-| **Accounts** | Passkeys, signed-in devices, email invitations and password reset, per-customer quotas, an optional admin network allow-list, audit filters and export. |
+| **Accounts** | Passkeys, signed-in devices, email invitations and password reset, an optional admin network allow-list, audit filters and export. |
+| **Customer sign-up** | Optional self-registration with email confirmation, approval or invite-only modes, bot protection (Turnstile or hCaptcha), rate limits that pause sign-up during a flood, account changes, data download and deletion. |
+| **Self-service servers** | Customers create (and delete) their own servers within their limits, from templates you release. |
+| **Limits v2** | Layered limits (panel defaults, plans, per-customer overrides) that explain themselves, and that can be switched off or set to warn only. |
+| **Plans and a store** | Sell preset servers or allowances monthly, quarterly, half-yearly or yearly, with trials, setup fees, stock and free tiers. Stripe is included (card data never touches the panel); signed, de-duplicated webhooks, a scheduled comparison with the provider, late-payment handling that stops servers instead of deleting them, refunds, disputes and complimentary plans. |
+| **Email you can edit** | Every email is a template with a live preview, sent through a retrying outbox with a delivery log, receipts, reminders and security notices. |
 | **Your own brand** | Rename the panel, add a logo, pick colours and a font, offer light and dark, restyle the sign-in page, add sidebar links and an announcement. Readable colours are enforced, a 60-second preview rolls itself back, and the last 20 versions are kept. |
 | **History and API** | CPU and memory history (1 hour to 30 days), Prometheus metrics, an OpenAPI description with an in-panel API reference. |
 
-> **New in v0.6.2.1 "Plumage", the Customizing Update:** make the panel your own from **Settings, Appearance**: name, logo, colours, fonts, light and dark, a restyled sign-in page, sidebar links and announcements, with readability checks, a preview that undoes itself, version history and a safe mode. Nothing changes until you save something. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.2.1) and the [Appearance guide](https://kavaliersdelikt.github.io/fledge/panel/appearance). Earlier: v0.6.1.1 "Roost" added the plugin system with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas and passkeys (update node agents to 0.6.1.1 or newer for add-ons); v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel. Release notes: [v0.6.1.1](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). a plugin system (sandboxed, signed, one-click) with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas, passkeys and more. Update the node agents to 0.6.1.1 to use add-ons. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). Earlier: v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel.
+> **New in v0.7.1.1 "Rookery", the Hosting Update:** let people sign up, create servers and buy them. Plans, a store, subscriptions with dunning and suspension, a bundled Stripe plugin (verified against Stripe's test mode), limits that can be layered, switched off or set to warn, and editable emails with a delivery log. Everything is off by default, so an existing panel behaves exactly as before. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.7.1.1), [Going live](https://kavaliersdelikt.github.io/fledge/operate/selling) and the [Store guide](https://kavaliersdelikt.github.io/fledge/panel/store).
+>
+> **v0.6.2.1 "Plumage", the Customizing Update:** make the panel your own from **Settings, Appearance**: name, logo, colours, fonts, light and dark, a restyled sign-in page, sidebar links and announcements, with readability checks, a preview that undoes itself, version history and a safe mode. Nothing changes until you save something. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.2.1) and the [Appearance guide](https://kavaliersdelikt.github.io/fledge/panel/appearance). Earlier: v0.6.1.1 "Roost" added the plugin system with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas and passkeys (update node agents to 0.6.1.1 or newer for add-ons); v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel. Release notes: [v0.6.1.1](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). a plugin system (sandboxed, signed, one-click) with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas, passkeys and more. Update the node agents to 0.6.1.1 to use add-ons. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). Earlier: v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel.
 
 ## Quick start
 
@@ -154,6 +161,7 @@ Everything is documented at **<https://kavaliersdelikt.github.io/fledge/>** (bui
 | Understand what Fledge is and how it fits together | [What is Fledge?](https://kavaliersdelikt.github.io/fledge/guide/what-is-fledge) and [Concepts](https://kavaliersdelikt.github.io/fledge/guide/concepts) |
 | Install, put it behind TLS, update, back up, monitor | [Operate](https://kavaliersdelikt.github.io/fledge/operate/install) |
 | Use servers, schedules, crash protection, notifications, quotas, templates | [Panel guide](https://kavaliersdelikt.github.io/fledge/panel/servers) |
+| Sell servers: sign-up, plans, the store, billing, limits, emails | [Going live](https://kavaliersdelikt.github.io/fledge/operate/selling), [Plans](https://kavaliersdelikt.github.io/fledge/panel/plans), [The store](https://kavaliersdelikt.github.io/fledge/panel/store), [Billing](https://kavaliersdelikt.github.io/fledge/panel/billing), [Limits](https://kavaliersdelikt.github.io/fledge/panel/limits) and the [Stripe plugin](https://kavaliersdelikt.github.io/fledge/plugins/stripe) |
 | Brand the panel: name, logo, colours, light and dark | [Appearance](https://kavaliersdelikt.github.io/fledge/panel/appearance) and [recovering from a bad theme](https://kavaliersdelikt.github.io/fledge/operate/branding-recovery) |
 | Connect and run nodes, disk limits, the WSL2 evaluation setup | [Node agent](https://kavaliersdelikt.github.io/fledge/agent/) |
 | Install or write plugins | [Plugins](https://kavaliersdelikt.github.io/fledge/plugins/) and the [tutorial](https://kavaliersdelikt.github.io/fledge/plugins/tutorial) |
@@ -173,6 +181,7 @@ and each release's notes). Highlights:
 - Disk limits need a Linux node with root, loop devices and `e2fsprogs`.
 - Plugin sandboxing reduces risk but is not a formal guarantee; downloaded mod and plugin files are not scanned.
 - Appearance is one look per panel (no different brand per domain); only the sidebar pages can be renamed; custom CSS can hide parts of the panel (safe mode and `BRANDING_DISABLED` recover).
+- Billing: Stripe is the only payment provider so far; tax calculation, invoicing rules and consumer law are your responsibility; there is no usage-based billing, prepaid credit or reseller feature. It was verified against Stripe's test mode and a signed stand-in, not yet with real customers.
 - Native Windows and macOS nodes are not supported; WSL2 with Docker Desktop is for local evaluation only.
 
 ## Development
