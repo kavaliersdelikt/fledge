@@ -115,7 +115,7 @@ test('host allow-list supports exact names and wildcards', () => {
 });
 test('guardedFetch rejects credentials in URLs and unsupported methods', async()=>{
  await assert.rejects(guardedFetch('https://user:pw@api.modrinth.com/',{}, {hosts:['api.modrinth.com'],maxBytes:100,timeoutMs:1000}),/credentials/);
- await assert.rejects(guardedFetch('https://api.modrinth.com/',{method:'DELETE'}, {hosts:['api.modrinth.com'],maxBytes:100,timeoutMs:1000}),/Only GET/);
+ await assert.rejects(guardedFetch('https://api.modrinth.com/',{method:'PUT'}, {hosts:['api.modrinth.com'],maxBytes:100,timeoutMs:1000}),/Only GET/);
 });
 
 test('a timeout while a request is still pending is reported as the upstream being slow', async()=>{
@@ -132,4 +132,13 @@ test('storage without the permission throws instead of being dropped silently', 
 test('overwriting a storage key does not count its old size again', async()=>{
  const out=await runPlugin(base(`globalThis.fledgePlugin={run(){for(var i=0;i<20;i++)host.storage.set('k','x'.repeat(100));return 1;}};`,{limits:{maxStorageBytes:400}}));
  assert.deepEqual(out.storageSet,{k:'x'.repeat(100)});
+});
+
+test('host.crypto verifies signatures without a library', async()=>{
+ const code=`globalThis.fledgePlugin={run:function(){var sig=host.crypto.hmacSha256('whsec_test','1700000000.{"id":1}');return {sig:sig,sha:host.crypto.sha256('abc'),same:host.crypto.equals(sig,sig),diff:host.crypto.equals(sig,'x'+sig.slice(1)),short:host.crypto.equals('a','ab'),rnd:host.crypto.randomHex(8).length,now:typeof host.now()};}};`;
+ const out=await runPlugin(base(code)) as any;
+ const r=out.result as any;
+ const expected=(await import('node:crypto')).createHmac('sha256','whsec_test').update('1700000000.{"id":1}').digest('hex');
+ assert.equal(r.sig,expected);assert.equal(r.sha,'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+ assert.equal(r.same,true);assert.equal(r.diff,false);assert.equal(r.short,false);assert.equal(r.rnd,16);assert.equal(r.now,'number');
 });

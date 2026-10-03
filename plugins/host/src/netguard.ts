@@ -87,7 +87,7 @@ export async function guardedFetch(rawUrl:string,init:FetchInit,policy:{hosts:st
  let url:URL;
  try{url=new URL(rawUrl);}catch{throw new GuardError('Invalid URL','url');}
  let method=(init.method||'GET').toUpperCase();
- if(!['GET','HEAD','POST'].includes(method))throw new GuardError('Only GET, HEAD and POST are allowed','method');
+ if(!['GET','HEAD','POST','DELETE'].includes(method))throw new GuardError('Only GET, HEAD, POST and DELETE are allowed','method');
  let current=init;
  for(let hop=0;hop<=(policy.maxRedirects??3);hop++){
   if(url.protocol!=='https:'&&!(opts.allowHttp&&url.protocol==='http:'))throw new GuardError('Only HTTPS URLs are allowed');

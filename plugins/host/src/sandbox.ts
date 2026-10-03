@@ -1,4 +1,5 @@
 import {getQuickJS,shouldInterruptAfterDeadline,type QuickJSContext,type QuickJSHandle} from 'quickjs-emscripten';
+import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 import {guardedFetch,GuardError,type GuardOptions} from './netguard.js';
 
 // Plugin code runs inside QuickJS compiled to WebAssembly: its own heap, no Node APIs, no
@@ -31,6 +32,13 @@ const prelude=`(function(){
    set:function(k,v){local[k]=v;call('storageSet',JSON.stringify([String(k),v===undefined?null:v]));},
    delete:function(k){delete local[k];call('storageDelete',JSON.stringify([String(k)]));}
   },
+  crypto:{
+   sha256:function(t){return call('crypto',JSON.stringify(['sha256',String(t)]));},
+   hmacSha256:function(k,t){return call('crypto',JSON.stringify(['hmac',String(k),String(t)]));},
+   equals:function(a,b){return call('crypto',JSON.stringify(['equals',String(a),String(b)]))==='1';},
+   randomHex:function(n){return call('crypto',JSON.stringify(['random',Number(n)||16]));}
+  },
+  now:function(){return Date.now();},
   fetch:function(url,opts){
    return call('fetch',JSON.stringify([String(url),opts||{}])).then(function(raw){
     var o=JSON.parse(raw);
@@ -104,6 +112,15 @@ export async function runPlugin(input:RunInput):Promise<RunOutput>{
      }finally{inflight--;}
     })().then(settle,e=>settle({error:String(e?.message||e),code:'network'}));
     return deferred.handle;
+   }
+   case 'crypto':{
+    // Small, deterministic helpers (hashes and signatures) so plugins can verify webhooks without a crypto library.
+    const [kind,a,b]=JSON.parse(raw);
+    if(kind==='sha256')return plainString(createHash('sha256').update(String(a)).digest('hex'));
+    if(kind==='hmac')return plainString(createHmac('sha256',String(a)).update(String(b)).digest('hex'));
+    if(kind==='equals'){const x=Buffer.from(String(a)),y=Buffer.from(String(b));return plainString(x.length===y.length&&timingSafeEqual(x,y)?'1':'0');}
+    if(kind==='random')return plainString(randomBytes(Math.max(1,Math.min(64,Number(a)||16))).toString('hex'));
+    throw new Error('Unknown crypto operation');
    }
    default:throw new Error(`Unknown host operation ${op}`);
   }
