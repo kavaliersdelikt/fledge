@@ -62,7 +62,7 @@ export async function startStripeMock({webhookUrl,secret='whsec_testsecret',live
    S.requests.push({method:req.method,path:url.pathname,params:{...q,...params},headers:req.headers});
    const key=(req.headers.authorization||'').replace(/^Bearer /,'');
    const json=(code,obj)=>{res.writeHead(code,{'content-type':'application/json'});res.end(JSON.stringify(obj));};
-   const err=(code,message,errCode='invalid_request_error')=>json(code,{error:{message,type:'invalid_request_error',code:errCode}});
+   const err=(code,message,errCode='invalid_request_error')=>json(code,{error:{message,type:errCode==='api_error'?'api_error':'invalid_request_error',code:errCode}});
    if(!/^(sk|rk)_test_/.test(key))return err(401,'Invalid API Key provided','api_key_invalid');
    if(S.failNext){const f=S.failNext;S.failNext=null;return err(f.code||402,f.message||'Your card was declined.');}
    const p=url.pathname,m=req.method;
@@ -109,7 +109,7 @@ export async function startStripeMock({webhookUrl,secret='whsec_testsecret',live
      c.amount_refunded+=amount;const r={id:rnd('re'),object:'refund',amount,charge:c.id};S.refunds[r.id]=r;return json(200,r);
     }
     return err(404,`Unrecognized request URL (${m}: ${p})`,'resource_missing');
-   }catch(e){return err(500,String(e?.message||e));}
+   }catch(e){console.error('Stripe mock request failed:',e);return err(500,'Internal server error','api_error');}
   });
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
