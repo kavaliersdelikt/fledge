@@ -70,6 +70,10 @@ jobs:
         run: npm run test:accounts
       - name: Appearance (branding, images, custom CSS, history)
         run: npm run test:branding
+      - name: Sign-up, limits, self-service servers, email templates
+        run: npm run test:rookery
+      - name: Plans, store, payments (Stripe stand-in), subscriptions, dunning
+        run: npm run test:billing
   plugin-host:
     runs-on: ubuntu-latest
     defaults:

@@ -39,7 +39,7 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PORT: "4000"
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:-0.6.2.1}
+      APP_VERSION: ${APP_VERSION:-0.7.1.1}
       # Appearance (Settings, Appearance): BRANDING_DISABLED=true shows the built-in look and refuses changes (recovery).
       BRANDING_DISABLED: ${BRANDING_DISABLED:-false}
       BRAND_NAME: ${BRAND_NAME:-}
@@ -96,7 +96,7 @@ services:
     environment:
       PORT: "4020"
       PLUGIN_TOKEN_FILE: /run/fledge-plugins/token
-      APP_VERSION: ${APP_VERSION:-0.6.2.1}
+      APP_VERSION: ${APP_VERSION:-0.7.1.1}
     networks:
       - plugins_net
     volumes:
