@@ -1,6 +1,7 @@
 import type {FastifyInstance} from 'fastify';
 import {pool,admin,fail,encrypt,decrypt,audit,looksLikeMailbox} from './core.js';
 import {validCidr,ipAllowed} from './cidr.js';
+import {defaultSignup,defaultSelfService,defaultLimits,defaultBilling,defaultStore,validateRookery,type SignupSettings,type SelfServiceSettings,type LimitsSettings,type BillingSettings,type StoreSettings} from './rookery-settings.js';
 
 // Panel-managed configuration. Environment variables only seed a section until
 // an administrator saves it in the panel; from then on the database wins.
@@ -10,12 +11,12 @@ export type AgentUpdateSettings={auto:boolean;source:'github'|'url';baseUrl:stri
 export type UpdateSettings={repository:string;githubToken:string};
 export type FailoverSettings={enabled:boolean;graceMinutes:number;maxConcurrent:number;maxBackupAgeHours:number;allowWithoutBackup:boolean;sameLocationOnly:boolean;cooldownMinutes:number;protectionEnabled:boolean;protectionIntervalMinutes:number;selfFence:boolean;evictStaleData:boolean;evictedRetentionDays:number;webhookUrl:string};
 export type PluginSettings={registryUrl:string;trustedKeys:string[];allowCommunity:boolean};
-export type EmailSettings={enabled:boolean;host:string;port:number;security:'none'|'starttls'|'tls';user:string;password:string;from:string};
+export type EmailSettings={enabled:boolean;host:string;port:number;security:'none'|'starttls'|'tls';user:string;password:string;from:string;replyTo:string;adminBcc:string;perMinute:number;maxAttempts:number;logDays:number};
 export type SecuritySettings={adminAllowedCidrs:string[];auditRetentionDays:number};
 // `branding` is managed by branding.ts (its own validation, history and images); here it is only stored and read.
-type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings;plugins:PluginSettings;email:EmailSettings;security:SecuritySettings;branding:Record<string,any>};
+type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings;plugins:PluginSettings;email:EmailSettings;security:SecuritySettings;branding:Record<string,any>;signup:SignupSettings;selfService:SelfServiceSettings;limits:LimitsSettings;billing:BillingSettings;store:StoreSettings};
 type Section=keyof Sections;
-const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl'],plugins:[],email:['password'],security:[],branding:[]};
+const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl'],plugins:[],email:['password'],security:[],branding:[],signup:['captchaSecret'],selfService:[],limits:[],billing:[],store:[]};
 const defaultImages='itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/';
 const list=(v:string)=>v.split(',').map(s=>s.trim()).filter(Boolean);
 
@@ -28,9 +29,10 @@ function envDefaults():Sections{
   updates:{repository:(e.GITHUB_REPOSITORY||'kavaliersdelikt/fledge').trim(),githubToken:e.GITHUB_TOKEN||''},
   failover:{enabled:false,graceMinutes:5,maxConcurrent:2,maxBackupAgeHours:24,allowWithoutBackup:false,sameLocationOnly:false,cooldownMinutes:30,protectionEnabled:false,protectionIntervalMinutes:60,selfFence:false,evictStaleData:true,evictedRetentionDays:7,webhookUrl:''},
   plugins:{registryUrl:e.PLUGIN_REGISTRY_URL??'https://raw.githubusercontent.com/kavaliersdelikt/fledge/main/plugins/registry/index.json',trustedKeys:[],allowCommunity:false},
-  email:{enabled:Boolean(e.SMTP_HOST),host:e.SMTP_HOST||'',port:Number(e.SMTP_PORT)||587,security:(['none','starttls','tls'].includes(e.SMTP_SECURITY||'')?e.SMTP_SECURITY:'starttls') as EmailSettings['security'],user:e.SMTP_USER||'',password:e.SMTP_PASSWORD||'',from:e.SMTP_FROM||''},
+  email:{enabled:Boolean(e.SMTP_HOST),host:e.SMTP_HOST||'',port:Number(e.SMTP_PORT)||587,security:(['none','starttls','tls'].includes(e.SMTP_SECURITY||'')?e.SMTP_SECURITY:'starttls') as EmailSettings['security'],user:e.SMTP_USER||'',password:e.SMTP_PASSWORD||'',from:e.SMTP_FROM||'',replyTo:'',adminBcc:'',perMinute:60,maxAttempts:8,logDays:30},
   security:{adminAllowedCidrs:[],auditRetentionDays:0},
   branding:{},
+  signup:defaultSignup(),selfService:defaultSelfService(),limits:defaultLimits(),billing:defaultBilling(),store:defaultStore(),
  };
 }
 
@@ -57,6 +59,7 @@ export const invalidateSettings=()=>{cache=undefined;};
 
 const bool=(v:any,name:string)=>{if(typeof v!=='boolean')fail(400,`${name} must be true or false`);return v as boolean;};
 const str=(v:any,name:string,max=512)=>{if(typeof v!=='string'||v.length>max)fail(400,`${name} must be text (max ${max})`);return (v as string).trim();};
+const mailbox=(v:string,name:string)=>{if(v&&!looksLikeMailbox(v))fail(400,`${name} must look like admin@example.com`);return v;};
 const url=(v:string,name:string)=>{if(!v)return v;let u:URL;try{u=new URL(v);}catch{return fail(400,`${name} must be a URL`);}if(!['http:','https:'].includes(u.protocol)||u.search||u.hash)fail(400,`${name} must be an http(s) URL without query`);return v.replace(/\/$/,'');};
 
 function validate(section:Section,body:any,current:Sections):any{
@@ -103,7 +106,7 @@ function validate(section:Section,body:any,current:Sections):any{
    const port=Number(body.port);if(!Number.isInteger(port)||port<1||port>65535)fail(400,'SMTP port must be 1–65535');
    if(!['none','starttls','tls'].includes(body.security))fail(400,'Unknown connection security');
    const from=str(body.from??'','From address',200);
-   const v={enabled,host:str(body.host??'','SMTP host',253),port,security:body.security,user:str(body.user??'','SMTP user',254),password:body.password===undefined||body.password===null?current.email.password:str(body.password,'SMTP password',512),from};
+   const v={enabled,host:str(body.host??'','SMTP host',253),port,security:body.security,user:str(body.user??'','SMTP user',254),password:body.password===undefined||body.password===null?current.email.password:str(body.password,'SMTP password',512),from,replyTo:mailbox(str(body.replyTo??'','Reply-To address',200),'Reply-To'),adminBcc:mailbox(str(body.adminBcc??'','Copy address',200),'Copy address'),perMinute:Number.isInteger(Number(body.perMinute))&&Number(body.perMinute)>=1&&Number(body.perMinute)<=1000?Number(body.perMinute):60,maxAttempts:Number.isInteger(Number(body.maxAttempts))&&Number(body.maxAttempts)>=1&&Number(body.maxAttempts)<=20?Number(body.maxAttempts):8,logDays:Number.isInteger(Number(body.logDays))&&Number(body.logDays)>=1&&Number(body.logDays)<=365?Number(body.logDays):30};
    if(enabled&&(!v.host||!from))fail(400,'A host and a From address are required to turn email on');
    if(from&&!looksLikeMailbox(from))fail(400,'From must look like admin@example.com or Fledge <admin@example.com>');
    if(v.host&&!/^[A-Za-z0-9.:\[\]-]+$/.test(v.host))fail(400,'Enter an SMTP host name or address');
@@ -121,6 +124,8 @@ function validate(section:Section,body:any,current:Sections):any{
    if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository))fail(400,'Repository must be OWNER/NAME');
    return {repository,githubToken:body.githubToken===undefined||body.githubToken===null?current.updates.githubToken:str(body.githubToken,'GitHub token',512)};
   }
+  case 'signup':case 'selfService':case 'limits':case 'billing':case 'store':return validateRookery(section,body,current);
+  case 'branding':return fail(404,'Unknown settings section');
  }
 }
 
@@ -143,12 +148,18 @@ export function publicSettings(s:Sections){
  return out;
 }
 
+type Guard=(value:any,current:Sections)=>Promise<void>;
+const guards=new Map<string,Guard>();
+/** Lets another module veto or react to a section being saved (for example: the store cannot open before it is ready). */
+export const settingsGuard=(section:Section,fn:Guard)=>{guards.set(section,fn);};
+
 export function settingsRoutes(app:FastifyInstance,hooks:{onSave?:(section:Section)=>void}={}){
  app.get('/api/settings',async(req)=>{admin(req);const s=await settings();const saved=(await pool.query("SELECT key,updated_at FROM settings WHERE key<>'failover_engine'")).rows;return {...publicSettings(s),saved:Object.fromEntries(saved.map(r=>[r.key,r.updated_at]))};});
  app.put('/api/settings/:section',async(req)=>{
   admin(req);const section=(req.params as any).section as Section;
   if(!(section in secretFields)||section==='branding')fail(404,'Unknown settings section');
   const current=await settings(),value=validate(section,req.body,current);
+  await guards.get(section)?.(value,current);
   if(section==='security'&&value.adminAllowedCidrs.length&&process.env.ADMIN_IP_ALLOW_DISABLE!=='true'&&!ipAllowed(req.ip,value.adminAllowedCidrs))fail(400,`Your own address (${req.ip}) is not in this list, so saving it would lock you out. Add it first.`);
   await saveSection(section,value,req.actor!.id);
   await audit(req.actor!.id,'settings.update','settings',section,{fields:Object.keys(value).filter(k=>!secretFields[section].includes(k))});

@@ -1,4 +1,5 @@
-import {pool,fail} from './core.js';
+import {fail} from './core.js';
+import {checkLimits,usageOf as usageOfV2} from './limits.js';
 
 // Per-customer limits. A missing or null field means "no limit". Limits apply to what the
 // customer owns (servers, reserved resources, backups, extra ports); admins may exceed them
@@ -24,11 +25,8 @@ export function validateQuota(input:unknown):Quota{
 }
 
 type Db={query:(q:string,a?:any[])=>Promise<any>};
-export async function usageOf(ownerId:string,db:Db=pool,excludeServerId?:string):Promise<Usage>{
- const s=(await db.query("SELECT count(*)::int servers,coalesce(sum(memory_mb),0)::int mem,coalesce(sum(cpu_percent),0)::int cpu,coalesce(sum(disk_mb),0)::int disk,coalesce(sum(jsonb_array_length(extra_ports)),0)::int ports FROM servers WHERE owner_id=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR id<>$2)",[ownerId,excludeServerId||null])).rows[0];
- const b=(await db.query("SELECT count(*)::int n FROM backups b JOIN servers s ON s.id=b.server_id WHERE s.owner_id=$1 AND s.deleted_at IS NULL AND b.state<>'failed'",[ownerId])).rows[0];
- return {servers:s.servers,memoryMb:s.mem,cpuPercent:s.cpu,diskMb:s.disk,backups:b.n,extraPorts:s.ports};
-}
+/** Customer usage (the 0.6.x shape plus the new counters). */
+export const usageOf=usageOfV2;
 
 /** Returns a sentence describing the first limit the change would break, or null. */
 export function quotaProblem(quota:Quota|null|undefined,usage:Usage,delta:Partial<Usage>):string|null{
@@ -41,13 +39,8 @@ export function quotaProblem(quota:Quota|null|undefined,usage:Usage,delta:Partia
  return null;
 }
 
-/** Throws 409 when the customer’s limits would be exceeded. */
-export async function enforceQuota(ownerId:string,delta:Partial<Usage>,opts:{db?:Db;excludeServerId?:string;force?:boolean}={}){
- if(opts.force)return;
- const db=opts.db||pool;
- // Inside a transaction the owner row is locked, so concurrent creates for one customer are checked one after another.
- const quota=(await db.query('SELECT quota FROM users WHERE id=$1'+(opts.db?' FOR UPDATE':''),[ownerId])).rows[0]?.quota as Quota|undefined;
- if(!quota||!Object.keys(quota).length)return;
- const problem=quotaProblem(quota,await usageOf(ownerId,db,opts.excludeServerId),delta);
- if(problem)fail(409,problem);
+/** Throws 409 when the customer’s limits would be exceeded. Now backed by the layered limits engine (limits.ts). */
+export async function enforceQuota(ownerId:string,delta:Partial<Usage>&{backupMb?:number},opts:{db?:Db;excludeServerId?:string;force?:boolean;actorIsAdmin?:boolean;planBacked?:boolean;change?:import('./limits.js').Change}={}){
+ await checkLimits(ownerId,{servers:delta.servers,memoryMb:delta.memoryMb,cpuPercent:delta.cpuPercent,diskMb:delta.diskMb,backups:delta.backups,extraPorts:delta.extraPorts,backupMb:delta.backupMb,...(opts.change||{})},
+  {db:opts.db,excludeServerId:opts.excludeServerId,force:opts.force,actorIsAdmin:opts.actorIsAdmin,planBacked:opts.planBacked});
 }
