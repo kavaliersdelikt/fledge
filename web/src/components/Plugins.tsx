@@ -932,14 +932,14 @@ function WizardBody({ target, onClose, onChanged, onConfigure }: { target: Targe
 
       {step === "done" && info && (
         <>
-          <Notice tone="ok" title={`${info.name} is on`}>
-            Open any Minecraft server and look for its <strong>Mods</strong> or <strong>Plugins</strong> tab.
-          </Notice>
+          <p className="muted">{info.name} is installed and turned on. You can change its settings or turn it off later.</p>
           <div className="modal__actions">
-            <Button onClick={() => onConfigure(info.id)}>Review settings</Button>
-            <Link href="/servers" className={btn("primary")} onClick={onClose}>
-              Go to servers
-            </Link>
+            <Button variant="primary" onClick={onClose}>
+              Done
+            </Button>
+            <Button variant="ghost" onClick={() => onConfigure(info.id)}>
+              Configure
+            </Button>
           </div>
         </>
       )}
