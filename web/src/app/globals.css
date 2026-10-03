@@ -1952,6 +1952,31 @@ textarea.input {
   animation: rise 420ms var(--ease-out) both;
   animation-delay: 80ms;
 }
+.quota-editor-form {
+  min-width: 0;
+}
+.quota-editor__actions {
+  position: sticky;
+  bottom: -36px;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -26px -36px;
+  padding: 14px 26px max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+@media (max-width: 600px) {
+  .quota-editor__actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .quota-editor__actions > :first-child {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
 .sidebar--sheet .sidebar-search {
   display: none;
 }

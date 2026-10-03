@@ -149,17 +149,17 @@ function QuotaEditor({ customer, onClose, onSaved }: { customer: Row; onClose: (
     }
   }
   return (
-    <Modal
+    <Drawer
       open
       wide
       onOpenChange={(o) => !o && onClose()}
-      title="Limits"
+      title="Edit limits"
       description={`What ${customer.email} can own. Anything you fill in here beats the panel defaults and their plans. Existing servers keep running if they are already over a new limit.`}
     >
       <State loading={view.loading || draft === null} error={view.error}>
         {view.data && draft ? (
           <form
-            className="form"
+            className="form quota-editor-form"
             onSubmit={(e) => {
               e.preventDefault();
               void save();
@@ -171,15 +171,15 @@ function QuotaEditor({ customer, onClose, onSaved }: { customer: Row; onClose: (
             <h3 style={{ fontSize: "calc(14px * var(--text-scale))" }}>Set by hand for this customer</h3>
             <LimitSetEditor value={draft} onChange={setDraft} inherit="Use the default" templates={items(templates.data).map((t) => ({ id: t.id, name: t.name }))} locations={locations} />
             <ErrorNotice message={error} />
-            <div className="modal__actions">
-              <Button onClick={() => void save(true)} disabled={busy || Object.keys(view.data.override).length === 0}>Remove everything set by hand</Button>
+            <div className="quota-editor__actions">
+              <Button onClick={() => void save(true)} disabled={busy || Object.keys(view.data.override).length === 0}>Remove manual limits</Button>
               <Button onClick={onClose}>Cancel</Button>
               <Button type="submit" variant="primary" busy={busy}>Save limits</Button>
             </div>
           </form>
         ) : null}
       </State>
-    </Modal>
+    </Drawer>
   );
 }
 
