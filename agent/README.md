@@ -146,3 +146,9 @@ SFTP is enabled, moved and disabled from the panel (Settings → Panel → Game 
 ## Failover support (0.5.2.1)
 
 Heartbeats list every server the node holds (`held`). The panel answers with `evict` jobs for copies of servers that now live elsewhere; the agent removes the container and moves the data to `DATA_ROOT/.evicted/` (deleted after the configured retention). If *Stop servers if a node loses the panel* is on, the agent stops its protected servers after the configured silence and restarts them when the panel answers again and still assigns them here. The state needed for that is kept beside `CREDENTIAL_FILE` (`failover.json`).
+
+## Add-on file jobs (0.6.1.1)
+
+`file.fetch` downloads one file for a server (a mod or plugin chosen in the panel): HTTPS only, only hosts listed in the job, never private or loopback addresses (checked on the address actually dialled, also after redirects), a SHA-512 or SHA-256 is required and must match, the size is capped and counted against the server's disk allowance, and the file is placed atomically with the same path-safety code as uploads. An optional `replace` list removes the old file only after the new one is in place. `file.delete` removes regular files (never directories or through symlinks) and `file.rename` only adds or drops the `.disabled` suffix without overwriting.
+
+Minecraft containers are created with `CREATE_CONSOLE_IN_PIPE=TRUE`. Stops (and restarts, resizes and backups that stop the game) send RCON `stop`, or, while the server is still starting and RCON is not up, queue `stop` on the console pipe as the game user and wait through the boot before falling back to `docker stop`. Heartbeats carry `exit` details (code, out-of-memory flag, log tail) for containers that stopped.

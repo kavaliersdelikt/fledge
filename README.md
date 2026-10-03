@@ -16,7 +16,7 @@ Manage customers, servers, templates, and Linux Docker nodes from one self-hoste
   <a href="#known-limits"><img src="https://img.shields.io/badge/status-evaluation-F59E0B?style=flat-square" alt="Project status: evaluation" /></a>
 </p>
 
-[Overview](#what-is-fledge) · [Connect a node](#connect-a-node) · [Backups](#backups-and-recovery) · [Community](#community) · [Known limits](#known-limits)
+[Overview](#what-is-fledge) · [Plugins](#plugins-and-add-ons) · [Connect a node](#connect-a-node) · [Automation](#automation-and-notifications) · [Backups](#backups-and-recovery) · [Community](#community) · [Known limits](#known-limits)
 
 <img src="docs/assets/banner2.png" width="100%" alt="Fledge — one panel, many worlds" />
 
@@ -33,13 +33,13 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.5.x** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.6.x (Roost)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
 ## What is Fledge?
 
-Fledge is a self-hosted control panel for operating game servers across multiple Linux Docker hosts. The web panel and API manage users, templates, server lifecycle, placement, backups, and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port.
+Fledge is a self-hosted control panel for operating game servers across multiple Linux Docker hosts. The web panel and API manage users, templates, server lifecycle, placement, backups, automation, plugins and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port. Plugins run in a sandboxed host service that has no access to the database or to Docker.
 
 
 ```mermaid
@@ -50,6 +50,8 @@ flowchart TB
     API --> Database[("PostgreSQL")]
     API --> Backups["S3-compatible backups"]
 
+    API --> Plugins["Plugin host (sandbox)"]
+    Plugins -. "declared hosts only" .-> Catalogs["Modrinth and other catalogs"]
     API -. "outbound connection" .- Agent["Node agent"]
     Agent --> Node["Linux Docker node"]
     Node --> Servers["Game servers"]
@@ -58,9 +60,10 @@ flowchart TB
     classDef data fill:#1E293B,stroke:#64748B,color:#F8FAFC
     classDef node fill:#052E2B,stroke:#34D399,color:#F0FDFA
 
-    class Browser,Panel,API app
+    class Browser,Panel,API,Plugins app
     class Database,Backups data
     class Agent,Node,Servers node
+    class Catalogs data
 ```
 
 ## What you get
@@ -74,8 +77,13 @@ flowchart TB
 | **People and access** | Customer accounts, per-server collaborators (view, console, files, backups, manage), an audit log, and scoped API tokens. |
 | **Safe by default** | Two-factor authentication required for administrators, recovery codes, and outbound-only node agents. |
 | **Fast to drive** | Ctrl K searches pages and servers. Works on phones. Motion respects "reduce motion". |
+| **Plugins and add-ons** | A plugin store with one-click install, permission review and a settings wizard. The bundled **Modrinth Mod Browser** and **Modrinth Plugin Browser** add a Mods or Plugins tab to matching Minecraft servers: search, dependencies, install, update, disable, remove. |
+| **Autopilot** | Schedules with cron and task chains (command, wait, backup, restart), automatic restart after crashes with crash-loop protection, a notification inbox with Discord, Slack, webhook and email delivery. |
+| **Templates v2** | Typed variables, import and export, versions with "update servers", extra ports, clone server. |
+| **Accounts** | Passkeys, signed-in devices, email invitations and password reset, per-customer quotas, an optional admin network allow-list, audit filters and export. |
+| **History and API** | CPU and memory history (1 hour to 30 days), Prometheus metrics, an OpenAPI description with an in-panel API reference. |
 
-> **New in v0.5.2.1:** automatic failover, planned server moves, a Resilience page with health and recovery history, and webhook notifications. v0.5.1.1 added kernel-enforced disk limits, uploads without object storage and agent updates from the panel. See the [release notes](docs/releases/v0.5.2.1.md).
+> **New in v0.6.1.1 "Roost":** a plugin system (sandboxed, signed, one-click) with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas, passkeys and more. Update the node agents to 0.6.1.1 to use add-ons. See the [release notes](docs/releases/v0.6.1.1.md). Earlier: v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel.
 
 ## Quick start
 
@@ -145,6 +153,39 @@ The agent is a high-trust, root-equivalent component because it controls Docker 
 
 New game containers keep standard input open. The live console streams Docker logs and resource samples and sends one line to container stdin; game software must support console input this way. Minecraft Containers are preset to use authenticated RCON. Containers created before this change need a configure/recreate operation before generic stdin input is available. Pterodactyl egg conversion imports environment defaults and editable variables; it does not run install scripts or translate Pterodactyl-specific startup interpolation. Review the generated image, ports, and compatibility warnings before saving.
 
+## Plugins and add-ons
+
+Open **Plugins** (administrators) to install, configure and turn on plugins. A plugin is a small program that runs in a WebAssembly sandbox inside the `plugins` service; the panel draws the interface and checks everything a plugin returns.
+
+1. **Install.** The store lists the bundled plugins and, when a registry is reachable, signed community plugins. The install dialog shows what the plugin may do in plain language ("Connect to api.modrinth.com", "Add and remove files in server folders you open its tools on"). You approve it, optionally fill in its settings (with a **Test connection** button) and turn it on. Plugins from a file need *Allow community plugins* in **Plugins → Settings**.
+2. **Use.** Minecraft servers whose template supports add-ons get a **Mods** tab (Fabric, Quilt, Forge, NeoForge) or a **Plugins** tab (Paper, Purpur, Folia, Spigot), chosen from the server's type and Minecraft version. Search Modrinth, open a project, pick a version, review required and optional dependencies, optionally take a backup first, and install. The node downloads the file itself and verifies the SHA-512 Modrinth publishes before writing it. Installed add-ons can be disabled (renamed to `.disabled`), pinned, updated (one or all, stable channel by default) and removed. A server restart applies the change.
+3. **Trust.** *Bundled* plugins ship with Fledge. *Verified* ones carry a signature from a key you trust (**Plugins → Settings**). *Community* ones are unsigned and off by default. Updates that ask for more permissions need approval again; a plugin that keeps failing is switched off automatically. Everything is in the audit log.
+
+Writing your own: see the [plugin guide](docs/plugins/README.md), the [reference](docs/plugins/reference.md) and the [security model](docs/plugins/security.md). Add-on support is a property of the template (**Templates → Edit → Add-on support**), so custom templates can opt in.
+
+## Automation and notifications
+
+- **Schedules** (server → **Automation**): run on a cron expression with a time zone, or every N minutes. A schedule is a chain of steps: send a console command, wait, take a backup, start, stop or restart. A preview shows the next five runs; every run keeps its history. Missed runs (panel down at the time) are skipped or run once, as you choose.
+- **Crash protection**: restart a server that stops by itself, with growing pauses, and stop trying after too many crashes in a window (a crash loop). The last exit code, whether the kernel killed it for memory, and the end of its log are recorded and sent with the notification. Off by default for existing servers; stopping a server from the panel is never treated as a crash.
+- **Notifications**: a bell with an inbox for crashes, crash loops, recoveries, almost-full disks, failed backups and verifications, failed schedules and add-on installs, node offline/online, failover, failed agent updates, new versions and plugins that were switched off. Add channels under **Settings → Notifications**: Discord, Slack, any webhook (Slack-compatible payload) or email, per event and optionally per server. Customers get a personal inbox and channels for their own servers; their webhooks must be public HTTPS URLs and their email channel can only target their own address.
+- **Email** (**Settings → Panel → Email**) powers invitations, password reset and email channels. It is optional; without it, invitations return a link to pass on.
+
+## Templates, quotas and servers
+
+- **Templates v2**: typed variables (text, number with range, on/off, choices, patterns, secrets) with labels and help text; edit templates in the panel; every change to the image, command, ports or environment creates a version, and **Update servers** shows what would change before recreating them. Export and import templates as JSON.
+- **Startup panel** (server → Settings): the image, command and environment a server starts with, with secrets hidden from customers.
+- **Quotas** (**Customers**): limits on servers, memory, CPU, disk, backups and extra ports per customer, enforced when creating, resizing, backing up and cloning (administrators can override deliberately).
+- **Extra ports**: add or remove additional port mappings (query, voice, RCON ...). They move with the server on planned moves and failover.
+- **Clone**: copy a server's settings, and optionally its data from the newest backup, to a new server.
+
+## Accounts and security
+
+- **Passkeys** can be used as the second factor instead of an authenticator code (administrators keep an authenticator too). **Signed-in devices** lists browsers with last activity and lets you sign out any of them.
+- **Invitations and password reset by email**; reset links work once for an hour. An administrator who resets a password still needs the authenticator.
+- **Admin network allow-list** (**Settings → Panel → Security**): administrator accounts and API tokens work only from the listed addresses. The panel refuses a list that would lock out the one saving it; `ADMIN_IP_ALLOW_DISABLE=true` on the API is the break-glass switch.
+- **Audit log** filters (action, person, dates, text), CSV and JSON export, and optional retention.
+- The panel and API send defensive headers (CSP, frame and sniffing protection). The **API** page in the panel renders the generated OpenAPI description (`/api/openapi.json`) with curl examples.
+
 ## Backups and recovery
 
 Turn on object storage in **Settings → Panel → Object storage**: bucket, region, endpoint and keys, with a **Test connection** button that writes, reads and deletes a probe object. The secret key is stored encrypted in the database. The endpoint must be reachable by the API and every node. (The `S3_*` variables in `.env` only seed the form before the first save; the bundled SeaweedFS service is opt-in with `docker compose --profile bundled-s3 up -d`.) Backups are verified archives, and restore stages files before swapping them into place where Linux filesystem support permits. Cross-node recovery is a manual operation: create a replacement server on another node, restore, verify the game, then update network records.
@@ -153,16 +194,16 @@ On nodes with disk limits, a running server is backed up from a frozen point-in-
 
 ## Updating
 
-Administrators can check and install the latest GitHub release directly from **Updates**. Select **Update panel** to start the process. The panel creates a PostgreSQL dump in `.backups/`, keeps the Compose database and S3 volumes and the existing `.env`, rebuilds only the API and web services, and checks both services before reporting success. If health checks fail, it restores the previous application revision when possible. Database schema migrations are not reversed automatically, so keep an independent backup and review the release notes before updating.
+Administrators can check and install the latest GitHub release directly from **Updates**. Select **Update panel** to start the process. The panel creates a PostgreSQL dump in `.backups/`, keeps the Compose database and S3 volumes and the existing `.env`, rebuilds the API, web and plugin host services, and checks the API and panel before reporting success (the plugin host is checked too, but a problem there only produces a warning, because the panel works without plugins). If health checks fail, it restores the previous application revision when possible. Database schema migrations are not reversed automatically, so keep an independent backup and review the release notes before updating.
 
 The in-panel updater runs as a private Compose service and needs access to the Docker Engine socket and the project checkout. Keep the updater service on the internal Compose network; it is not published to the host. This grants the updater host-level control over Docker, so protect access to the Docker daemon and install Fledge only on a host you administer. The existing `update.sh` and `update.ps1` scripts remain available for manual recovery and clean-checkout installs.
 
 ## Documentation
 
 - [API and configuration](api/README.md)
-- [Web panel](web/README.md)
 - [Linux node agent and WSL2 evaluation](agent/README.md)
-- [SFTP status](SFTP_STATUS.md)
+- [Writing plugins](docs/plugins/README.md), [plugin reference](docs/plugins/reference.md) and [plugin security model](docs/plugins/security.md)
+- [Release notes](docs/releases/v0.6.1.1.md)
 - [Environment template](.env.example)
 
 ## Failover and server moves
@@ -187,6 +228,9 @@ All of this is managed in **Settings → Panel** and **Nodes**; nothing needs `.
 
 ## Known limits
 
+- Plugins: WebAssembly isolation reduces risk but is not a formal guarantee, and Fledge does not scan downloaded mod or plugin files: a checksum proves a file is the one a catalog named, not that it is safe. The registry ships without a built-in trusted key; add the keys you trust. Add-ons need node agents 0.6.1.1 or newer. The plugin interface is limited to catalogs and event hooks in 0.6; custom plugin pages are not available yet. See the [security model](docs/plugins/security.md).
+- Automation: schedule steps are queued for the node and run in order, but a step does not wait for the game to finish a command. A run interrupted by an API crash may repeat its current step. Crash protection reacts to the container's exit, not to a game that hangs without exiting.
+- Passkeys were verified with a software authenticator in tests, not with every browser and security key; keep your authenticator app and recovery codes.
 - Disk limits cover each server's data directory. The container's writable layer (anything a game writes outside the data mount) is not limited. Volumes need a Linux node with root, loop devices and `e2fsprogs`.
 - Failover is backup-based, not replication: a recovered server loses everything since its newest backup, and recovery takes the time of a restore. It does not detect a hung game on a healthy node, a node that is reachable but broken, or an outage of the panel itself. Without *Stop servers if a node loses the panel*, a node that is cut off from the panel but still running keeps its game running until it reconnects, so the same game may run on two nodes in that window (players can only reach one address). A failed recovery leaves the server on the new node in a failed state with the old data kept aside, to be retried by hand. Live migration without downtime is not implemented.
 - Snapshot backups are crash-consistent: they capture the volume as if power were cut at that instant, with a world-save flush for Minecraft. Other games depend on their own crash recovery. Without a volume, backups stop the game cleanly and depend on it honouring Docker's stop signal. Scheduled verification checks archive integrity and safe extraction; it does not boot a game.
@@ -200,14 +244,21 @@ All of this is managed in **Settings → Panel** and **Nodes**; nothing needs `.
 ## Development checks
 
 ```sh
-# API
-cd api && npm ci && npm run check && npm run test:cors && npm run test:updates && npm run test:templates
+# API (needs PostgreSQL; the integration tests create their own throw-away databases,
+# set TEST_DATABASE_URL to a superuser connection such as postgres://user:pass@localhost:5432/postgres)
+cd api && npm ci && npm run check && npm run test:unit && npm run test:cors && npm run test:updates && npm run test:templates
+cd ../plugins/host && npm ci && npm run check && npm test
+cd ../tools && npm ci
+cd ../../api && npm run test:plugins && npm run test:templates-v2 && npm run test:fit && npm run test:autopilot && npm run test:accounts
 
 # Web
 cd ../web && npm ci && npm run check && npm run build
 
 # Agent
 cd ../agent && go test ./... && go vet ./... && go build ./...
+
+# Install and update scripts
+cd .. && sh tests/install-smoke.sh && sh tests/update-smoke.sh && sh tests/update-flow-smoke.sh && sh tests/connector-smoke.sh
 ```
 
 The disposable API smoke test is in `tests/api-smoke-disposable.ps1`; it creates and removes a uniquely named PostgreSQL test container/database. Set `FLEDGE_SMOKE_S3=true` and provide `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, and a host-reachable `S3_ENDPOINT` to include streamed object and retention checks against an S3-compatible test bucket. It writes only unique `smoke/` objects and cleans up its fixtures. Do not point smoke tests at a production database or bucket.

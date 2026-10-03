@@ -27,3 +27,8 @@ The maintainers will review reports privately and coordinate remediation and pub
 ## Scope
 
 Reports are welcome for security issues in Fledge's panel, API, node agent, installers, update system, and repository-maintained deployment configuration. Issues caused solely by unsupported third-party software or a host misconfiguration may be outside Fledge's control, but can still be reported if they expose a Fledge-specific weakness.
+
+
+## Plugins
+
+Plugins run in a sandbox and are validated at every boundary; the design, what it protects against and what it does not are described in [docs/plugins/security.md](docs/plugins/security.md). Vulnerabilities in the plugin host, the sandbox, plugin package or registry handling, or the add-on installation path are in scope and should be reported privately like any other.
