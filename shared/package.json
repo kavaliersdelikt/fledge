@@ -1,0 +1,5 @@
+{
+  "name": "fledge-shared",
+  "private": true,
+  "type": "module"
+}
