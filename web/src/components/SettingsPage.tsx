@@ -8,6 +8,9 @@ import { CopyButton, Modal, Secret } from "./feedback";
 import { Button, Card, Confirm, Field, Form, PageHeader, Row, Select, State, Status, useLoad } from "./shared";
 import { Plus } from "lucide-react";
 import AdminSettings from "./AdminSettings";
+import { PasskeysCard, PlanCard, SessionsCard } from "./AccountSecurity";
+import NotificationsCard from "./Notifications";
+import Link from "next/link";
 
 function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
   return (
@@ -98,6 +101,23 @@ export default function SettingsPage({ user }: { user: User }) {
           </Card>
         </Section>
 
+        {!admin && <PlanCard />}
+
+        <Section
+          title="Sign-in & devices"
+          description="Passkeys, and the browsers that are signed in to your account. Admins always keep an authenticator app as well."
+        >
+          <PasskeysCard />
+          <SessionsCard />
+        </Section>
+
+        <Section
+          title="Notifications"
+          description="Where Fledge tells you about crashes, failed backups, offline nodes and other things that need attention."
+        >
+          <NotificationsCard user={user} />
+        </Section>
+
         <Section
           title="Recovery codes"
           description="Each code resets your password and authenticator once. New codes replace the old ones."
@@ -114,7 +134,17 @@ export default function SettingsPage({ user }: { user: User }) {
         )}
 
         {admin && (
-          <Section title="API tokens" description="For billing systems and scripts. Give each token only the permissions it needs.">
+          <Section
+            title="API tokens"
+            description={
+              <>
+                For billing systems and scripts. Give each token only the permissions it needs.{" "}
+                <Link href="/api-docs" className="text-button">
+                  Browse the API reference
+                </Link>
+              </>
+            }
+          >
             <Card
               flush
               actions={

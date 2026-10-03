@@ -7,12 +7,14 @@ import {
   BookOpen,
   Box,
   ChevronsUpDown,
+  Code2,
   CornerDownLeft,
   Download,
   HardDrive,
   LayoutGrid,
   LogOut,
   Menu,
+  Puzzle,
   Search,
   Server,
   Settings,
@@ -34,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TipProvider } from "./charts";
+import { BellButton, NotificationDrawer, useNotifications, type NotificationCenter } from "./NotificationBell";
 import { useGlide } from "./motion";
 import { Status, btn } from "./shared";
 
@@ -51,8 +54,10 @@ export const destinations: Destination[] = [
   { title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
   { title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
   { title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
+  { title: "Plugins", url: "/plugins", icon: Puzzle, group: "Infrastructure", adminOnly: true },
   { title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
   { title: "Activity", url: "/activity", icon: Activity, group: "Administration", adminOnly: true },
+  { title: "API", url: "/api-docs", icon: Code2, group: "Administration", adminOnly: true },
   { title: "Updates", url: "/updates", icon: Download, group: "Administration", adminOnly: true },
   { title: "Settings", url: "/settings", icon: Settings, group: "Administration", adminOnly: false },
 ];
@@ -104,6 +109,7 @@ export default function Workspace({
   const [navOpen, setNavOpen] = useState(false);
   const admin = user.role === "admin";
   const attention = useAttention(admin);
+  const notifications = useNotifications();
   // Customers only see two pages, so they get one unlabeled group.
   const allowed = useMemo(
     () => destinations.filter((d) => !d.adminOnly || admin).map((d) => (admin ? d : { ...d, group: "" as const })),
@@ -128,6 +134,7 @@ export default function Workspace({
       destinations={allowed}
       pathname={pathname}
       attention={attention}
+      notifications={notifications}
       onLogout={onLogout}
       onSearch={() => {
         setNavOpen(false);
@@ -160,6 +167,9 @@ export default function Workspace({
               <img src="/fledge-symbol.png" alt="" />
               Fledge
             </Link>
+            <span className="mobilebar__bell">
+              <BellButton center={notifications} variant="icon" />
+            </span>
             <button className={btn("ghost", "icon")} aria-label="Search" onClick={() => setPaletteOpen(true)}>
               <Search />
             </button>
@@ -168,6 +178,7 @@ export default function Workspace({
             {children}
           </main>
         </div>
+        <NotificationDrawer center={notifications} />
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} destinations={allowed} />
       </div>
     </TipProvider>
@@ -179,6 +190,7 @@ function SidebarContent({
   destinations: allowed,
   pathname,
   attention,
+  notifications,
   onLogout,
   onSearch,
 }: {
@@ -186,6 +198,7 @@ function SidebarContent({
   destinations: Destination[];
   pathname: string;
   attention: Attention;
+  notifications: NotificationCenter;
   onLogout: () => Promise<void>;
   onSearch: () => void;
 }) {
@@ -217,6 +230,7 @@ function SidebarContent({
         <span>Search</span>
         <kbd>Ctrl K</kbd>
       </button>
+      <BellButton center={notifications} variant="row" />
       <nav className="nav glide" ref={setNav}>
         {groups.map((group) => (
           <div className="nav__group" key={group || "main"}>

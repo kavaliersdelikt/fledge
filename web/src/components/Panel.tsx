@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import ActivityPage from "./ActivityPage";
+import ApiDocs from "./ApiDocs";
 import Auth from "./Auth";
 import Customers from "./Customers";
 import ServerDetail from "./Detail";
 import Nodes from "./Nodes";
+import Plugins from "./Plugins";
 import Overview from "./Overview";
 import Servers from "./Servers";
 import SettingsPage from "./SettingsPage";
@@ -62,10 +64,12 @@ export default function Panel() {
         </div>
       </div>
     );
-  if (!user || (user.role === "admin" && !user.has2fa))
+  // An invitation or reset link (?token=) always shows the password form, even if someone is signed in.
+  const linkToken = !!query.get("token");
+  if (!user || linkToken || (user.role === "admin" && !user.has2fa))
     return (
       <Auth
-        existing={user || undefined}
+        existing={linkToken ? undefined : user || undefined}
         onSuccess={(u) => {
           setUser(u);
           router.push(u.role === "admin" ? "/" : "/servers");
@@ -75,7 +79,7 @@ export default function Panel() {
   const admin = user.role === "admin",
     seg = pathname.split("/").filter(Boolean);
   const forbidden =
-    ["nodes", "templates", "customers", "activity", "updates", "resilience"].includes(seg[0]) && !admin;
+    ["nodes", "templates", "plugins", "customers", "activity", "updates", "resilience", "api-docs"].includes(seg[0]) && !admin;
   let page;
   if (forbidden)
     page = (
@@ -115,11 +119,17 @@ export default function Panel() {
       case "templates":
         page = <Templates />;
         break;
+      case "plugins":
+        page = <Plugins />;
+        break;
       case "customers":
         page = <Customers />;
         break;
       case "activity":
         page = <ActivityPage />;
+        break;
+      case "api-docs":
+        page = <ApiDocs />;
         break;
       case "resilience":
         page = <Resilience />;

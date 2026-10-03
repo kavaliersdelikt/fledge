@@ -127,3 +127,9 @@ export function fmtAction(action?: string) {
 export function shortId(id?: string | null) {
   return id ? id.slice(0, 8) : "—";
 }
+
+/** 1234 -> "1.2K", 3_400_000 -> "3.4M". */
+export function fmtCompact(n?: number | null) {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}

@@ -1,6 +1,6 @@
 "use client";
-import { json } from "@/lib/api";
-import { ArrowDown } from "lucide-react";
+import { json, type QuickCommand } from "@/lib/api";
+import { ArrowDown, Plus, X } from "lucide-react";
 import { memo, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, ErrorNotice, Status } from "./shared";
 import type { Line, LiveServer } from "./useLiveServer";
@@ -25,16 +25,41 @@ const LogLine = memo(function LogLine({ line, fresh }: { line: Line; fresh: bool
   );
 });
 
+/** Browser storage can be missing or blocked; the console works the same without it. */
+function readList(key: string): unknown[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+function writeList(key: string, value: unknown[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable */
+  }
+}
+const asCommands = (list: unknown[]): QuickCommand[] =>
+  list.filter((q): q is QuickCommand => !!q && typeof (q as QuickCommand).label === "string" && typeof (q as QuickCommand).command === "string").slice(0, 20);
+
 export default function LiveConsole({
   id,
   live,
   minecraft,
   reachable,
+  quickCommands = [],
+  canManage = false,
 }: {
   id: string;
   live: LiveServer;
   minecraft: boolean;
   reachable: boolean;
+  /** Buttons from the server's template. */
+  quickCommands?: QuickCommand[];
+  /** Whether this person may add and remove their own saved commands. */
+  canManage?: boolean;
 }) {
   const { connection, lines, echo } = live;
   const [command, setCommand] = useState(""),
@@ -43,7 +68,12 @@ export default function LiveConsole({
     [pending, setPending] = useState(false),
     [following, setFollowing] = useState(true),
     [history, setHistory] = useState<string[]>([]),
-    [cursor, setCursor] = useState(-1);
+    [cursor, setCursor] = useState(-1),
+    [saved, setSaved] = useState<QuickCommand[]>([]),
+    [adding, setAdding] = useState(false),
+    [draft, setDraft] = useState({ label: "", command: "" });
+  const historyKey = `fledge:console-history:${id}`,
+    savedKey = `fledge:console-saved:${id}`;
   const box = useRef<HTMLPreElement>(null);
   // Lines that existed when the console opened don't animate in again.
   const seen = useRef(lines.length ? lines[lines.length - 1].id : 0);
@@ -52,10 +82,17 @@ export default function LiveConsole({
   useEffect(() => {
     if (following && box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [lines, following]);
+  useEffect(() => {
+    setHistory(readList(historyKey).filter((x): x is string => typeof x === "string").slice(0, 50));
+    setSaved(asCommands(readList(savedKey)));
+  }, [historyKey, savedKey]);
 
-  async function send(e: FormEvent) {
+  function send(e: FormEvent) {
     e.preventDefault();
-    const value = command.trim();
+    void run(command.trim(), true);
+  }
+
+  async function run(value: string, clear: boolean) {
     if (!value) return;
     setPending(true);
     setError("");
@@ -64,9 +101,13 @@ export default function LiveConsole({
       const result = (await json("POST", `/servers/${id}/console`, { command: value })) as { output?: string };
       echo(value);
       setAck(result.output || "");
-      setHistory((h) => [value, ...h.filter((x) => x !== value)].slice(0, 50));
+      setHistory((h) => {
+        const next = [value, ...h.filter((x) => x !== value)].slice(0, 50);
+        writeList(historyKey, next);
+        return next;
+      });
       setCursor(-1);
-      setCommand("");
+      if (clear) setCommand("");
       setFollowing(true);
     } catch (ex) {
       setError((ex as Error).message);
@@ -116,6 +157,66 @@ export default function LiveConsole({
             <strong>{minecraft ? "rcon" : "stdin"}</strong>
             {ack}
           </div>
+        ) : null}
+        {quickCommands.length || saved.length || canManage ? (
+          <div className="console__quick" role="group" aria-label="Quick commands">
+            {quickCommands.map((q, i) => (
+              <button key={`t${i}`} type="button" className="btn btn--secondary btn--sm" title={q.command} disabled={!reachable || !connected || pending} onClick={() => void run(q.command, false)}>
+                {q.label}
+              </button>
+            ))}
+            {saved.map((q, i) => (
+              <span key={`s${i}`} className="console__chip">
+                <button type="button" className="btn btn--secondary btn--sm" title={q.command} disabled={!reachable || !connected || pending} onClick={() => void run(q.command, false)}>
+                  {q.label}
+                </button>
+                {canManage ? (
+                  <button
+                    type="button"
+                    className="console__chip-x"
+                    aria-label={`Remove ${q.label}`}
+                    onClick={() => {
+                      const next = saved.filter((_, j) => j !== i);
+                      setSaved(next);
+                      writeList(savedKey, next);
+                    }}
+                  >
+                    <X />
+                  </button>
+                ) : null}
+              </span>
+            ))}
+            {canManage && !adding ? (
+              <Button size="sm" variant="ghost" onClick={() => setAdding(true)}>
+                <Plus /> Add command
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        {adding ? (
+          <form
+            className="console__add"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const label = draft.label.trim().slice(0, 40),
+                cmd = draft.command.trim().slice(0, 256);
+              if (!label || !cmd) return;
+              const next = [...saved, { label, command: cmd }].slice(0, 20);
+              setSaved(next);
+              writeList(savedKey, next);
+              setDraft({ label: "", command: "" });
+              setAdding(false);
+            }}
+          >
+            <input className="input" aria-label="Button label" placeholder="Label" maxLength={40} required autoFocus value={draft.label} onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))} />
+            <input className="input mono" aria-label="Command" placeholder="Command" maxLength={256} required value={draft.command} onChange={(e) => setDraft((d) => ({ ...d, command: e.target.value.replace(/[\r\n]/g, "") }))} />
+            <Button type="submit" size="sm" variant="primary">
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+          </form>
         ) : null}
         <form className="console__in" onSubmit={send}>
           <span aria-hidden="true">›</span>

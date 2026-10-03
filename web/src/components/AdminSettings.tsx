@@ -1,6 +1,6 @@
 "use client";
 
-import { json } from "@/lib/api";
+import { json, type EmailSettings, type SecuritySettings, type User } from "@/lib/api";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Card, ErrorNotice, Notice, Skeleton, Status, Switch, useLoad } from "./shared";
 import { useToast } from "./toast";
@@ -14,6 +14,8 @@ type Settings = {
     enabled: boolean; graceMinutes: number; maxConcurrent: number; maxBackupAgeHours: number; allowWithoutBackup: boolean; sameLocationOnly: boolean; cooldownMinutes: number;
     protectionEnabled: boolean; protectionIntervalMinutes: number; selfFence: boolean; evictStaleData: boolean; evictedRetentionDays: number; webhookUrlSet: boolean;
   };
+  email: EmailSettings;
+  security: SecuritySettings;
   saved: Record<string, string>;
 };
 
@@ -274,6 +276,207 @@ function FailoverCard({ value, storageOn, reload }: { value: Settings["failover"
   );
 }
 
+const defaultPort = { none: 25, starttls: 587, tls: 465 } as const;
+
+function EmailCard({ value, reload }: { value: Settings["email"]; reload: () => void }) {
+  const toast = useToast();
+  const [v, setV] = useState({ ...value, port: String(value.port), password: "" });
+  const [to, setTo] = useState("");
+  const [testing, setTesting] = useState(false),
+    [testError, setTestError] = useState("");
+  const { busy, error, save } = useSave("email", reload);
+  const { data: me } = useLoad<User>("/auth/me");
+  useEffect(() => setV({ ...value, port: String(value.port), password: "" }), [value]);
+  useEffect(() => {
+    if (me && !to) setTo(me.email);
+  }, [me, to]);
+  const set = (patch: Partial<typeof v>) => setV((p) => ({ ...p, ...patch }));
+  async function test() {
+    setTesting(true);
+    setTestError("");
+    try {
+      await json("POST", "/settings/email/test", { to: to.trim() });
+      toast({ tone: "ok", title: "Test email sent", description: `Check the inbox of ${to.trim()}.` });
+    } catch (e) {
+      setTestError((e as Error).message);
+    } finally {
+      setTesting(false);
+    }
+  }
+  return (
+    <Card
+      title="Email"
+      description="Used for invitations, password resets and email notifications. Without it, invitations show a link you share yourself."
+      actions={<Status value={value.enabled ? "active" : "stopped"} label={value.enabled ? "On" : "Off"} />}
+    >
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(
+            {
+              enabled: v.enabled,
+              host: v.host.trim(),
+              port: Number(v.port),
+              security: v.security,
+              user: v.user.trim(),
+              password: v.password || undefined,
+              from: v.from.trim(),
+            },
+            v.enabled ? "Email settings saved" : "Email turned off",
+          );
+        }}
+      >
+        <Toggle label="Send email from the panel" hint="Turn off to keep your settings but stop all email." checked={v.enabled} onChange={(enabled) => set({ enabled })} />
+        <div className="form-grid">
+          <Line label="SMTP server">
+            <input className="input mono" value={v.host} onChange={(e) => set({ host: e.target.value })} placeholder="smtp.example.com" autoComplete="off" />
+          </Line>
+          <Line label="Port">
+            <input className="input" type="number" min={1} max={65535} value={v.port} onChange={(e) => set({ port: e.target.value })} />
+          </Line>
+        </div>
+        <Line label="Connection security" hint="STARTTLS (port 587) suits most providers; “TLS” (port 465) connects encrypted from the start. Only pick “None” on a trusted network.">
+          <select
+            className="input select"
+            value={v.security}
+            onChange={(e) => {
+              const security = e.target.value as typeof v.security;
+              const known = Object.values(defaultPort).map(String);
+              set({ security, port: known.includes(v.port) ? String(defaultPort[security]) : v.port });
+            }}
+          >
+            <option value="starttls">STARTTLS</option>
+            <option value="tls">TLS (SSL)</option>
+            <option value="none">None</option>
+          </select>
+        </Line>
+        <div className="form-grid">
+          <Line label="Username">
+            <input className="input mono" value={v.user} autoComplete="off" onChange={(e) => set({ user: e.target.value })} />
+          </Line>
+          <Line label="Password" hint={value.passwordSet ? "A password is saved. Leave empty to keep it." : undefined}>
+            <input
+              className="input mono"
+              type="password"
+              value={v.password}
+              autoComplete="new-password"
+              placeholder={value.passwordSet ? "••••••••••••" : ""}
+              onChange={(e) => set({ password: e.target.value })}
+            />
+          </Line>
+        </div>
+        <Line label="From address" hint="Shown as the sender, for example Fledge <panel@example.com>.">
+          <input className="input" value={v.from} onChange={(e) => set({ from: e.target.value })} placeholder="Fledge <panel@example.com>" />
+        </Line>
+        <ErrorNotice message={error} />
+        <div className="form__actions">
+          <Button type="submit" variant="primary" busy={busy}>
+            Save
+          </Button>
+        </div>
+      </form>
+      <hr className="rule" />
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void test();
+        }}
+      >
+        <Line label="Send a test email" hint="Uses the saved settings, so save first.">
+          <span className="input-group input-group--wide">
+            <input className="input" type="email" required value={to} aria-label="Send the test email to" onChange={(e) => setTo(e.target.value)} placeholder="you@example.com" />
+            <Button type="submit" busy={testing} disabled={!value.enabled}>
+              Send test email
+            </Button>
+          </span>
+        </Line>
+        <ErrorNotice message={testError} />
+      </form>
+    </Card>
+  );
+}
+
+type Check = { yourAddress: string; allowed: boolean };
+
+const entries = (t: string) => t.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+
+function SecurityCard({ value, reload }: { value: Settings["security"]; reload: () => void }) {
+  const [text, setText] = useState(value.adminAllowedCidrs.join("\n"));
+  const [days, setDays] = useState(value.auditRetentionDays);
+  const [check, setCheck] = useState<Check | null>(null),
+    [checkError, setCheckError] = useState("");
+  const { busy, error, save } = useSave("security", reload);
+  useEffect(() => {
+    setText(value.adminAllowedCidrs.join("\n"));
+    setDays(value.auditRetentionDays);
+  }, [value]);
+  // Re-check shortly after typing stops, so the hint tracks the list without a request per keystroke.
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(async () => {
+      try {
+        const r = (await json("POST", "/settings/security/check", { adminAllowedCidrs: entries(text) })) as Check;
+        if (live) {
+          setCheck(r);
+          setCheckError("");
+        }
+      } catch (e) {
+        if (live) setCheckError((e as Error).message);
+      }
+    }, 350);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [text]);
+  const open = entries(text).length === 0;
+  return (
+    <Card title="Security" description="Who can reach administrator features, and how long the audit log is kept.">
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save({ adminAllowedCidrs: entries(text), auditRetentionDays: Number.isFinite(days) ? days : 0 }, "Security settings saved");
+        }}
+      >
+        <Line
+          label="Administrator IP allow-list"
+          hint="One address or range per line, such as 203.0.113.7 or 10.0.0.0/8. Leave empty to allow administrators from anywhere. Customers aren’t affected."
+        >
+          <textarea className="input mono" rows={4} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} placeholder={"203.0.113.7\n10.0.0.0/8"} aria-describedby="allowlist-status" />
+        </Line>
+        <p id="allowlist-status" className="allow-status" aria-live="polite">
+          {checkError ? (
+            <span className="status status--bad">
+              <span className="status__dot" aria-hidden="true" />
+              {checkError}
+            </span>
+          ) : check ? (
+            <span className={`status status--${check.allowed ? "ok" : "bad"}`}>
+              <span className="status__dot" aria-hidden="true" />
+              Your address: <code>{check.yourAddress}</code> — {check.allowed ? (open ? "allowed (no list)" : "allowed") : "not allowed"}
+            </span>
+          ) : (
+            <span className="faint small">Checking your address…</span>
+          )}
+        </p>
+        {check && !check.allowed && !checkError ? (
+          <Notice tone="warn">This list would lock you out, so the panel will refuse to save it. Add your own address first.</Notice>
+        ) : null}
+        <Num label="Keep the audit log for (days)" hint="0 keeps everything. Older entries are deleted automatically." value={days} min={0} max={36500} onChange={setDays} />
+        <ErrorNotice message={error} />
+        <div className="form__actions">
+          <Button type="submit" variant="primary" busy={busy}>
+            Save
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 function UpdatesCard({ agent, panel, reload }: { agent: Settings["agentUpdates"]; panel: Settings["updates"]; reload: () => void }) {
   const [a, setA] = useState({ ...agent });
   const [p, setP] = useState({ repository: panel.repository, githubToken: "" });
@@ -347,6 +550,8 @@ export default function AdminSettings() {
       <StorageCard value={data.storage} reload={reload} />
       <NodesCard value={data.nodes} reload={reload} />
       <FailoverCard value={data.failover} storageOn={data.storage.enabled} reload={reload} />
+      <EmailCard value={data.email} reload={reload} />
+      <SecurityCard value={data.security} reload={reload} />
       <UpdatesCard agent={data.agentUpdates} panel={data.updates} reload={reload} />
     </div>
   );
