@@ -9,7 +9,9 @@ import { Button, Card, Confirm, Field, Form, PageHeader, Row, Select, State, Sta
 import { Plus } from "lucide-react";
 import AdminSettings from "./AdminSettings";
 import { AppearanceLink } from "./AppearancePage";
-import { PasskeysCard, PlanCard, SessionsCard } from "./AccountSecurity";
+import { PasskeysCard, SessionsCard } from "./AccountSecurity";
+import { AccountOptionsCard, UsageCard } from "./AccountCards";
+import RookerySettings from "./RookerySettings";
 import NotificationsCard from "./Notifications";
 import Link from "next/link";
 
@@ -102,7 +104,7 @@ export default function SettingsPage({ user }: { user: User }) {
           </Card>
         </Section>
 
-        {!admin && <PlanCard />}
+        {!admin && <UsageCard />}
 
         <Section
           title="Sign-in & devices"
@@ -131,6 +133,18 @@ export default function SettingsPage({ user }: { user: User }) {
         {admin && (
           <Section title="Appearance" description="The panel’s name, logo, colours, sign-in page and announcements.">
             <AppearanceLink />
+          </Section>
+        )}
+
+        {!admin && (
+          <Section title="Your account" description="Your email address, your data and closing your account.">
+            <AccountOptionsCard email={user.email} />
+          </Section>
+        )}
+
+        {admin && (
+          <Section title="Customers, store and email" description="Sign-up, what customers may create, limits, plans and payments, and the words of every email.">
+            <RookerySettings />
           </Section>
         )}
 

@@ -19,7 +19,7 @@ type Settings = {
   saved: Record<string, string>;
 };
 
-function Line({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+export function Line({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <div className="field">
       <span className="field__label">{label}</span>
@@ -29,7 +29,7 @@ function Line({ label, hint, children }: { label: string; hint?: ReactNode; chil
   );
 }
 
-function Toggle({ label, hint, checked, onChange }: { label: string; hint?: ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ label, hint, checked, onChange }: { label: string; hint?: ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="toggle-row">
       <div>
@@ -42,7 +42,7 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: Reac
 }
 
 /** Saves one settings section. */
-function useSave(section: string, reload: () => void) {
+export function useSave(section: string, reload: () => void) {
   const toast = useToast();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -200,7 +200,7 @@ function NodesCard({ value, reload }: { value: Settings["nodes"]; reload: () => 
 }
 
 
-function Num({ label, hint, value, onChange, min, max, disabled }: { label: string; hint?: ReactNode; value: number; onChange: (v: number) => void; min: number; max: number; disabled?: boolean }) {
+export function Num({ label, hint, value, onChange, min, max, disabled }: { label: string; hint?: ReactNode; value: number; onChange: (v: number) => void; min: number; max: number; disabled?: boolean }) {
   return (
     <Line label={label} hint={hint}>
       <input className="input" type="number" min={min} max={max} value={Number.isFinite(value) ? value : ""} disabled={disabled} onChange={(e) => onChange(e.target.value === "" ? NaN : Number(e.target.value))} />
@@ -280,13 +280,13 @@ const defaultPort = { none: 25, starttls: 587, tls: 465 } as const;
 
 function EmailCard({ value, reload }: { value: Settings["email"]; reload: () => void }) {
   const toast = useToast();
-  const [v, setV] = useState({ ...value, port: String(value.port), password: "" });
+  const [v, setV] = useState({ ...value, port: String(value.port), password: "", replyTo: value.replyTo || "", adminBcc: value.adminBcc || "", perMinute: value.perMinute ?? 60, maxAttempts: value.maxAttempts ?? 8, logDays: value.logDays ?? 30 });
   const [to, setTo] = useState("");
   const [testing, setTesting] = useState(false),
     [testError, setTestError] = useState("");
   const { busy, error, save } = useSave("email", reload);
   const { data: me } = useLoad<User>("/auth/me");
-  useEffect(() => setV({ ...value, port: String(value.port), password: "" }), [value]);
+  useEffect(() => setV({ ...value, port: String(value.port), password: "", replyTo: value.replyTo || "", adminBcc: value.adminBcc || "", perMinute: value.perMinute ?? 60, maxAttempts: value.maxAttempts ?? 8, logDays: value.logDays ?? 30 }), [value]);
   useEffect(() => {
     if (me && !to) setTo(me.email);
   }, [me, to]);
@@ -322,6 +322,11 @@ function EmailCard({ value, reload }: { value: Settings["email"]; reload: () => 
               user: v.user.trim(),
               password: v.password || undefined,
               from: v.from.trim(),
+              replyTo: v.replyTo.trim(),
+              adminBcc: v.adminBcc.trim(),
+              perMinute: v.perMinute,
+              maxAttempts: v.maxAttempts,
+              logDays: v.logDays,
             },
             v.enabled ? "Email settings saved" : "Email turned off",
           );
@@ -369,6 +374,19 @@ function EmailCard({ value, reload }: { value: Settings["email"]; reload: () => 
         <Line label="From address" hint="Shown as the sender, for example Fledge <panel@example.com>.">
           <input className="input" value={v.from} onChange={(e) => set({ from: e.target.value })} placeholder="Fledge <panel@example.com>" />
         </Line>
+        <div className="form-grid">
+          <Line label="Reply-To address" hint="Where replies go, for example your support desk. Optional.">
+            <input className="input" value={v.replyTo} onChange={(e) => set({ replyTo: e.target.value })} placeholder="support@example.com" />
+          </Line>
+          <Line label="Copy of receipts to" hint="Also receives payment receipts and billing alerts for administrators. Optional.">
+            <input className="input" value={v.adminBcc} onChange={(e) => set({ adminBcc: e.target.value })} placeholder="billing@example.com" />
+          </Line>
+        </div>
+        <div className="form-grid">
+          <Num label="Messages per minute" hint="Keeps you under your provider’s sending limit." value={v.perMinute} min={1} max={1000} onChange={(perMinute) => set({ perMinute })} />
+          <Num label="Attempts per message" hint="A message that fails is retried with growing pauses, then given up on." value={v.maxAttempts} min={1} max={20} onChange={(maxAttempts) => set({ maxAttempts })} />
+          <Num label="Keep the delivery log (days)" value={v.logDays} min={1} max={365} onChange={(logDays) => set({ logDays })} />
+        </div>
         <ErrorNotice message={error} />
         <div className="form__actions">
           <Button type="submit" variant="primary" busy={busy}>
