@@ -1,9 +1,9 @@
 "use client";
-import { items, json, type Node, type Server, type Template } from "@/lib/api";
+import { ApiError, items, json, type Node, type Server, type Template } from "@/lib/api";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import DataTable, { type DataColumn } from "./DataTable";
 import { Drawer } from "./feedback";
 import { CpuCell, MemoryCell, liveUsage } from "./ServerUsage";
@@ -177,36 +177,47 @@ function CreateServer({
   const [resources, setResources] = useState({ memoryGb: 2, cores: 1, diskGb: 10 });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [created, setCreated] = useState<Row | null>(null);
+    [created, setCreated] = useState<Row | null>(null),
+    [overLimit, setOverLimit] = useState("");
+  const payload = useRef<Record<string, unknown> | null>(null);
   const loading = templates.loading || customers.loading || nodes.loading;
   const loadError = [templates.error, customers.error, nodes.error].filter(Boolean).join(" · ");
   const usable = items(nodes.data).filter((n) => n.status === "connected" && !n.draining);
   const customerList = items(customers.data).filter((c) => !c.disabled);
 
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const v = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, string>;
+  async function send(force: boolean) {
+    if (!payload.current) return;
     setBusy(true);
     setError("");
+    setOverLimit("");
     try {
-      const result = (await json("POST", "/servers", {
-        name: v.name,
-        ownerId: v.ownerId,
-        templateId: v.templateId,
-        location: v.location || undefined,
-        nodeId: v.nodeId || undefined,
-        memoryMb: Math.round(Number(v.memoryGb) * 1024),
-        cpuPercent: Math.round(Number(v.cores) * 100),
-        diskMb: Math.round(Number(v.diskGb) * 1024),
-        port: v.port ? Number(v.port) : undefined,
-      })) as Row;
+      const result = (await json("POST", "/servers", force ? { ...payload.current, force: true } : payload.current)) as Row;
       setCreated(result);
       onCreated();
     } catch (ex) {
-      setError((ex as Error).message);
+      // A customer's plan limit can be exceeded on purpose by an administrator.
+      if (ex instanceof ApiError && ex.status === 409 && ex.message.includes("limit of")) setOverLimit(ex.message);
+      else setError((ex as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, string>;
+    payload.current = {
+      name: v.name,
+      ownerId: v.ownerId,
+      templateId: v.templateId,
+      location: v.location || undefined,
+      nodeId: v.nodeId || undefined,
+      memoryMb: Math.round(Number(v.memoryGb) * 1024),
+      cpuPercent: Math.round(Number(v.cores) * 100),
+      diskMb: Math.round(Number(v.diskGb) * 1024),
+      port: v.port ? Number(v.port) : undefined,
+    };
+    await send(false);
   }
 
   const createdId = created?.id;
@@ -218,6 +229,7 @@ function CreateServer({
         if (!next) {
           setCreated(null);
           setError("");
+          setOverLimit("");
         }
       }}
       title="New server"
@@ -320,6 +332,19 @@ function CreateServer({
             </div>
           </div>
           <ErrorNotice message={error} />
+          {overLimit ? (
+            <Notice
+              tone="warn"
+              title="This is over the customer’s limit"
+              action={
+                <Button size="sm" busy={busy} onClick={() => void send(true)}>
+                  Create anyway
+                </Button>
+              }
+            >
+              {overLimit}
+            </Notice>
+          ) : null}
           <div className="form__actions">
             <Button type="submit" variant="primary" busy={busy}>
               Create server

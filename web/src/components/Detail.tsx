@@ -1,18 +1,27 @@
 "use client";
+import Addons, { addonsLabel } from "@/components/Addons";
 import BackupManager from "@/components/BackupManager";
 import LiveConsole from "@/components/LiveConsole";
 import ServerFiles from "@/components/ServerFiles";
+import Automation from "@/components/Automation";
+import CloneDialog from "@/components/CloneDialog";
+import { ConnectLine, NetworkCard } from "@/components/NetworkCard";
+import { StartupCard, StartupVariables } from "@/components/StartupPanel";
+import UsageHistory from "@/components/UsageHistory";
 import {
   items,
   json,
   request,
+  type AddonOverview,
   type Job,
   type Server,
   type ServerPermission,
-  type Template,
+  type ServerPorts,
+  type ServerStartup,
+  type TemplateFull,
 } from "@/lib/api";
 import { fmtAgo, fmtBytes, fmtCpu, fmtMb, fmtTime } from "@/lib/format";
-import { ArrowLeft, CircleStop, MoreHorizontal, Play, Plus, RotateCw, Square } from "lucide-react";
+import { ArrowLeft, CircleStop, Copy, MoreHorizontal, Play, Plus, RotateCw, Square } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -52,8 +61,9 @@ import {
 const tabs: Array<{ key: string; label: string; permission: ServerPermission }> = [
   { key: "console", label: "Console", permission: "console" },
   { key: "files", label: "Files", permission: "files" },
+  { key: "addons", label: "Add-ons", permission: "files" },
   { key: "backups", label: "Backups", permission: "backups" },
-  { key: "schedules", label: "Schedules", permission: "manage" },
+  { key: "schedules", label: "Automation", permission: "manage" },
   { key: "access", label: "Access", permission: "manage" },
   { key: "jobs", label: "Jobs", permission: "view" },
   { key: "settings", label: "Settings", permission: "manage" },
@@ -98,7 +108,17 @@ export default function ServerDetail({
   const permissions = new Set<ServerPermission>(s?.effectivePermissions || []);
   const canManage = admin || s?.ownerId === actorId || permissions.has("manage");
   const can = (p: ServerPermission) => p === "view" || canManage || permissions.has(p);
-  const visibleTabs = tabs.filter(({ permission }) => can(permission));
+  // Mods/Plugins tab: only for people with file access, and only on servers that support add-ons.
+  const addons = useLoad<AddonOverview>(s && can("files") ? `/servers/${id}/addons` : null);
+  const addonData = addons.data?.capability.supported ? addons.data : null;
+  const ports = useLoad<ServerPorts>(s ? `/servers/${id}/ports` : null);
+  const [cloning, setCloning] = useState(false);
+  // Quick commands come with the template.
+  const templates = useLoad<TemplateFull[]>(s && can("console") ? "/templates" : null);
+  const quickCommands = items(templates.data).find((t) => t.id === s?.templateId)?.quickCommands || [];
+  const visibleTabs = tabs
+    .filter(({ key, permission }) => can(permission) && (key !== "addons" || !!addonData))
+    .map((t) => (t.key === "addons" ? { ...t, label: addonsLabel(addonData?.capability.kind) } : t));
   const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : visibleTabs[0]?.key;
   const reachable = !!s && s.status !== "unreachable";
   const live = useLiveServer(id, reachable && can("console"));
@@ -186,7 +206,7 @@ export default function ServerDetail({
               {s.location ? <span className="faint"> {s.location}</span> : null}
             </span>
             <span className="sep">·</span>
-            <span className="num">Port {s.port}</span>
+            <ConnectLine ports={ports.data} fallbackPort={s.port} />
           </>
         }
         actions={
@@ -212,6 +232,11 @@ export default function ServerDetail({
                   <MoreHorizontal />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="menu">
+                  {admin ? (
+                    <DropdownMenuItem onClick={() => setCloning(true)}>
+                      <Copy /> Clone…
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem className="is-danger" onClick={() => action("kill")}>
                     <CircleStop /> Force stop
                   </DropdownMenuItem>
@@ -234,6 +259,7 @@ export default function ServerDetail({
       )}
 
       <Vitals server={s} samples={live.samples} />
+      <UsageHistory server={s} samples={live.samples} />
 
       {activeTab ? (
         <Tabs
@@ -250,23 +276,26 @@ export default function ServerDetail({
           </TabsList>
           <TabsContent value={activeTab} key={activeTab}>
             {activeTab === "console" ? (
-              <LiveConsole id={id} live={live} minecraft={!!s.supportsRcon} reachable={reachable} />
+              <LiveConsole id={id} live={live} minecraft={!!s.supportsRcon} reachable={reachable} quickCommands={quickCommands} canManage={canManage} />
             ) : activeTab === "files" ? (
               <ServerFiles id={id} />
+            ) : activeTab === "addons" && addonData ? (
+              <Addons id={id} admin={admin} canManage={canManage} initial={addonData} />
             ) : activeTab === "backups" ? (
               <BackupManager id={id} canManage={canManage} canRestore={canManage} />
             ) : activeTab === "schedules" ? (
-              <Schedules id={id} minecraft={!!s.supportsRcon} />
+              <Automation id={id} />
             ) : activeTab === "access" ? (
               <Access id={id} />
             ) : activeTab === "jobs" ? (
               <Jobs id={id} />
             ) : (
-              <ServerSettings id={id} server={s} admin={admin} reload={reload} action={action} />
+              <ServerSettings id={id} server={s} admin={admin} reload={reload} action={action} ports={ports.data} reloadPorts={ports.reload} />
             )}
           </TabsContent>
         </Tabs>
       ) : null}
+      {admin ? <CloneDialog server={s} open={cloning} onClose={() => setCloning(false)} /> : null}
     </>
   );
 }
@@ -397,131 +426,6 @@ function Jobs({ id }: { id: string }) {
   );
 }
 
-const units = { minutes: 1, hours: 60, days: 1440 } as const;
-function every(minutes?: number) {
-  if (!minutes) return "—";
-  if (minutes % 1440 === 0) return `${minutes / 1440} ${minutes === 1440 ? "day" : "days"}`;
-  if (minutes % 60 === 0) return `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`;
-  return `${minutes} min`;
-}
-const scheduleLabel: Record<string, string> = { backup: "Back up", command: "Run command" };
-
-function Schedules({ id, minecraft }: { id: string; minecraft: boolean }) {
-  const confirm = useConfirm();
-  const toast = useToast();
-  const { data, error, loading, reload } = useLoad<Row[]>(`/servers/${id}/schedules`);
-  const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState(minecraft ? "command" : "backup");
-  const columns: DataColumn<Row>[] = [
-    {
-      id: "kind",
-      header: "Action",
-      value: (s) => s.kind || "",
-      render: (s) => (
-        <div className="cell-main">
-          <strong>{scheduleLabel[s.kind] || s.kind}</strong>
-          {s.command ? <small className="mono">{s.command}</small> : null}
-        </div>
-      ),
-    },
-    { id: "interval", header: "Every", value: (s) => s.interval_minutes || 0, render: (s) => <span className="num">{every(s.interval_minutes)}</span> },
-    {
-      id: "next",
-      header: "Next run",
-      value: (s) => s.next_run_at || "",
-      render: (s) => (
-        <time className="muted" title={fmtTime(s.next_run_at)}>
-          {fmtAgo(s.next_run_at)}
-        </time>
-      ),
-    },
-    {
-      id: "actions",
-      header: "",
-      align: "end",
-      sortable: false,
-      value: () => "",
-      render: (s) => (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="row-hover"
-          onClick={async () => {
-            if (!(await confirm("It stops running immediately.", { title: `Delete “${scheduleLabel[s.kind] || s.kind}” schedule?`, confirmLabel: "Delete" }))) return;
-            try {
-              await request(`/servers/${id}/schedules/${s.id}`, { method: "DELETE" });
-              toast({ tone: "ok", title: "Schedule deleted" });
-              reload();
-            } catch (e) {
-              toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
-            }
-          }}
-        >
-          Delete
-        </Button>
-      ),
-    },
-  ];
-  return (
-    <>
-      <Toolbar>
-        <span />
-        <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
-          <Plus /> New schedule
-        </Button>
-      </Toolbar>
-      <Card flush>
-        <State loading={loading} error={error}>
-          <DataTable data={items(data)} rowKey={(s) => String(s.id)} columns={columns} empty="No schedules yet." />
-        </State>
-      </Card>
-      <Modal open={open} onOpenChange={setOpen} title="New schedule">
-        <Form
-          submit="Add schedule"
-          success="Schedule added"
-          onSubmit={async (v) => {
-            const minutes = Number(v.every) * units[v.unit as keyof typeof units];
-            if (!Number.isFinite(minutes) || minutes < 5) throw new Error("Schedules can run at most every 5 minutes.");
-            if (minutes > 10080) throw new Error("The longest interval is 7 days.");
-            await json("POST", `/servers/${id}/schedules`, {
-              kind: v.kind,
-              intervalMinutes: Math.round(minutes),
-              ...(v.kind === "command" ? { command: v.command } : {}),
-            });
-            setOpen(false);
-            reload();
-          }}
-        >
-          <label className="field">
-            <span className="field__label">Action</span>
-            <select className="input select" name="kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="backup">{scheduleLabel.backup}</option>
-              {minecraft && <option value="command">{scheduleLabel.command}</option>}
-            </select>
-          </label>
-          {kind === "command" && (
-            <label className="field">
-              <span className="field__label">Command</span>
-              <input className="input mono" name="command" required maxLength={1024} placeholder="say Restarting in 5 minutes" />
-            </label>
-          )}
-          <div className="field">
-            <span className="field__label">Every</span>
-            <div className="input-group">
-              <input className="input" name="every" type="number" min={1} step={1} defaultValue={6} required aria-label="Interval" />
-              <select className="input select" name="unit" defaultValue="hours" aria-label="Unit">
-                <option value="minutes">minutes</option>
-                <option value="hours">hours</option>
-                <option value="days">days</option>
-              </select>
-            </div>
-          </div>
-        </Form>
-      </Modal>
-    </>
-  );
-}
-
 const permissionLabels: Record<ServerPermission, string> = {
   view: "View",
   console: "Console",
@@ -621,57 +525,37 @@ function ServerSettings({
   admin,
   reload,
   action,
+  ports,
+  reloadPorts,
 }: {
   id: string;
   server: Server;
   admin: boolean;
   reload: () => void;
   action: (kind: string, extra?: Record<string, unknown>) => Promise<void>;
+  ports: ServerPorts | null;
+  reloadPorts: () => void;
 }) {
-  const { data: templates, error: templateError, loading } = useLoad<(Template & { env?: Record<string, string> })[]>("/templates");
-  const template = items(templates).find((t) => t.id === server.templateId);
-  const editable = template?.editableVariables || [];
+  const startup = useLoad<ServerStartup>(`/servers/${id}/startup`);
   return (
     <>
       <Card title="Startup variables" description="Saving recreates the container with its files, so the server restarts.">
-        <State loading={loading} error={templateError}>
-          {editable.length ? (
-            <Form
-              submit="Save"
-              success="Saved — the server is being recreated"
-              onSubmit={async (v) => {
-                const variables = Object.fromEntries(
-                  editable
-                    .filter((k) =>
-                      v[k] !== undefined &&
-                      (server.variables?.[k] === undefined ? v[k] !== "" : v[k] !== server.variables[k]),
-                    )
-                    .map((k) => [k, v[k]]),
-                );
-                if (!Object.keys(variables).length) throw new Error("Nothing changed.");
-                await json("PATCH", `/servers/${id}/settings`, { variables });
+        <State loading={startup.loading} error={startup.error}>
+          {startup.data ? (
+            <StartupVariables
+              key={startup.data.env.map((e) => `${e.key}=${e.value}`).join("\n")}
+              id={id}
+              startup={startup.data}
+              onSaved={() => {
+                void startup.reload();
                 reload();
               }}
-            >
-              <div className="form-grid">
-                {editable.map((key) => (
-                  <label className="field" key={key}>
-                    <span className="field__label mono">{key}</span>
-                    <input
-                      className="input"
-                      name={key}
-                      defaultValue={server.variables?.[key] || ""}
-                      placeholder={template?.env?.[key] || "Template default"}
-                    />
-                  </label>
-                ))}
-              </div>
-            </Form>
-          ) : (
-            <p className="muted">This template has no variables you can change.</p>
-          )}
+            />
+          ) : null}
         </State>
       </Card>
+      {ports ? <NetworkCard id={id} ports={ports} canManage admin={admin} reload={reloadPorts} onRestart={() => void action("restart")} /> : null}
+      {startup.data ? <StartupCard startup={startup.data} admin={admin} /> : null}
       {admin && (
         <>
           <Card title="Resources">

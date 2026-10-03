@@ -1,13 +1,15 @@
 "use client";
-import { items, json } from "@/lib/api";
-import { fmtDay, fmtTime } from "@/lib/format";
-import { KeyRound, MoreHorizontal, Plus, UserCheck, UserX } from "lucide-react";
+import { items, json, type Quota, type QuotaUsage } from "@/lib/api";
+import { fmtCpu, fmtDay, fmtMb, fmtTime } from "@/lib/format";
+import { formToQuota, hasQuota, quotaShare, quotaToForm, type QuotaForm } from "@/lib/quota";
+import { Gauge, KeyRound, LogOut, MoreHorizontal, Plus, Send, UserCheck, UserX } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import DataTable, { type DataColumn } from "./DataTable";
@@ -17,28 +19,182 @@ import {
   Button,
   Card,
   Empty,
+  ErrorNotice,
   Field,
   Form,
+  Meter,
+  Notice,
   PageHeader,
   Pager,
   Row,
   SearchInput,
   State,
+  Switch,
   Toolbar,
   btn,
   useLoad,
 } from "./shared";
+
+/** A throwaway password nobody ever sees: the invitation link is how the customer gets in. */
+function randomPassword(length = 28): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789-_!#%+=";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  // Rejection sampling avoids modulo bias.
+  const limit = 256 - (256 % alphabet.length);
+  let out = "";
+  for (const b of bytes) if (b < limit) out += alphabet[b % alphabet.length];
+  return out.length >= 24 ? out : randomPassword(length + 8);
+}
+
+type Line = { key: string; label: string; used: number; limit?: number | null; fmt: (n: number) => string };
+
+function usageLines(quota: Quota | undefined, usage: Partial<QuotaUsage> | undefined): Line[] {
+  const u = usage || {};
+  const q = quota || {};
+  const n = (v: number) => String(v);
+  const lines: Line[] = [
+    { key: "servers", label: "Servers", used: u.servers ?? 0, limit: q.maxServers, fmt: n },
+    { key: "memory", label: "Memory", used: u.memoryMb ?? 0, limit: q.maxMemoryMb, fmt: fmtMb },
+    { key: "cpu", label: "CPU", used: u.cpuPercent ?? 0, limit: q.maxCpuPercent, fmt: fmtCpu },
+    { key: "disk", label: "Disk", used: u.diskMb ?? 0, limit: q.maxDiskMb, fmt: fmtMb },
+  ];
+  if (u.backups !== undefined || q.maxBackups != null) lines.push({ key: "backups", label: "Backups", used: u.backups ?? 0, limit: q.maxBackups, fmt: n });
+  if (u.extraPorts !== undefined || q.maxExtraPorts != null) lines.push({ key: "ports", label: "Extra ports", used: u.extraPorts ?? 0, limit: q.maxExtraPorts, fmt: n });
+  return lines;
+}
+
+function UsageBar({ line, compact = false }: { line: Line; compact?: boolean }) {
+  const limited = line.limit !== undefined && line.limit !== null;
+  const share = quotaShare(line.used, line.limit);
+  return (
+    <div className={`usage${compact ? "" : " usage--wide"}`}>
+      <span className="usage__text">
+        <span>{limited ? `${line.fmt(line.used)} / ${line.fmt(line.limit as number)}` : line.fmt(line.used)}</span>
+        {!limited && !compact ? <small>no limit</small> : null}
+      </span>
+      {limited ? (
+        <Meter
+          label={`${line.label} in use`}
+          value={Math.min(line.used, (line.limit as number) || line.used || 1)}
+          max={(line.limit as number) || 1}
+        />
+      ) : null}
+      {share !== null && share >= 100 && !compact ? <small className="quota-row__full">Limit reached</small> : null}
+    </div>
+  );
+}
+
+function LimitField({
+  label,
+  unit,
+  value,
+  onChange,
+  step,
+  hint,
+}: {
+  label: string;
+  unit?: string;
+  value: string;
+  onChange: (v: string) => void;
+  step?: string;
+  hint?: string;
+}) {
+  return (
+    <label className="field">
+      <span className="field__label">{label}</span>
+      <span className={unit ? "input-unit" : undefined}>
+        <input
+          className="input"
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step={step || "1"}
+          value={value}
+          placeholder="No limit"
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {unit ? <span aria-hidden="true">{unit}</span> : null}
+      </span>
+      {hint ? <span className="field__hint">{hint}</span> : null}
+    </label>
+  );
+}
+
+function QuotaEditor({ customer, onClose, onSaved }: { customer: Row; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [f, setF] = useState<QuotaForm>(() => quotaToForm(customer.quota));
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const set = (patch: Partial<QuotaForm>) => setF((p) => ({ ...p, ...patch }));
+  async function save() {
+    setError("");
+    let quota: Quota | null;
+    try {
+      quota = formToQuota(f);
+    } catch (e) {
+      return setError((e as Error).message);
+    }
+    setBusy(true);
+    try {
+      await json("PATCH", `/customers/${customer.id}`, { quota });
+      toast({ tone: "ok", title: quota ? "Limits saved" : "Limits removed", description: customer.email });
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Limits"
+      description={`What ${customer.email} can own. Leave a field empty for no limit. Existing servers keep running if they’re already over a new limit.`}
+    >
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <div className="form-grid">
+          <LimitField label="Servers" value={f.servers} onChange={(servers) => set({ servers })} />
+          <LimitField label="Backups" value={f.backups} onChange={(backups) => set({ backups })} />
+          <LimitField label="Memory" unit="GB" step="0.25" value={f.memoryGb} onChange={(memoryGb) => set({ memoryGb })} hint="Total across all servers." />
+          <LimitField label="CPU" unit="cores" step="0.25" value={f.cpuCores} onChange={(cpuCores) => set({ cpuCores })} hint="Total across all servers." />
+          <LimitField label="Disk" unit="GB" step="0.5" value={f.diskGb} onChange={(diskGb) => set({ diskGb })} hint="Total across all servers." />
+          <LimitField label="Extra ports" value={f.extraPorts} onChange={(extraPorts) => set({ extraPorts })} />
+        </div>
+        <ErrorNotice message={error} />
+        <div className="modal__actions">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" busy={busy}>
+            Save limits
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 export default function Customers() {
   const confirm = useConfirm();
   const [offset, setOffset] = useState(0),
     [creating, setCreating] = useState(false),
     [password, setPassword] = useState<{ email: string; value: string } | null>(null),
+    [link, setLink] = useState<{ email: string; value: string } | null>(null),
+    [editing, setEditing] = useState<Row | null>(null),
+    [viewing, setViewing] = useState<string | null>(null),
     [query, setQuery] = useState(""),
     toast = useToast();
   const { data, error, loading, reload } = useLoad<Row[]>(`/customers?limit=50&offset=${offset}`);
   const all = items(data);
   const list = all.filter((c) => c.email.toLowerCase().includes(query.toLowerCase()));
+  const viewed = all.find((c) => c.id === viewing) || null;
+  const detail = useLoad<Row>(viewing ? `/customers/${viewing}` : null);
 
   async function act(fn: () => Promise<unknown>, done?: string) {
     try {
@@ -50,6 +206,67 @@ export default function Customers() {
     }
   }
 
+  async function invite(c: Row) {
+    await act(async () => {
+      const r = (await json("POST", `/customers/${c.id}/invite`)) as { sent?: boolean; link?: string };
+      if (r?.sent) toast({ tone: "ok", title: "Invitation sent", description: c.email });
+      else if (r?.link) setLink({ email: c.email, value: r.link });
+      else toast({ tone: "ok", title: "Invitation created" });
+    });
+  }
+  async function signOutEverywhere(c: Row) {
+    if (!(await confirm(`${c.email} is signed out of every browser and has to sign in again.`, { confirmLabel: "Sign out everywhere" }))) return;
+    void act(async () => {
+      const r = (await json("POST", `/customers/${c.id}/sign-out`)) as { revoked?: number };
+      toast({ tone: "ok", title: r?.revoked ? `Signed out ${r.revoked} ${r.revoked === 1 ? "session" : "sessions"}` : "No active sessions", description: c.email });
+    });
+  }
+  async function resetPassword(c: Row) {
+    if (
+      await confirm(`${c.email} gets a new password and is signed out everywhere. You’ll see the password once.`, {
+        confirmLabel: "Reset password",
+      })
+    )
+      void act(async () => {
+        const next = randomPassword(32);
+        await json("PATCH", `/customers/${c.id}`, { password: next });
+        setPassword({ email: c.email, value: next });
+      });
+  }
+  async function toggleDisabled(c: Row) {
+    if (
+      await confirm(
+        c.disabled ? `${c.email} can sign in again.` : `${c.email} can’t sign in until you enable the account again.`,
+        { danger: !c.disabled, confirmLabel: c.disabled ? "Enable" : "Suspend" },
+      )
+    )
+      void act(
+        () => json("PATCH", `/customers/${c.id}`, { disabled: !c.disabled }),
+        c.disabled ? `${c.email} enabled` : `${c.email} suspended`,
+      );
+  }
+
+  const menu = (c: Row) => (
+    <>
+      <DropdownMenuItem onClick={() => setEditing(c)}>
+        <Gauge /> Edit limits
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => void invite(c)}>
+        <Send /> Send invitation
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => void resetPassword(c)}>
+        <KeyRound /> Reset password
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => void signOutEverywhere(c)}>
+        <LogOut /> Sign out everywhere
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem className={c.disabled ? undefined : "is-danger"} onClick={() => void toggleDisabled(c)}>
+        {c.disabled ? <UserCheck /> : <UserX />} {c.disabled ? "Enable account" : "Suspend account"}
+      </DropdownMenuItem>
+    </>
+  );
+
   const columns: DataColumn<Row>[] = [
     {
       id: "email",
@@ -57,7 +274,9 @@ export default function Customers() {
       value: (c) => c.email,
       render: (c) => (
         <span className="ident">
-          <strong style={{ fontWeight: 500 }}>{c.email}</strong>
+          <button type="button" className="text-button cust-name" onClick={() => setViewing(c.id)} aria-label={`Details for ${c.email}`}>
+            {c.email}
+          </button>
           {c.disabled ? <span className="tag">Suspended</span> : null}
         </span>
       ),
@@ -67,7 +286,17 @@ export default function Customers() {
       header: "Servers",
       align: "end",
       value: (c) => c.serverCount ?? 0,
-      render: (c) => <span className="num">{c.serverCount ?? 0}</span>,
+      render: (c) => {
+        const line = usageLines(c.quota, { servers: c.usage?.servers ?? c.serverCount ?? 0 })[0];
+        return <UsageBar line={line} compact />;
+      },
+    },
+    {
+      id: "memory",
+      header: "Memory",
+      optional: true,
+      value: (c) => c.usage?.memoryMb ?? 0,
+      render: (c) => <UsageBar line={usageLines(c.quota, c.usage)[1]} compact />,
     },
     {
       id: "created",
@@ -92,42 +321,7 @@ export default function Customers() {
             <MoreHorizontal />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="menu">
-            <DropdownMenuItem
-              onClick={async () => {
-                if (
-                  await confirm(
-                    `${c.email} gets a new password and is signed out everywhere. You’ll see the password once.`,
-                    { confirmLabel: "Reset password" },
-                  )
-                )
-                  void act(async () => {
-                    const next = crypto.randomUUID() + crypto.randomUUID();
-                    await json("PATCH", `/customers/${c.id}`, { password: next });
-                    setPassword({ email: c.email, value: next });
-                  });
-              }}
-            >
-              <KeyRound /> Reset password
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className={c.disabled ? undefined : "is-danger"}
-              onClick={async () => {
-                if (
-                  await confirm(
-                    c.disabled
-                      ? `${c.email} can sign in again.`
-                      : `${c.email} can’t sign in until you enable the account again.`,
-                    { danger: !c.disabled, confirmLabel: c.disabled ? "Enable" : "Suspend" },
-                  )
-                )
-                  void act(
-                    () => json("PATCH", `/customers/${c.id}`, { disabled: !c.disabled }),
-                    c.disabled ? `${c.email} enabled` : `${c.email} suspended`,
-                  );
-              }}
-            >
-              {c.disabled ? <UserCheck /> : <UserX />} {c.disabled ? "Enable account" : "Suspend account"}
-            </DropdownMenuItem>
+            {menu(c)}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -172,32 +366,82 @@ export default function Customers() {
         </State>
       </Card>
 
-      <Drawer
+      <CreateCustomer
         open={creating}
         onOpenChange={setCreating}
-        title="New customer"
-        description="Leave the password empty to generate one. Nothing is emailed — you share the details yourself."
+        onCreated={(r) => {
+          if (r.password) setPassword({ email: r.email, value: r.password });
+          if (r.link) setLink({ email: r.email, value: r.link });
+          reload();
+        }}
+      />
+
+      <Drawer
+        open={!!viewing}
+        onOpenChange={(o) => !o && setViewing(null)}
+        title={viewed?.email || detail.data?.email || "Customer"}
+        description={viewed ? `Joined ${fmtDay(viewed.createdAt)}${viewed.disabled ? " · Suspended" : ""}` : undefined}
       >
-        <Form
-          submit="Create customer"
-          success={false}
-          onSubmit={async (v) => {
-            const r = (await json("POST", "/customers", {
-              email: v.email,
-              password: v.password || undefined,
-            })) as Row;
-            setCreating(false);
-            if (r.temporaryPassword) setPassword({ email: r.email, value: r.temporaryPassword });
-            reload();
-          }}
-        >
-          <Field label="Email" name="email" type="email" required autoComplete="off" />
-          <Field label="Password" name="password" type="password" autoComplete="new-password" hint="Optional. At least 12 characters." />
-        </Form>
-        <p className="faint small">
-          After creating the account, assign it a server from <Link href="/servers?new=1" className="text-button">New server</Link>.
-        </p>
+        {viewed && (
+          <div className="stack">
+            <div className="cust-detail">
+              <div className="cust-detail__head">
+                <h3>Usage</h3>
+                {hasQuota(viewed.quota) ? <span className="tag tag--accent">Limits set</span> : <span className="tag">No limits</span>}
+              </div>
+              <State loading={detail.loading && !viewed.usage} error={detail.error} rows={3}>
+                <ul className="quota-list">
+                  {usageLines((detail.data || viewed).quota, { ...viewed.usage, ...(detail.data?.usage || {}) }).map((line) => (
+                    <li className="quota-row" key={line.key}>
+                      <div className="quota-row__text">
+                        <span>{line.label}</span>
+                      </div>
+                      <UsageBar line={line} />
+                    </li>
+                  ))}
+                </ul>
+              </State>
+            </div>
+            <div className="btn-group">
+              <Button onClick={() => setEditing(viewed)}>
+                <Gauge /> Edit limits
+              </Button>
+              <Button onClick={() => void invite(viewed)}>
+                <Send /> Send invitation
+              </Button>
+              <Button onClick={() => void signOutEverywhere(viewed)}>
+                <LogOut /> Sign out everywhere
+              </Button>
+            </div>
+            <div className="toggle-row">
+              <div>
+                <strong>{viewed.disabled ? "Account suspended" : "Account active"}</strong>
+                <small>{viewed.disabled ? "They can’t sign in." : "Suspend to block sign-in without deleting anything."}</small>
+              </div>
+              <Switch label="Account enabled" checked={!viewed.disabled} onChange={() => void toggleDisabled(viewed)} />
+            </div>
+            <p className="faint small">
+              <Link href="/servers" className="text-button">
+                Open all servers
+              </Link>{" "}
+              to see what this customer runs.
+            </p>
+          </div>
+        )}
       </Drawer>
+
+      {editing && (
+        <QuotaEditor
+          key={editing.id}
+          customer={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+            if (viewing) detail.reload();
+          }}
+        />
+      )}
 
       <Modal
         open={!!password}
@@ -207,6 +451,90 @@ export default function Customers() {
       >
         {password && <Secret label="Password" value={password.value} />}
       </Modal>
+      <Modal
+        open={!!link}
+        onOpenChange={(o) => !o && setLink(null)}
+        title="Invitation link"
+        description={link ? `Email isn’t set up, so nothing was sent. Share this link with ${link.email} yourself. It works once and expires.` : undefined}
+      >
+        {link && <Secret label="Link" value={link.value} />}
+      </Modal>
     </>
+  );
+}
+
+type Created = { email: string; password?: string; link?: string };
+
+function CreateCustomer({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (r: Created) => void;
+}) {
+  const toast = useToast();
+  // Only fetched while the drawer is open; tells us whether invitation emails can go out.
+  const settings = useLoad<{ email?: { enabled: boolean } }>(open ? "/settings" : null);
+  const emailOn = !!settings.data?.email?.enabled;
+  const [invite, setInvite] = useState(false);
+  const asInvite = emailOn && invite;
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setInvite(false);
+      }}
+      title="New customer"
+      description={
+        asInvite
+          ? "They get an email with a link to choose their own password."
+          : "Leave the password empty to generate one. Nothing is emailed — you share the details yourself."
+      }
+    >
+      <Form
+        submit={asInvite ? "Create and send invitation" : "Create customer"}
+        success={false}
+        onSubmit={async (v) => {
+          const email = String(v.email).trim();
+          if (asInvite) {
+            const created = (await json("POST", "/customers", { email, password: randomPassword() })) as Row;
+            onOpenChange(false);
+            setInvite(false);
+            try {
+              const r = (await json("POST", `/customers/${created.id}/invite`)) as { sent?: boolean; link?: string };
+              if (r?.sent) toast({ tone: "ok", title: "Invitation sent", description: email });
+              onCreated({ email, link: r?.sent ? undefined : r?.link });
+            } catch (e) {
+              toast({ tone: "bad", title: "Customer created, but the invitation failed", description: `${(e as Error).message} Use “Send invitation” on their row to try again.` });
+              onCreated({ email });
+            }
+            return;
+          }
+          const r = (await json("POST", "/customers", { email, password: v.password || undefined })) as Row;
+          onOpenChange(false);
+          onCreated({ email: r.email, password: r.temporaryPassword });
+        }}
+      >
+        <Field label="Email" name="email" type="email" required autoComplete="off" />
+        {emailOn && (
+          <label className="check-line">
+            <input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} />
+            Send an invitation email instead of setting a password
+          </label>
+        )}
+        {settings.error && open ? <Notice tone="warn">Couldn’t check whether email is set up: {settings.error}</Notice> : null}
+        {!asInvite && <Field label="Password" name="password" type="password" autoComplete="new-password" hint="Optional. At least 12 characters." />}
+      </Form>
+      <p className="faint small">
+        After creating the account, assign it a server from{" "}
+        <Link href="/servers?new=1" className="text-button">
+          New server
+        </Link>
+        .
+      </p>
+    </Drawer>
   );
 }
