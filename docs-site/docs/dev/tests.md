@@ -17,7 +17,7 @@ export TEST_DATABASE_URL=postgres://user:pass@localhost:5432/postgres
 cd api
 npm ci
 npm run check            # tsc --noEmit
-npm run test:unit        # pure functions: manifests, quotas, cron, CIDR, regex safety, address checks...
+npm run test:unit        # pure functions: manifests, quotas, cron, CIDR, regex safety, address checks... and the theme engine (shared/theme.test.ts)
 npm run test:cors
 npm run test:updates
 npm run test:templates   # Pterodactyl egg conversion
@@ -26,6 +26,7 @@ npm run test:templates-v2
 npm run test:fit         # quotas, extra ports, clone
 npm run test:autopilot   # schedules, crash policy, notifications, metrics
 npm run test:accounts    # sessions, invitations, passkeys, allow-list, audit, OpenAPI
+npm run test:branding    # appearance: CSS and image checks, public document, history, emails, kill switch
 node --import tsx test/smoke.mjs   # the original end-to-end smoke test (needs a running API, see below)
 ```
 
@@ -47,7 +48,7 @@ cd ../tools && npm ci                                     # the pack tool's depe
 cd web
 npm ci
 npm run check
-npx tsx --test src/lib/*.test.ts
+npx tsx --test src/lib/*.test.ts   # includes css-tokens.test.ts, which fails on a fixed font size, radius or colour in the stylesheets
 npm run build
 ```
 
@@ -86,3 +87,15 @@ npm run check           # link, code-block and coverage checks
 
 `.github/workflows/ci.yml` runs all of the above on every push and pull request, plus a Compose job that builds and starts the stack
 and checks the plugin host is healthy, hardened and unpublished.
+
+## Look and feel regression
+
+Changing the stylesheets? `docs-site/screenshots/regress.mjs` records the computed style of every element on every screen of a
+seeded demo and compares two recordings, so a refactor that should not change the look can prove it:
+
+```sh
+node screenshots/regress.mjs record before.json    # build the panel for the demo API first (see screenshots/README.md)
+# ... change the CSS, rebuild ...
+node screenshots/regress.mjs record after.json
+node screenshots/regress.mjs compare before.json after.json
+```

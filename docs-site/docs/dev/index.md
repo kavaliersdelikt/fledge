@@ -15,6 +15,7 @@ plugins/
   bundled/        The two Modrinth plugins and their shared client
   tools/          pack.mjs: build, sign, index and verify plugin packages
   registry/       The default plugin registry index
+shared/           Code used by both the API and the panel: the theme engine (shared/theme.ts) and its tests
 db/schema.sql     The whole database schema, applied idempotently at API start
 compose.yaml      The stack: postgres, api, web, plugins, updater, optional s3
 install.* update.*  Installers and updaters (shell and PowerShell)
@@ -38,6 +39,7 @@ docs-site/        This documentation site
 | `templates.ts`, `quota.ts` | Templates v2 and quotas |
 | `addons.ts`, `plugins/*` | The plugin system and the add-on installer |
 | `settings.ts`, `storage.ts`, `mailer.ts`, `netguard.ts`, `netpolicy.ts` | Settings, object storage, email, outbound-request guard, allow-list |
+| `branding.ts` | Appearance: the document, validation, images, history, custom CSS checks, the public projection (colour maths is in `shared/theme.ts`) |
 | `openapi.ts` | Generates the OpenAPI description from the registered routes |
 
 ## Conventions
