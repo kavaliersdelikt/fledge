@@ -92,7 +92,7 @@ try{
  const bobC=client(stack.base);status(await bobC.call('POST','/api/auth/login',{email:bob.email,password:'bobs-first-password-1'}),401,'the old password is dead');
  ok(await bobC.call('POST','/api/auth/login',{email:bob.email,password:'bobs-second-password-2'}),'the new password signs in');
  for(let i=0;i<5;i++)await fg.call('POST','/api/auth/forgot',{email:bob.email});
- await sleep(1000);check(mails.filter(m=>m.to&&m.to.includes(bob.email)).length<=3,'password reset emails are rate limited per address');
+ await sleep(1000);check(mails.filter(m=>m.to&&m.to.includes(bob.email)&&/Reset your/.test(m.subject)).length<=3,'password reset emails are rate limited per address');
  // An administrator who resets a password still needs the authenticator.
  mails.length=0;
  await fg.call('POST','/api/auth/forgot',{email:adminLogin.email});
