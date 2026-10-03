@@ -37,7 +37,7 @@ jobs:
             (
               cd "$dir"
               npm ci --no-audit --no-fund
-              # Fledge uses four-part versions (0.6.1.1); the CycloneDX tool only accepts semver, so it sees a
+              # Fledge uses four-part versions (0.6.2.1); the CycloneDX tool only accepts semver, so it sees a
               # placeholder and the real version is written back into the document afterwards.
               real="$(node -p "require('./package.json').version")"
               npm pkg set version=0.0.0 >/dev/null
