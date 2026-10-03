@@ -1,6 +1,6 @@
 import type {FastifyInstance} from 'fastify';
 import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
-import {pool,admin,fail,txt,asId,hash,token,passwordHash,audit,WEB_ORIGIN} from './core.js';
+import {pool,admin,fail,txt,asId,hash,token,passwordHash,audit,WEB_ORIGIN,looksLikeEmail} from './core.js';
 import {mailerReady,sendMail} from './mailer.js';
 import {settings} from './settings.js';
 import {ipAllowed} from './cidr.js';
@@ -115,7 +115,7 @@ export function accountRoutes(app:FastifyInstance){
  app.post('/api/settings/email/test',async(req)=>{
   admin(req);
   const to=txt((req.body as any)?.to,254);
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))fail(400,'Enter a valid email address');
+  if(!looksLikeEmail(to))fail(400,'Enter a valid email address');
   await sendMail({to,subject:'Fledge test email',text:'If you can read this, Fledge can send email.'});
   await audit(req.actor!.id,'settings.email.test','settings','email');
   return {ok:true};

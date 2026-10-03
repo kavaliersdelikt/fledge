@@ -1,5 +1,5 @@
 import type {FastifyInstance} from 'fastify';
-import {pool,admin,fail,encrypt,decrypt,audit} from './core.js';
+import {pool,admin,fail,encrypt,decrypt,audit,looksLikeMailbox} from './core.js';
 import {validCidr,ipAllowed} from './cidr.js';
 
 // Panel-managed configuration. Environment variables only seed a section until
@@ -103,7 +103,7 @@ function validate(section:Section,body:any,current:Sections):any{
    const from=str(body.from??'','From address',200);
    const v={enabled,host:str(body.host??'','SMTP host',253),port,security:body.security,user:str(body.user??'','SMTP user',254),password:body.password===undefined||body.password===null?current.email.password:str(body.password,'SMTP password',512),from};
    if(enabled&&(!v.host||!from))fail(400,'A host and a From address are required to turn email on');
-   if(from&&!/^(?:[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+|[^<>]{1,80}<[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+>)$/.test(from))fail(400,'From must look like admin@example.com or Fledge <admin@example.com>');
+   if(from&&!looksLikeMailbox(from))fail(400,'From must look like admin@example.com or Fledge <admin@example.com>');
    if(v.host&&!/^[A-Za-z0-9.:\[\]-]+$/.test(v.host))fail(400,'Enter an SMTP host name or address');
    return v;
   }

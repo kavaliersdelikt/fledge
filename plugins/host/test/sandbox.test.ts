@@ -93,9 +93,9 @@ test('response size and request count are capped', async()=>{
 });
 test('parallel fetches from one plugin call all resolve', async()=>{
  resetRateLimits();
- await withServer((req,res)=>{setTimeout(()=>res.end(req.url),20);},async port=>{
+ await withServer((req,res)=>{setTimeout(()=>res.end(String(req.url).replace(/[^0-9]/g,'')),20);},async port=>{
   const out=await runPlugin(base(`globalThis.fledgePlugin={async run(){var rs=await Promise.all([1,2,3,4].map(function(i){return host.fetch('http://127.0.0.1:${port}/'+i).then(function(r){return r.text();});}));return rs;}};`,{network:['127.0.0.1'],guard:local}));
-  assert.deepEqual(out.result,['/1','/2','/3','/4']);
+  assert.deepEqual(out.result,['1','2','3','4']);
  });
 });
 test('hooks are invoked through hook: names', async()=>{

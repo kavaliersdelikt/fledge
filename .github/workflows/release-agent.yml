@@ -33,7 +33,17 @@ jobs:
           set -eu
           mkdir -p sbom
           for dir in api web plugins/host; do
-            (cd "$dir" && npm ci --no-audit --no-fund && npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --output-file "$GITHUB_WORKSPACE/sbom/sbom-$(basename "$dir").cdx.json" --ignore-npm-errors)
+            out="$GITHUB_WORKSPACE/sbom/sbom-$(basename "$dir").cdx.json"
+            (
+              cd "$dir"
+              npm ci --no-audit --no-fund
+              # Fledge uses four-part versions (0.6.1.1); the CycloneDX tool only accepts semver, so it sees a
+              # placeholder and the real version is written back into the document afterwards.
+              real="$(node -p "require('./package.json').version")"
+              npm pkg set version=0.0.0 >/dev/null
+              npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --output-file "$out" --ignore-npm-errors
+              REAL="$real" OUT="$out" node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync(process.env.OUT,'utf8'));if(j.metadata&&j.metadata.component)j.metadata.component.version=process.env.REAL;fs.writeFileSync(process.env.OUT,JSON.stringify(j))"
+            )
           done
           (cd agent && go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest mod -json -output "$GITHUB_WORKSPACE/sbom/sbom-agent.cdx.json")
       - uses: actions/upload-artifact@v4

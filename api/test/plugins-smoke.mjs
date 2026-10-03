@@ -85,7 +85,7 @@ try{
  check(inst.addons.length===2&&inst.restartRequired,'two files queued');
  // Jobs are leased one at a time per server, so finish the first before the second is offered.
  const first=await nextJob(admin,node);check(first&&first.kind==='file.fetch','a file.fetch job is queued');
- check(first.payload.allowedHosts.includes('cdn.modrinth.com')&&!first.payload.allowedHosts.some(h=>!/modrinth\.com$/.test(h)),'the node may only download from the declared hosts');
+ check(first.payload.allowedHosts.includes('cdn.modrinth.com')&&first.payload.allowedHosts.every(h=>h==='modrinth.com'||h.endsWith('.modrinth.com')),'the node may only download from the declared hosts');
  check(first.payload.sha512.length===128&&first.payload.size>0&&first.payload.path.startsWith('/mods/'),'job carries path, size and SHA-512');
  await finishJob(admin,node,first,true,{ok:true,sizeBytes:first.payload.size});
  const second=await nextJob(admin,node);check(second&&second.kind==='file.fetch','second file follows the first');

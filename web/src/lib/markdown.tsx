@@ -43,8 +43,23 @@ export function safeHref(raw: string): string | null {
 }
 
 /** Removes HTML tags and comments so they never show up as markup noise. */
+function stripComments(text: string) {
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(/<!--[\s\S]*?-->/g, "");
+  } while (text !== previous);
+  return text.replace(/<!--/g, "");
+}
+
 function stripHtml(text: string) {
-  return text.replace(/<!--[\s\S]*?-->/g, "").replace(/<\/?[a-zA-Z][^<>]{0,300}>/g, "");
+  let out = stripComments(text);
+  let previous: string;
+  do {
+    previous = out;
+    out = out.replace(/<\/?[a-zA-Z][^<>]{0,300}>/g, "");
+  } while (out !== previous);
+  return out;
 }
 
 function pushText(out: Inline[], text: string) {
@@ -176,7 +191,7 @@ function startsBlock(line: string) {
 }
 
 export function parseMarkdown(source: string, depth = 0): Block[] {
-  const text = String(source ?? "").slice(0, MAX_SOURCE).replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?-->/g, "");
+  const text = stripComments(String(source ?? "").slice(0, MAX_SOURCE).replace(/\r\n?/g, "\n"));
   const lines = text.split("\n");
   const blocks: Block[] = [];
   let i = 0;

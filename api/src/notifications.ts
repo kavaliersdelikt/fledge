@@ -1,5 +1,5 @@
 import type {FastifyInstance} from 'fastify';
-import {pool,admin,fail,txt,asId,audit,encrypt,decrypt} from './core.js';
+import {pool,admin,fail,txt,asId,audit,encrypt,decrypt,looksLikeEmail} from './core.js';
 import {safeRequest,GuardError} from './netguard.js';
 import {sendMail,mailerReady} from './mailer.js';
 import {settings} from './settings.js';
@@ -136,7 +136,7 @@ export function notificationRoutes(app:FastifyInstance){
   let config:any=existing?.config||{},secret:string|null=existing?.secret||null;
   if(kind==='email'){
    const to=b?.to!==undefined?txt(b.to,254).toLowerCase():config.to;
-   if(!to||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))fail(400,'Enter a valid email address');
+   if(!looksLikeEmail(to))fail(400,'Enter a valid email address');
    if(!isAdmin&&to!==req.actor.email.toLowerCase())fail(403,'You can only send notifications to your own email address');
    if(!(await mailerReady()))fail(409,'Email is not set up. An administrator can turn it on in Settings → Email.');
    config={to};secret=null;

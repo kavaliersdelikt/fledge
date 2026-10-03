@@ -139,7 +139,8 @@ jobs:
           docker compose ps
           docker compose exec -T plugins node -e "fetch('http://127.0.0.1:4020/health').then(r=>r.json()).then(j=>{console.log(j);process.exit(j.ok?0:1)})"
           test "$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$(docker compose ps -q plugins)")" = true
-          if docker compose port plugins 4020 2>/dev/null | grep -q .; then echo 'plugin host must not publish a port' >&2; exit 1; fi
+          published="$(docker inspect --format '{{range $p,$b := .NetworkSettings.Ports}}{{if $b}}{{$p}} {{end}}{{end}}' "$(docker compose ps -q plugins)")"
+          if [ -n "$published" ]; then echo "plugin host must not publish a port (published: $published)" >&2; exit 1; fi
           docker compose exec -T postgres sh -c 'true'
           if docker compose exec -T plugins node -e "require('net').connect(5432,'postgres').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"; then echo 'plugin host can reach the database' >&2; exit 1; fi
       - name: Logs on failure

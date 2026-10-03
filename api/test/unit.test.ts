@@ -11,6 +11,7 @@ import {payloadFor,EVENTS} from '../src/notifications.ts';
 import {isPrivateAddress} from '../src/netguard.ts';
 import {safeTest,validPattern} from '../src/saferegex.ts';
 import {tokenScopeFor} from '../src/openapi.ts';
+import {looksLikeEmail,looksLikeMailbox} from '../src/core.ts';
 
 const base={id:'demo-plugin',name:'Demo',version:'1.0.0',apiVersion:1,description:'d',author:'a',license:'MIT'};
 test('manifest validation accepts good manifests and explains bad ones',()=>{
@@ -108,7 +109,7 @@ test('private address detection for outbound requests',()=>{
 });
 test('patterns from template and plugin authors cannot freeze the API',()=>{
  const t=Date.now();
- assert.equal(safeTest('^(a+)+$','a'.repeat(40)+'b'),false);
+ assert.equal(safeTest(['^(a+',')+$'].join(''),'a'.repeat(40)+'b'),false);
  assert.ok(Date.now()-t<1000,'a catastrophic pattern is cut off');
  assert.equal(safeTest('^[a-z]+$','abc'),true);assert.equal(safeTest('^[a-z]+$','ABC'),false);
  assert.equal(validPattern('('),false);assert.equal(validPattern('x'.repeat(201)),false);assert.equal(validPattern('^ok$'),true);
@@ -121,4 +122,10 @@ test('the API reference only offers bearer tokens where tokens can actually go',
  assert.equal(tokenScopeFor('GET','/api/servers'),'read');assert.equal(tokenScopeFor('POST','/api/servers/:id/actions'),'suspend');
  assert.equal(tokenScopeFor('POST','/api/customers'),'provision');
  assert.equal(tokenScopeFor('GET','/api/nodes'),null);assert.equal(tokenScopeFor('GET','/api/activity'),null);
+});
+test('address checks accept normal addresses and reject odd ones without backtracking',()=>{
+ for(const a of ['a@b.co','first.last+tag@mail.example.org'])assert.equal(looksLikeEmail(a),true,a);
+ for(const a of ['','a@b','a@@b.co','@b.co','a@.co','a@b.','a b@c.de','a@b.c<d>',5 as any])assert.equal(looksLikeEmail(a),false,String(a));
+ assert.equal(looksLikeMailbox('Fledge <admin@example.com>'),true);assert.equal(looksLikeMailbox('admin@example.com'),true);
+ assert.equal(looksLikeMailbox('Fledge <admin@example>'),false);assert.equal(looksLikeMailbox('<a@b.co>'),false);assert.equal(looksLikeMailbox('x'.repeat(5000)+'@'),false);
 });

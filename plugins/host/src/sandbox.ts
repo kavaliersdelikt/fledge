@@ -121,10 +121,10 @@ export async function runPlugin(input:RunInput):Promise<RunOutput>{
  try{
   evalChecked(prelude,'prelude.js').dispose();
   evalChecked(input.code,'plugin.js').dispose();
-  const isHook=input.method.startsWith('hook:');
-  const target=isHook?`(globalThis.fledgePlugin&&globalThis.fledgePlugin.hooks&&globalThis.fledgePlugin.hooks[${JSON.stringify(input.method.slice(5))}])`:`(globalThis.fledgePlugin&&globalThis.fledgePlugin[${JSON.stringify(input.method)}])`;
-  const argsLiteral=JSON.stringify(JSON.stringify(input.args));
-  const promise=evalChecked(`(async function(){var fn=${target};if(typeof fn!=='function')throw new Error('The plugin does not implement ${input.method.replace(/'/g,'')}');var out=await fn.apply(globalThis.fledgePlugin,JSON.parse(${argsLiteral}));return out===undefined?'null':JSON.stringify(out);})()`,'call.js');
+  // The method name and arguments are handed over as data; the code that runs them is a constant.
+  const setGlobal=(name:string,value:string)=>{const h=vm.newString(value);vm.setProp(vm.global,name,h);h.dispose();};
+  setGlobal('__method',input.method);setGlobal('__args',JSON.stringify(input.args));
+  const promise=evalChecked(`(async function(){var name=globalThis.__method,args=globalThis.__args,fp=globalThis.fledgePlugin;var fn=fp&&(name.indexOf('hook:')===0?(fp.hooks&&fp.hooks[name.slice(5)]):fp[name]);if(typeof fn!=='function')throw new Error('The plugin does not implement '+name.replace(/[^A-Za-z0-9_.:-]/g,''));var out=await fn.apply(fp,JSON.parse(args));return out===undefined?'null':JSON.stringify(out);})()`,'call.js');
   const settled=vm.resolvePromise(promise);promise.dispose();
   pump();
   const timer=new Promise<never>((_,reject)=>{const t=setTimeout(()=>reject(new PluginError(`The plugin ran longer than ${Math.round(limits.deadlineMs/1000)} seconds`,timeoutCode(),logs)),Math.max(100,deadline-Date.now()+200));t.unref?.();});

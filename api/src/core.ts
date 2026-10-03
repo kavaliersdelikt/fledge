@@ -10,6 +10,20 @@ export const pool = new pg.Pool({connectionString:process.env.DATABASE_URL, max:
 export const WEB_ORIGIN = process.env.WEB_ORIGIN || 'http://localhost:3000';
 export const PORT = Number(process.env.PORT || 4000);
 export const SESSION_DAYS = 7;
+// Plain string checks instead of a regular expression, so there is nothing to backtrack on.
+export function looksLikeEmail(v:unknown):v is string{
+ if(typeof v!=='string'||v.length<5||v.length>254||/[\s<>]/.test(v))return false;
+ const at=v.indexOf('@');
+ if(at<1||at!==v.lastIndexOf('@'))return false;
+ const domain=v.slice(at+1),dot=domain.lastIndexOf('.');
+ return dot>0&&dot<domain.length-1;
+}
+/** `admin@example.com` or `Name <admin@example.com>`. */
+export function looksLikeMailbox(v:string){
+ if(!v.includes('<'))return looksLikeEmail(v);
+ const open=v.indexOf('<');
+ return v.endsWith('>')&&open>=1&&open<=81&&!v.slice(0,open).includes('>')&&looksLikeEmail(v.slice(open+1,-1));
+}
 export const hash = (s:string)=>createHash('sha256').update(s).digest('hex');
 export const hashPassword = async (password:string)=>bcrypt.hash(password, 12);
 export const verifyPassword = async (password:string, hashed:string)=>bcrypt.compare(password, hashed);
@@ -67,7 +81,7 @@ export function nodeShape(n:any){return {id:n.id,name:n.name,location:n.location
 // template change never boots a stopped (or suspended) server.
 export async function queueRecreate(db:{query:(q:string,p?:any[])=>Promise<any>},row:{node_id:string;id:string;desired_status?:string;suspended?:boolean}){
  const job=(await db.query("INSERT INTO jobs(node_id,server_id,kind,payload) VALUES($1,$2,'configure',$3) RETURNING id,state",[row.node_id,row.id,JSON.stringify({recreate:true})])).rows[0] as {id:string;state:string};
- if(row.suspended||(row.desired_status&&row.desired_status!=='running'))await db.query("INSERT INTO jobs(node_id,server_id,kind,payload) VALUES($1,$2,'stop','{}')",[row.node_id,row.id]);
+ if(row.suspended||(row.desired_status&&row.desired_status!=='running'))await db.query("INSERT INTO jobs(node_id,server_id,kind,payload,created_at) VALUES($1,$2,'stop','{}',clock_timestamp())",[row.node_id,row.id]);
  return job;
 }
 // Runs fn only if no other API replica holds the same advisory lock; returns false when someone else does.
