@@ -2,6 +2,8 @@ import type {FastifyInstance} from 'fastify';
 import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
 import {pool,admin,fail,txt,asId,hash,token,passwordHash,audit,WEB_ORIGIN,looksLikeEmail} from './core.js';
 import {mailerReady,sendMail} from './mailer.js';
+import {sendTemplate,render} from './email.js';
+import {templateById} from './email-defaults.js';
 import {settings} from './settings.js';
 import {brand} from './branding.js';
 import {ipAllowed} from './cidr.js';
@@ -36,10 +38,9 @@ async function mailLink(kind:'invite'|'reset',user:{id:string;email:string},ttl:
  const link=`${WEB_ORIGIN.replace(/\/$/,'')}/?token=${raw}`;
  let sent=false;
  if(await mailerReady()){
-  const invite=kind==='invite',{name}=await brand();
-  await sendMail({to:user.email,subject:invite?`You have been invited to ${name}`:`Reset your ${name} password`,
-   text:invite?`You have been invited to ${name}, the game server panel.\n\nSet your password here (the link works for 7 days):\n${link}\n`:`Someone asked to reset the password for this ${name} account.\n\nChoose a new password here (the link works for one hour):\n${link}\n\nIf this was not you, ignore this email: nothing changes.\n`});
-  sent=true;
+  // Sent straight away; if the mail server is down the message is kept and retried instead of being lost.
+  const r=await sendTemplate(kind==='invite'?'invite':'password_reset',user.email,{link,days:'7',duration:'one hour'},{userId:user.id,inline:true});
+  sent=r.status==='sent'||r.status==='queued';
  }
  return {sent,link};
 }
@@ -110,6 +111,7 @@ export function accountRoutes(app:FastifyInstance){
    await c.query('DELETE FROM user_tokens WHERE user_id=$1',[u.id]);
    await c.query('COMMIT');
    await audit(u.id,t.kind==='invite'?'invite.accepted':'password.reset','user',u.id);
+   if(t.kind==='reset')void sendTemplate('password_changed',u.email,{when:new Date().toUTCString()},{userId:u.id}).catch(()=>{});
    return {ok:true,email:u.email,kind:t.kind};
   }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
  });
@@ -117,8 +119,9 @@ export function accountRoutes(app:FastifyInstance){
   admin(req);
   const to=txt((req.body as any)?.to,254);
   if(!looksLikeEmail(to))fail(400,'Enter a valid email address');
-  const {name}=await brand();
-  await sendMail({to,subject:`${name} test email`,text:`If you can read this, ${name} can send email.`});
+  // Sent directly (not queued) so the administrator sees the mail server's answer.
+  const r=await render(templateById('test')!,{email:to});
+  await sendMail({to,subject:r.subject,text:r.text,html:r.html,raw:true});
   await audit(req.actor!.id,'settings.email.test','settings','email');
   return {ok:true};
  });
