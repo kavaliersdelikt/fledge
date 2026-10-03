@@ -27,8 +27,8 @@ Package up to 2 MB; `index.js` up to 1 MB; icon up to 100 KB; at most 20 permiss
 
 HTTPS only, default port only, the host must be declared in a `network:` permission, DNS answers must be public addresses and
 the connection is pinned to the checked address, redirects are re-checked, requests to `localhost`, private ranges,
-link-local (cloud metadata) and IPv4-mapped IPv6 forms are refused, and credentials in URLs are rejected. Only `GET`, `HEAD`
-and `POST` are available. Wildcards such as `*.github.io` that cover shared hosting platforms cannot be granted.
+link-local (cloud metadata) and IPv4-mapped IPv6 forms are refused, and credentials in URLs are rejected. Only `GET`, `HEAD`,
+`POST` and `DELETE` are available. Wildcards such as `*.github.io` that cover shared hosting platforms cannot be granted.
 
 ## Error codes
 

@@ -31,6 +31,8 @@ Rootless operation, load testing, external monitoring and credential-rotation op
 | Node to game | Docker memory, CPU and PID limits, `no-new-privileges`, kernel-enforced disk limits, an image allow-list |
 | API to plugins | Separate container (read-only root, no capabilities, own network), bearer token, WebAssembly sandbox, declared network hosts, public-address-only egress, validated results, node-side checksum verification of add-on files |
 | Appearance | Only administrators with a browser session can change it (not API tokens), every change is audited and versioned; uploaded images are checked by their contents and served sandboxed; custom CSS is off by default and cannot load anything from another server; safe mode and `BRANDING_DISABLED` recover from a bad theme. See [Appearance](/panel/appearance#advanced) |
+| Sign-up | Email confirmation before anything can be created, rate limits per address, email and overall (with automatic pause), optional Cloudflare Turnstile or hCaptcha, disposable-domain and password checks, identical answers for new and existing addresses, approval and invite-only modes |
+| Payments | Hosted checkout only (card data never reaches Fledge); the browser sends a plan and an interval, never a price; webhook signatures verified in the payment plugin with a five-minute window; events stored once and re-read from the provider before acting; locked, audited status changes; billing holds never lift an administrator's suspension; test and live records kept apart |
 | Secrets at rest | AES-256-GCM with `ENCRYPTION_KEY` for two-factor secrets, S3 and SMTP credentials, webhook URLs and plugin secrets |
 | Supply chain | Release checksums, optional signatures and attestations, SBOMs, signed plugin registry; see [Verifying releases](/security/supply-chain) |
 
@@ -46,6 +48,8 @@ Rootless operation, load testing, external monitoring and credential-rotation op
   for administrator webhooks by design), pin the connection to the checked address and re-check redirects.
 - **No double running.** Failover fences old copies; see [Failover](/operate/failover).
 - **Appearance is data, not code.** Names, links and announcements are plain text; colours are validated hex values from which Fledge calculates every other colour; images are identified by their bytes, plain SVGs only. The one free-form field, custom CSS, is off by default, refuses `@import`, fonts and remote `url()`, and runs under the unchanged content security policy.
+- **Money is integers.** Prices and invoices are whole cents; a price is frozen on the order when checkout starts and cannot be changed by the request.
+- **Nothing is deleted by billing unless you say so.** Late or cancelled servers are stopped and kept; deletion needs an explicit setting and takes a last backup first.
 - **Audit log.** Sign-ins, changes, installs and exports are recorded, with filters and export.
 
 ## What is not protected

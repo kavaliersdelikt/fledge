@@ -18,6 +18,12 @@ design protects against, and what it does not.
 Community plugins are not reviewed by anyone. Treat installing one like installing any third-party
 software: read what it asks for, and prefer plugins whose source you can read.
 
+## Payment plugins
+
+A plugin with the `payments` permission holds your payment provider's API key and sees order details and customers' email addresses, so treat installing one like handing over that key. The bundled Stripe plugin
+can reach only `api.stripe.com`. Whatever a payment plugin returns is checked by Fledge: amounts to charge always come from the database, redirect addresses must be https, and subscription states are
+mapped through a fixed table of allowed moves. Webhooks are public, so the plugin verifies the provider's signature itself (with `host.crypto`) and Fledge stores each event once. See [the payments contract](/plugins/payments).
+
 ## What is enforced
 
 1. **Isolation.** Plugin code runs in QuickJS compiled to WebAssembly: separate heap, no Node APIs, no file

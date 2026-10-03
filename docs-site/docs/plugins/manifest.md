@@ -20,6 +20,7 @@ Every plugin package contains `fledge-plugin.json`. API version 1.
 | `settings` | no | List of fields, see below. At most 30 |
 | `catalogs` | no | `{ id, label, kind, description? }`, at most 4. `kind` is `mod` or `plugin` for the Minecraft templates, or any word your own templates use |
 | `hooks` | no | Events the plugin wants to be told about. Needs the `hooks` permission |
+| `payments` | no | Makes the plugin a payment provider: `{ id, label, intervals, currencies, features }`. Needs the `payments` permission. See [the payments contract](/plugins/payments) |
 
 ## Permissions
 
@@ -30,6 +31,7 @@ Every plugin package contains `fledge-plugin.json`. API version 1.
 | `servers:files.write` | The panel may install files into servers on the plugin's behalf (only after a user confirms an install). |
 | `storage` | A small private key-value store (256 KB). |
 | `hooks` | May be notified about server and add-on events. |
+| `payments` | Takes payments and manages subscriptions through one provider. It sees order details and customers' email addresses and holds your API keys. Only for payment plugins |
 
 Administrators see these in plain language and must approve them. An update that asks for more
 permissions needs approval again.

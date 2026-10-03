@@ -4,8 +4,9 @@ title: The bundled plugins
 
 # The bundled plugins
 
-Two plugins ship inside the panel image (`plugins/bundled`) and are never downloaded. They share about 200 lines of
-code (`_shared/modrinth.js`) and differ in a seven-line entry file, which makes them good examples.
+Three plugins ship inside the panel image (`plugins/bundled`) and are never downloaded. The two Modrinth browsers share about 200 lines of
+code (`_shared/modrinth.js`) and differ in a seven-line entry file, which makes them good examples. The third, **Stripe Payments**, is the
+first [payment provider](/plugins/payments); it has [its own page](/plugins/stripe).
 
 | | **Modrinth Mod Browser** (`modrinth-mods`) | **Modrinth Plugin Browser** (`modrinth-plugins`) |
 | --- | --- | --- |

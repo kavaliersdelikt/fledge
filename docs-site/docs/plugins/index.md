@@ -64,4 +64,5 @@ Details and what is and is not claimed: [Plugin security model](/plugins/securit
 ## What plugins cannot do (yet)
 
 Plugins cannot add pages or routes to the panel, define their own notification channels or call the panel's API. The
-interface covers catalogs and event hooks. Custom plugin UI is a candidate for a later release.
+interface covers catalogs, event hooks and, since 0.7.1.1, payment providers (see [the payments contract](/plugins/payments); a
+payment provider still cannot add pages or call the rest of the panel). Custom plugin UI is a candidate for a later release.
