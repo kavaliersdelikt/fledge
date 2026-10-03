@@ -1,10 +1,12 @@
 "use client";
 import { items, json, type Quota, type QuotaUsage } from "@/lib/api";
+import { statusLabel, type LimitsView } from "@/lib/commerce";
+import { LimitSetEditor, LimitUsage, type LimitSet } from "./LimitsUI";
 import { fmtCpu, fmtDay, fmtMb, fmtTime } from "@/lib/format";
 import { formToQuota, hasQuota, quotaShare, quotaToForm, type QuotaForm } from "@/lib/quota";
-import { Gauge, KeyRound, LogOut, MoreHorizontal, Plus, Send, UserCheck, UserX } from "lucide-react";
+import { CircleDashed, Gauge, KeyRound, LogOut, MoreHorizontal, Plus, Send, UserCheck, UserX } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -123,22 +125,22 @@ function LimitField({
 
 function QuotaEditor({ customer, onClose, onSaved }: { customer: Row; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [f, setF] = useState<QuotaForm>(() => quotaToForm(customer.quota));
+  const view = useLoad<LimitsView & { override: LimitSet; defaults: LimitSet }>(`/customers/${customer.id}/limits`);
+  const templates = useLoad<Row[]>("/templates");
+  const nodes = useLoad<Row[]>("/nodes");
+  const locations = [...new Set(items(nodes.data).map((n) => n.location as string))].sort();
+  const [draft, setDraft] = useState<LimitSet | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const set = (patch: Partial<QuotaForm>) => setF((p) => ({ ...p, ...patch }));
-  async function save() {
+  useEffect(() => {
+    if (view.data && draft === null) setDraft({ ...view.data.override });
+  }, [view.data]);
+  async function save(clear = false) {
     setError("");
-    let quota: Quota | null;
-    try {
-      quota = formToQuota(f);
-    } catch (e) {
-      return setError((e as Error).message);
-    }
     setBusy(true);
     try {
-      await json("PATCH", `/customers/${customer.id}`, { quota });
-      toast({ tone: "ok", title: quota ? "Limits saved" : "Limits removed", description: customer.email });
+      await json("PATCH", `/customers/${customer.id}`, { quota: clear ? {} : draft });
+      toast({ tone: "ok", title: clear ? "Limits set by hand removed" : "Limits saved", description: customer.email });
       onSaved();
     } catch (e) {
       setError((e as Error).message);
@@ -149,34 +151,151 @@ function QuotaEditor({ customer, onClose, onSaved }: { customer: Row; onClose: (
   return (
     <Modal
       open
+      wide
       onOpenChange={(o) => !o && onClose()}
       title="Limits"
-      description={`What ${customer.email} can own. Leave a field empty for no limit. Existing servers keep running if they’re already over a new limit.`}
+      description={`What ${customer.email} can own. Anything you fill in here beats the panel defaults and their plans. Existing servers keep running if they are already over a new limit.`}
     >
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <div className="form-grid">
-          <LimitField label="Servers" value={f.servers} onChange={(servers) => set({ servers })} />
-          <LimitField label="Backups" value={f.backups} onChange={(backups) => set({ backups })} />
-          <LimitField label="Memory" unit="GB" step="0.25" value={f.memoryGb} onChange={(memoryGb) => set({ memoryGb })} hint="Total across all servers." />
-          <LimitField label="CPU" unit="cores" step="0.25" value={f.cpuCores} onChange={(cpuCores) => set({ cpuCores })} hint="Total across all servers." />
-          <LimitField label="Disk" unit="GB" step="0.5" value={f.diskGb} onChange={(diskGb) => set({ diskGb })} hint="Total across all servers." />
-          <LimitField label="Extra ports" value={f.extraPorts} onChange={(extraPorts) => set({ extraPorts })} />
-        </div>
-        <ErrorNotice message={error} />
-        <div className="modal__actions">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" busy={busy}>
-            Save limits
-          </Button>
-        </div>
-      </form>
+      <State loading={view.loading || draft === null} error={view.error}>
+        {view.data && draft ? (
+          <form
+            className="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+          >
+            <Card title="What applies now" description="Panel defaults, plus any plan, then whatever you set below.">
+              <LimitUsage view={view.data} adminView />
+            </Card>
+            <h3 style={{ fontSize: "calc(14px * var(--text-scale))" }}>Set by hand for this customer</h3>
+            <LimitSetEditor value={draft} onChange={setDraft} inherit="Use the default" templates={items(templates.data).map((t) => ({ id: t.id, name: t.name }))} locations={locations} />
+            <ErrorNotice message={error} />
+            <div className="modal__actions">
+              <Button onClick={() => void save(true)} disabled={busy || Object.keys(view.data.override).length === 0}>Remove everything set by hand</Button>
+              <Button onClick={onClose}>Cancel</Button>
+              <Button type="submit" variant="primary" busy={busy}>Save limits</Button>
+            </div>
+          </form>
+        ) : null}
+      </State>
     </Modal>
+  );
+}
+
+/** Accounts that signed themselves up and are not finished yet. */
+function PendingCard({ onChanged }: { onChanged: () => void }) {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const { data, reload } = useLoad<Row[]>("/signup/pending", 20000);
+  if (!data?.length) return null;
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    try {
+      await fn();
+      toast({ tone: "ok", title: done });
+      reload();
+      onChanged();
+    } catch (e) {
+      toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
+    }
+  };
+  return (
+    <Card title="Waiting for you" description="People who signed up and are not finished." className="pending-card">
+      <ul className="checks">
+        {data.map((p) => (
+          <li key={p.id} className="soft">
+            <CircleDashed aria-hidden="true" />
+            <span className="row-between">
+              <span>
+                {p.email}
+                <small>
+                  {p.status === "pending_approval" ? "Confirmed their address; waiting for your approval" : "Has not confirmed their email address yet"} · {fmtDay(p.createdAt)}
+                </small>
+              </span>
+              <span className="btn-group">
+                {p.status === "pending_approval" ? (
+                  <Button size="sm" variant="primary" onClick={() => run(() => json("POST", `/customers/${p.id}/approve`), "Approved")}>
+                    Approve
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" onClick={() => run(() => json("POST", `/customers/${p.id}/resend-verification`), "Link sent again")}>
+                      Resend link
+                    </Button>
+                    <Button size="sm" onClick={() => run(() => json("POST", `/customers/${p.id}/mark-verified`), "Marked as confirmed")}>
+                      Mark confirmed
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    if (await confirm(`${p.email} is told no and the account is removed.`, { confirmLabel: "Decline" })) void run(() => json("POST", `/customers/${p.id}/reject`), "Declined");
+                  }}
+                >
+                  Decline
+                </Button>
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+/** A customer's plans, and a way to give them one. */
+function PlansOfCustomer({ id }: { id: string }) {
+  const { data, error, loading, reload } = useLoad<{ items: Row[] }>(`/billing/admin/subscriptions?user=${id}&limit=50`);
+  const toast = useToast();
+  const plans = useLoad<Row[]>("/plans");
+  const [pick, setPick] = useState("");
+  async function give() {
+    try {
+      await json("POST", "/billing/grants", { userId: id, planId: pick });
+      toast({ tone: "ok", title: "Plan given" });
+      setPick("");
+      reload();
+    } catch (e) {
+      toast({ tone: "bad", title: "That didn’t work", description: (e as Error).message });
+    }
+  }
+  return (
+    <div className="cust-detail">
+      <div className="cust-detail__head">
+        <h3>Plans</h3>
+        <Link href={`/billing?tab=subscriptions`} className="text-button">Open in Billing</Link>
+      </div>
+      <State loading={loading} error={error} rows={2}>
+        {items(data?.items).length ? (
+          <ul className="limit-list">
+            {items(data?.items).map((s) => (
+              <li className="limit-row" key={s.id}>
+                <div className="limit-row__text">
+                  <span>{s.planName}</span>
+                  <strong>{statusLabel[s.status] || s.status}</strong>
+                </div>
+                <small>{s.provider === "manual" ? "Complimentary" : `${s.amountText} · ${s.cycle}`}{s.currentPeriodEnd ? ` · ${s.cancelAtPeriodEnd ? "ends" : "renews"} ${fmtDay(s.currentPeriodEnd)}` : ""}</small>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">No plans yet.</p>
+        )}
+      </State>
+      {items(plans.data).length ? (
+        <div className="row-between" style={{ marginTop: 10 }}>
+          <select className="input select" aria-label="Plan to give" value={pick} onChange={(e) => setPick(e.target.value)} style={{ flex: 1 }}>
+            <option value="">Give a plan…</option>
+            {items(plans.data).filter((p) => !p.archivedAt).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <Button disabled={!pick} onClick={give}>Give</Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -278,6 +397,8 @@ export default function Customers() {
             {c.email}
           </button>
           {c.disabled ? <span className="tag">Suspended</span> : null}
+          {c.status === "deletion_pending" ? <span className="tag">Deleting</span> : null}
+          {c.signupSource && c.signupSource !== "admin" ? <span className="tag" title="Signed up by themselves">{c.signupSource === "invite" ? "Invited" : "Signed up"}</span> : null}
         </span>
       ),
     },
@@ -345,6 +466,7 @@ export default function Customers() {
           <SearchInput label="Search customers" placeholder="Search by email" value={query} onChange={setQuery} />
         </Toolbar>
       )}
+      <PendingCard onChanged={reload} />
       <Card flush>
         <State loading={loading} error={error} rows={5}>
           {list.length ? (
@@ -403,6 +525,7 @@ export default function Customers() {
                 </ul>
               </State>
             </div>
+            <PlansOfCustomer id={viewed.id} />
             <div className="btn-group">
               <Button onClick={() => setEditing(viewed)}>
                 <Gauge /> Edit limits

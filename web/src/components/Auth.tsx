@@ -7,8 +7,9 @@ import { Secret } from "./feedback";
 import { BrandMark, useBrand } from "@/lib/brand";
 import { PublicAnnouncementBanner } from "./AnnouncementBanner";
 import { Button, Notice, Segmented } from "./shared";
+import type { SignupConfig } from "@/lib/commerce";
 
-type Mode = "loading" | "login" | "challenge" | "bootstrap" | "setup" | "recover" | "forgot" | "token";
+type Mode = "loading" | "login" | "challenge" | "bootstrap" | "setup" | "recover" | "forgot" | "token" | "register" | "registered" | "verifying";
 type Method = "totp" | "passkey";
 
 const copyFor = (name: string): Record<Mode, [string, string]> => ({
@@ -20,6 +21,9 @@ const copyFor = (name: string): Record<Mode, [string, string]> => ({
   recover: ["Recover your account", "Use one of your saved recovery codes to set a new password."],
   forgot: ["Reset your password", "Enter your email address and we’ll send you a link to choose a new one."],
   token: ["Choose a password", "Pick a password of at least 12 characters to finish."],
+  register: ["Create your account", "Confirm your email address to start. It takes a minute."],
+  registered: ["Check your email", ""],
+  verifying: ["Confirming your email address", ""],
 });
 
 const METHOD_KEY = "fledge.2fa-method";
@@ -45,6 +49,62 @@ const tokenFromUrl = () => {
     return "";
   }
 };
+const paramFromUrl = (name: string) => {
+  try {
+    return new URLSearchParams(location.search).get(name) || "";
+  } catch {
+    return "";
+  }
+};
+const dropParamsFromUrl = (...names: string[]) => {
+  try {
+    const url = new URL(location.href);
+    for (const n of names) url.searchParams.delete(n);
+    history.replaceState(history.state, "", url.pathname + (url.search || "") + url.hash);
+  } catch {
+    /* leave the address as it is */
+  }
+};
+
+/** Cloudflare Turnstile or hCaptcha, loaded only on the sign-up form. */
+function Captcha({ config, onToken }: { config: { provider: "turnstile" | "hcaptcha"; siteKey: string }; onToken: (t: string) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const latest = useRef(onToken);
+  latest.current = onToken;
+  useEffect(() => {
+    const w = window as unknown as Record<string, any>;
+    const lib = () => (config.provider === "turnstile" ? w.turnstile : w.hcaptcha);
+    const src = config.provider === "turnstile" ? "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" : "https://js.hcaptcha.com/1/api.js?render=explicit";
+    let widget: unknown;
+    let cancelled = false;
+    const draw = () => {
+      if (cancelled || !box.current || !lib()) return;
+      widget = lib().render(box.current, { sitekey: config.siteKey, callback: (t: string) => latest.current(t), "expired-callback": () => latest.current(""), "error-callback": () => latest.current("") });
+    };
+    if (lib()) draw();
+    else {
+      let s = document.querySelector<HTMLScriptElement>(`script[src^="${src.split("?")[0]}"]`);
+      if (!s) {
+        s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.defer = true;
+        document.head.appendChild(s);
+      }
+      s.addEventListener("load", draw);
+    }
+    return () => {
+      cancelled = true;
+      try {
+        lib()?.remove?.(widget);
+      } catch {
+        /* the widget is already gone */
+      }
+    };
+  }, [config.provider, config.siteKey]);
+  return <div ref={box} className="auth__captcha" aria-label="Bot check" />;
+}
+
 const dropTokenFromUrl = () => {
   try {
     const url = new URL(location.href);
@@ -74,7 +134,14 @@ export default function Auth({
     [token, setToken] = useState(""),
     [sent, setSent] = useState(false),
     [tokenDead, setTokenDead] = useState(false),
-    [prefill, setPrefill] = useState("");
+    [prefill, setPrefill] = useState(""),
+    [signup, setSignup] = useState<SignupConfig | null>(null),
+    [captcha, setCaptcha] = useState(""),
+    [invite, setInvite] = useState(""),
+    [pendingEmail, setPendingEmail] = useState(""),
+    [unverified, setUnverified] = useState(""),
+    [resent, setResent] = useState(false);
+  const formStart = useRef(Date.now());
   const started = useRef(false);
 
   async function setup() {
@@ -96,8 +163,43 @@ export default function Auth({
       setMode("token");
       return;
     }
+    const verifyToken = paramFromUrl("verify");
+    const confirmEmail = paramFromUrl("confirm-email");
+    if (verifyToken || confirmEmail) {
+      setMode("verifying");
+      json("POST", verifyToken ? "/auth/verify" : "/auth/email/confirm", { token: verifyToken || confirmEmail })
+        .then((r) => {
+          dropParamsFromUrl("verify", "confirm-email");
+          setMode("login");
+          setInfo(
+            confirmEmail
+              ? "Your new email address is confirmed. Sign in with it."
+              : r?.status === "pending_approval"
+                ? "Your email address is confirmed. An administrator still has to approve your account; we will email you."
+                : "Your email address is confirmed. Sign in to continue.",
+          );
+        })
+        .catch((e) => {
+          dropParamsFromUrl("verify", "confirm-email");
+          setMode("login");
+          setError((e as Error).message);
+        });
+      return;
+    }
     request<{ needsSetup: boolean }>("/auth/status")
-      .then((s) => setMode(s.needsSetup ? "bootstrap" : "login"))
+      .then((s) => {
+        if (s.needsSetup) return setMode("bootstrap");
+        return request<SignupConfig>("/signup/config")
+          .catch(() => null)
+          .then((cfg) => {
+            setSignup(cfg);
+            const code = paramFromUrl("invite");
+            if (code && cfg?.available) {
+              setInvite(code);
+              setMode("register");
+            } else setMode("login");
+          });
+      })
       .catch((e) => setError(e.message));
   }, [existing]);
 
@@ -114,6 +216,18 @@ export default function Auth({
     setInfo("");
     setSent(false);
     setTokenDead(false);
+    setUnverified("");
+    setResent(false);
+    formStart.current = Date.now();
+  }
+
+  async function resend(email: string) {
+    try {
+      await json("POST", "/auth/verify/resend", { email });
+      setResent(true);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   function startChallenge(r: { challenge: string; methods?: string[] }) {
@@ -150,7 +264,22 @@ export default function Auth({
     setBusy(true);
     const f = Object.fromEntries(new FormData(e.currentTarget));
     try {
-      if (mode === "recover") {
+      if (mode === "register") {
+        if (f.password !== f.confirm) throw new Error("The two passwords don’t match.");
+        if (signup?.captcha && !captcha) throw new Error("Please complete the check first.");
+        await json("POST", "/auth/register", {
+          email: f.email,
+          password: f.password,
+          acceptTerms: f.acceptTerms === "on",
+          captcha: captcha || undefined,
+          inviteCode: invite || f.inviteCode || undefined,
+          website: f.website,
+          t: formStart.current,
+        });
+        setPendingEmail(String(f.email));
+        dropParamsFromUrl("invite");
+        setMode("registered");
+      } else if (mode === "recover") {
         await json("POST", "/auth/recover", { email: f.email, password: f.password, recoveryCode: f.recoveryCode });
         setMode("login");
         setInfo("Account recovered. Sign in with your new password, then set up your authenticator again.");
@@ -187,6 +316,7 @@ export default function Auth({
       }
     } catch (ex) {
       setError((ex as Error).message);
+      if (mode === "login" && ex instanceof ApiError && ex.code === "email_unverified") setUnverified(String(f.email));
       if (mode === "token" && ex instanceof ApiError && ex.status > 0) setTokenDead(true);
     } finally {
       setBusy(false);
@@ -281,6 +411,22 @@ export default function Auth({
                   Back to sign in
                 </Button>
               </div>
+            ) : mode === "registered" ? (
+              <div className="form">
+                <Notice tone="ok" title="We sent you a link">
+                  Open the email we sent to <strong>{pendingEmail}</strong> and confirm your address to finish. It can take a few minutes to arrive; check your spam folder too.
+                </Notice>
+                {resent ? <Notice tone="ok">If that address is waiting for confirmation, a new link is on its way.</Notice> : null}
+                <ErrorBlock error={error} />
+                <Button onClick={() => resend(pendingEmail)} disabled={resent}>
+                  Send the link again
+                </Button>
+                <Button variant="primary" onClick={() => go("login")}>
+                  Back to sign in
+                </Button>
+              </div>
+            ) : mode === "verifying" ? (
+              <LoaderCircle className="spin faint" />
             ) : (
               <form onSubmit={submit} className="form" key={mode}>
                 {mode === "setup" ? (
@@ -344,6 +490,51 @@ export default function Auth({
                   </>
                 ) : mode === "forgot" ? (
                   emailInput
+                ) : mode === "register" ? (
+                  <>
+                    {emailInput}
+                    <label className="field">
+                      <span className="field__label">Password</span>
+                      <input className="input" name="password" type="password" required minLength={signup?.minPasswordLength || 12} autoComplete="new-password" placeholder={`At least ${signup?.minPasswordLength || 12} characters`} />
+                    </label>
+                    <label className="field">
+                      <span className="field__label">Confirm password</span>
+                      <input className="input" name="confirm" type="password" required minLength={signup?.minPasswordLength || 12} autoComplete="new-password" />
+                    </label>
+                    {signup?.mode === "invite" && !invite ? (
+                      <label className="field">
+                        <span className="field__label">Invitation code</span>
+                        <input className="input mono" name="inviteCode" required autoComplete="off" />
+                      </label>
+                    ) : null}
+                    <div className="hp" aria-hidden="true">
+                      <label>
+                        Leave this empty
+                        <input name="website" tabIndex={-1} autoComplete="off" />
+                      </label>
+                    </div>
+                    {signup?.requireTerms ? (
+                      <label className="auth__check">
+                        <input type="checkbox" name="acceptTerms" required />
+                        <span>
+                          I accept the{" "}
+                          <a href={signup.termsUrl} target="_blank" rel="noreferrer">
+                            terms
+                          </a>
+                          {signup.privacyUrl ? (
+                            <>
+                              {" "}and have read the{" "}
+                              <a href={signup.privacyUrl} target="_blank" rel="noreferrer">
+                                privacy policy
+                              </a>
+                            </>
+                          ) : null}
+                          .
+                        </span>
+                      </label>
+                    ) : null}
+                    {signup?.captcha ? <Captcha config={signup.captcha} onToken={setCaptcha} /> : null}
+                  </>
                 ) : (
                   <>
                     {emailInput}
@@ -374,6 +565,15 @@ export default function Auth({
                 )}
                 {info && <Notice tone="ok">{info}</Notice>}
                 {error && <Notice tone="bad">{error}</Notice>}
+                {unverified ? (
+                  resent ? (
+                    <Notice tone="ok">If that address is waiting for confirmation, a new link is on its way.</Notice>
+                  ) : (
+                    <button type="button" className="text-button" onClick={() => resend(unverified)}>
+                      Send the confirmation link again
+                    </button>
+                  )
+                ) : null}
                 {tokenExpired && (
                   <button type="button" className="text-button" onClick={() => go("forgot")}>
                     Request a new link
@@ -388,7 +588,9 @@ export default function Auth({
                         ? "Turn on"
                         : mode === "forgot"
                           ? "Send reset link"
-                          : mode === "token"
+                          : mode === "register"
+                            ? "Create account"
+                            : mode === "token"
                             ? "Save password"
                             : mode === "challenge"
                               ? method === "passkey"
@@ -398,6 +600,22 @@ export default function Auth({
                 </Button>
               </form>
             )}
+            {mode === "login" && signup?.available ? (
+              <p className="auth__switch">
+                New here?{" "}
+                <button type="button" className="text-button" onClick={() => go("register")}>
+                  Create an account
+                </button>
+              </p>
+            ) : null}
+            {mode === "register" ? (
+              <p className="auth__switch">
+                Already have an account?{" "}
+                <button type="button" className="text-button" onClick={() => go("login")}>
+                  Sign in
+                </button>
+              </p>
+            ) : null}
             {(mode === "login" || mode === "recover" || mode === "challenge" || mode === "forgot" || mode === "token") && (
               <div className="auth__foot">
                 <span className="auth__links">
@@ -440,4 +658,8 @@ export default function Auth({
       </div>
     </main>
   );
+}
+
+function ErrorBlock({ error }: { error: string }) {
+  return error ? <Notice tone="bad">{error}</Notice> : null;
 }
