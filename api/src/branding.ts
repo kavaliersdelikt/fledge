@@ -12,7 +12,7 @@ import {defaultThemeSpec,sanitizeThemeSpec,checkTheme,themeCss,derivePalette,typ
 export const ASSET_KINDS=['mark','wordmark','favicon','login'] as const;
 export type AssetKind=typeof ASSET_KINDS[number];
 export const LINK_ICONS=['link','book','life-buoy','message-circle','shield','activity','server','globe','heart','mail','file-text','help-circle','users','star'] as const;
-export const NAV_IDS=['overview','servers','nodes','resilience','templates','plugins','customers','activity','api','updates','settings'] as const;
+export const NAV_IDS=['overview','servers','nodes','resilience','templates','plugins','customers','activity','api','updates','settings','store','billing'] as const;
 export const HISTORY_LIMIT=20;
 
 export type BrandLink={label:string;url:string;icon:string;newTab:boolean};
@@ -219,6 +219,17 @@ export async function brand(){
  const name=doc.identity.name,short=doc.identity.shortName||name;
  return {name,short,emailFromName:doc.identity.emailFromName,footer:doc.email.footer};
 }
+/** Colours and logo for HTML email (always the light palette: most mail clients are light). */
+export async function emailPalette(){
+ const {doc}=await loadBranding();
+ const t=derivePalette(doc.theme.light,'light').tokens;
+ const origin=(process.env.WEB_ORIGIN||'').replace(/\/$/,'');
+ // A logo only helps when the panel is reachable from the outside.
+ const kind=doc.assets.wordmark?'wordmark':doc.assets.mark?'mark':null;
+ return {bg:t.bg,surface:t.surface,text:t.text,muted:t['text-2'],border:t.border,button:t.primary,buttonText:t['primary-text'],accent:t.accent,
+  logo:kind&&/^https:\/\//.test(origin)?`${origin}/branding/${kind}`:null,name:doc.identity.name,footer:doc.email.footer};
+}
+
 /** "Name <addr>" when the configured sender has no display name of its own. */
 export function senderWithName(from:string,displayName:string){
  if(!displayName||from.includes('<'))return from;
