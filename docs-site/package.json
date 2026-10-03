@@ -1,0 +1,23 @@
+{
+  "name": "fledge-docs",
+  "version": "0.6.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "snapshot": "node scripts/snapshot-openapi.mjs",
+    "generate": "node ../api/node_modules/tsx/dist/cli.mjs scripts/generate.ts",
+    "examples": "node ../api/node_modules/tsx/dist/cli.mjs scripts/check-examples.ts",
+    "check": "node scripts/check.mjs",
+    "dev": "npm run generate && vitepress dev docs",
+    "build": "npm run generate && vitepress build docs",
+    "preview": "vitepress preview docs",
+    "screenshots": "node screenshots/run.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0",
+    "vitepress": "^1.6.4"
+  },
+  "overrides": {
+    "vite": "^7.1.0"
+  }
+}

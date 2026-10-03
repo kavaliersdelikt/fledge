@@ -8,7 +8,7 @@
 //
 // A plugin directory holds fledge-plugin.json and either plugin.js (optionally with an
 // "include" list of shared files, like the bundled plugins) or index.js, plus optional
-// icon.svg/icon.png, README.md and CHANGELOG.md. See docs/plugins/README.md.
+// icon.svg/icon.png, README.md and CHANGELOG.md. See https://kavaliersdelikt.github.io/fledge/plugins/packaging
 
 import {createHash,generateKeyPairSync,createPrivateKey,createPublicKey,sign,verify} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync,existsSync,readdirSync} from 'node:fs';

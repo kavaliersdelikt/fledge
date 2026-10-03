@@ -1,0 +1,20 @@
+{
+  "id": "tiny-catalog",
+  "name": "Tiny Catalog",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "A small catalog that lists mods from a JSON file you host yourself.",
+  "author": "You",
+  "license": "MIT",
+  "permissions": ["network:downloads.example.org", "servers:read", "servers:files.write"],
+  "catalogs": [{ "id": "tiny", "label": "Tiny catalog", "kind": "mod", "description": "Mods from our own file" }],
+  "settings": [
+    {
+      "key": "indexUrl",
+      "label": "Catalog file",
+      "type": "string",
+      "default": "https://downloads.example.org/catalog.json",
+      "help": "HTTPS address of the JSON file that lists the mods."
+    }
+  ]
+}

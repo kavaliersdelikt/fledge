@@ -1,0 +1,12 @@
+node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+# produced by `npm run generate` from the repository sources
+docs/releases/
+docs/api/reference/
+docs/reference/environment.md
+docs/reference/plugin-manifest.md
+docs/reference/events.md
+docs/reference/schema.md
+docs/reference/jobs.md
+generated/

@@ -16,7 +16,7 @@ const VERSION=/^\d{1,4}\.\d{1,4}\.\d{1,4}(?:\.\d{1,4})?(?:-[0-9A-Za-z.-]{1,20})?
 const HOST=/^(?:\*\.)?(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 const KEY=/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/;
 export const KNOWN_HOOKS=['server.created','server.deleted','server.updated','addon.installed','addon.removed'] as const;
-const FIXED_PERMISSIONS=['servers:read','servers:files.write','storage','hooks'];
+export const FIXED_PERMISSIONS=['servers:read','servers:files.write','storage','hooks'];
 
 // Wildcards on hosting platforms would let a plugin talk to any customer's site on that platform.
 const SHARED_HOSTING=/\*\.(github\.io|githubusercontent\.com|gitlab\.io|pages\.dev|workers\.dev|vercel\.app|netlify\.app|herokuapp\.com|amazonaws\.com|cloudfront\.net|web\.app|firebaseapp\.com|azurewebsites\.net|onrender\.com|fly\.dev|repl\.co|blogspot\.com|appspot\.com|ngrok\.io|trycloudflare\.com)$/;

@@ -1,0 +1,100 @@
+name: Documentation
+on:
+  pull_request:
+    paths:
+      - 'docs-site/**'
+      - 'docs/**'
+      - 'api/src/**'
+      - 'plugins/**'
+      - 'db/schema.sql'
+      - 'agent/**/*.go'
+      - '.env.example'
+      - 'compose.yaml'
+      - '.github/workflows/docs.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs-site/**'
+      - 'docs/**'
+      - 'api/src/**'
+      - 'plugins/**'
+      - 'db/schema.sql'
+      - 'agent/**/*.go'
+      - '.env.example'
+      - 'compose.yaml'
+      - '.github/workflows/docs.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fledge
+          POSTGRES_PASSWORD: docs-test-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fledge" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      # Only used to boot a throw-away API that describes itself; never a real database.
+      TEST_DATABASE_URL: postgres://fledge:docs-test-only@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install what the generators and the example check import
+        run: |
+          (cd api && npm ci --no-audit --no-fund)
+          (cd plugins/host && npm ci --no-audit --no-fund)
+          (cd plugins/tools && npm ci --no-audit --no-fund)
+          (cd docs-site && npm ci --no-audit --no-fund)
+      - name: Describe the API (boots a real API against an empty database)
+        working-directory: docs-site
+        run: npm run snapshot
+      - name: Run the tutorial plugin in the real sandbox
+        working-directory: docs-site
+        run: npm run examples
+      - name: Build the site (generates the references, checks links)
+        working-directory: docs-site
+        run: npm run build
+      - name: Check code blocks, screenshots and API coverage
+        working-directory: docs-site
+        run: npm run check
+      - name: Package the site
+        run: tar -czf fledge-docs.tar.gz -C docs-site/docs/.vitepress/dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fledge-docs
+          path: fledge-docs.tar.gz
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/docs/.vitepress/dist
+
+  deploy:
+    # GitHub Pages: Settings > Pages > Source must be "GitHub Actions".
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -31,4 +31,4 @@ Reports are welcome for security issues in Fledge's panel, API, node agent, inst
 
 ## Plugins
 
-Plugins run in a sandbox and are validated at every boundary; the design, what it protects against and what it does not are described in [docs/plugins/security.md](docs/plugins/security.md). Vulnerabilities in the plugin host, the sandbox, plugin package or registry handling, or the add-on installation path are in scope and should be reported privately like any other.
+Plugins run in a sandbox and are validated at every boundary; the design, what it protects against and what it does not are described in [the plugin security model](https://kavaliersdelikt.github.io/fledge/plugins/security). Vulnerabilities in the plugin host, the sandbox, plugin package or registry handling, or the add-on installation path are in scope and should be reported privately like any other.
