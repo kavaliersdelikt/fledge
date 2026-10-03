@@ -9,9 +9,10 @@
     "examples": "node ../api/node_modules/tsx/dist/cli.mjs scripts/check-examples.ts",
     "check": "node scripts/check.mjs",
     "dev": "npm run generate && vitepress dev docs",
-    "build": "npm run generate && vitepress build docs",
+    "build": "npm run generate && vitepress build docs && node scripts/landing.mjs build",
     "preview": "vitepress preview docs",
-    "screenshots": "node screenshots/run.mjs"
+    "screenshots": "node screenshots/run.mjs",
+    "landing": "node scripts/landing.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0",

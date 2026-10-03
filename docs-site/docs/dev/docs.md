@@ -12,7 +12,17 @@ npm ci
 npm run dev        # generates the references, then serves with hot reload at http://localhost:5173/fledge/
 npm run build      # generates and builds into docs/.vitepress/dist
 npm run check      # link, code block, example and coverage checks
+npm run landing    # serves the landing page alone at http://localhost:4173/
 ```
+
+## The landing page
+
+The home page (`/`) is hand-written HTML in `docs-site/landing/`, not a VitePress page, and `npm run build` copies it over
+the build output. Its hero is `landing/blackhole.js`, a WebGL2 shader that traces each pixel's light ray through
+Schwarzschild space-time. It adapts its resolution to the frame rate, stops while the tab is hidden or once the hole has
+faded behind the content, renders a still frame under reduced motion, and falls back to CSS without WebGL2. Links from the
+landing page are relative (`guide/quickstart`), so the page works under any base path. Inside the docs, a link to `/`
+triggers a full page load (see `.vitepress/theme/index.ts`).
 
 ## What is generated
 

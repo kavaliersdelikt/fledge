@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fledge: self-hosted game server panel</title>
+  <meta name="description" content="Fledge is a self-hosted control panel for game servers across your own Linux Docker hosts: outbound-only node agents, kernel-enforced disk limits, plugins, backups, automation and failover." />
+  <meta name="theme-color" content="#000000" />
+  <meta property="og:title" content="Fledge: your servers, in orbit" />
+  <meta property="og:description" content="A self-hosted control panel for game servers across your own Linux Docker hosts. Open source under the AGPL-3.0." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://kavaliersdelikt.github.io/fledge/banner2.png" />
+  <link rel="icon" href="fledge-symbol.png" />
+  <link rel="preload" href="fonts/unbounded-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="landing.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <canvas id="bh" aria-hidden="true"></canvas>
+  <div class="veil" aria-hidden="true"></div>
+
+  <header class="nav" id="nav">
+    <a class="brand" href="./"><img src="fledge-symbol.png" alt="" width="26" height="26" /><span>Fledge</span></a>
+    <nav class="links" aria-label="Main">
+      <a href="guide/what-is-fledge">Docs</a>
+      <a href="plugins/">Plugins</a>
+      <a href="api/">API</a>
+      <a href="releases/">Releases</a>
+      <a href="https://discord.gg/gu49ZF6tQh">Discord</a>
+    </nav>
+    <a class="btn btn-line btn-sm" href="https://github.com/kavaliersdelikt/fledge">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg>
+      Source on GitHub
+    </a>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-inner">
+        <a class="news intro i1" href="releases/v0.6.1.1">New in 0.6.1.1: plugins, autopilot and passkeys</a>
+        <h1 class="intro i2"><span class="l1">Your servers,</span><span class="l2">in orbit.</span></h1>
+        <p class="lede intro i3">
+          Fledge is a self-hosted control panel for game servers on your own Linux Docker hosts. The panel sits at the centre;
+          a small agent on each machine dials out to it. Consoles, files, backups, schedules and crash recovery all live in the browser.
+        </p>
+
+        <div class="install intro i4">
+          <div class="install-tabs" role="tablist" aria-label="Your operating system">
+            <button role="tab" id="tab-sh" aria-selected="true" aria-controls="cmd" data-os="sh">Linux or macOS</button>
+            <button role="tab" id="tab-ps" aria-selected="false" aria-controls="cmd" data-os="ps" tabindex="-1">Windows</button>
+          </div>
+          <div class="install-cmd" role="tabpanel" aria-labelledby="tab-sh">
+            <code id="cmd">git clone --depth 1 --branch main https://github.com/kavaliersdelikt/fledge.git fledge &amp;&amp; cd fledge &amp;&amp; sh ./install.sh</code>
+            <button class="copy" id="copy" type="button">Copy</button>
+          </div>
+          <p class="install-note">Needs Docker with Compose 2.20 or newer. The installer writes its own secrets and waits until everything is healthy.</p>
+        </div>
+
+        <div class="cta intro i5">
+          <a class="btn btn-primary" href="guide/quickstart">Read the quickstart</a>
+          <a class="btn btn-line" href="guide/what-is-fledge">What Fledge does</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block how" id="how" aria-labelledby="how-h">
+      <div class="how-copy">
+        <h2 id="how-h">One centre of gravity. Nothing knocks on your nodes.</h2>
+        <p>
+          Each Linux machine runs a Go agent that connects <em>out</em> to the panel over HTTPS. It picks up durable jobs, runs them
+          with the local Docker engine and streams the console back over a WebSocket. Your nodes never open an inbound port for Fledge,
+          so they can sit behind NAT or a strict firewall.
+        </p>
+        <ol class="steps">
+          <li><span><b>Install the panel</b> with one command. Docker Compose does the rest.</span></li>
+          <li><span><b>Connect a node</b> by pasting the one-time connector command the panel gives you.</span></li>
+          <li><span><b>Create servers</b> from templates. Fledge places each one on a node with room for it.</span></li>
+        </ol>
+      </div>
+      <figure class="orbit" id="orbit">
+        <svg viewBox="-300 -300 600 600" role="img" aria-labelledby="orbit-cap">
+          <defs>
+            <radialGradient id="core" r="0.5">
+              <stop offset="0" stop-color="#000" />
+              <stop offset="0.62" stop-color="#000" />
+              <stop offset="0.7" stop-color="#ffcfae" stop-opacity="0.9" />
+              <stop offset="0.8" stop-color="#a78bfa" stop-opacity="0.45" />
+              <stop offset="1" stop-color="#a78bfa" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <g class="rings"><circle r="150" /><circle r="215" /><circle r="275" /></g>
+          <g id="links"></g>
+          <circle r="80" fill="url(#core)" />
+          <text class="hub-label" y="5">panel</text>
+          <g id="nodes"></g>
+        </svg>
+        <figcaption id="orbit-cap">Three nodes, each holding one connection it opened itself. The blue pulses travel outward from the agent; nothing travels in uninvited.</figcaption>
+      </figure>
+    </section>
+
+    <section class="block tour" id="tour" aria-labelledby="tour-h">
+      <div class="tour-head">
+        <h2 id="tour-h">Everything a server needs, on one page.</h2>
+        <div class="tour-tabs" role="tablist" aria-label="Parts of the panel">
+          <button role="tab" aria-selected="true" data-i="0">Console</button>
+          <button role="tab" aria-selected="false" data-i="1" tabindex="-1">Mods</button>
+          <button role="tab" aria-selected="false" data-i="2" tabindex="-1">Schedules</button>
+          <button role="tab" aria-selected="false" data-i="3" tabindex="-1">Usage history</button>
+          <button role="tab" aria-selected="false" data-i="4" tabindex="-1">Nodes</button>
+          <button role="tab" aria-selected="false" data-i="5" tabindex="-1">Plugin store</button>
+        </div>
+      </div>
+      <div class="frame-wrap" id="frame-wrap">
+        <div class="frame" id="frame" role="tabpanel">
+          <div class="frame-bar"><i></i><i></i><i></i><span id="frame-url">panel.example.org/servers/survival</span></div>
+          <img id="tour-img" src="screenshots/server-console.webp" alt="Server page with a live console and CPU, memory and disk gauges" width="1360" height="860" />
+        </div>
+        <p class="tour-caption" id="tour-caption" aria-live="polite">A live console that keeps its history, next to CPU, memory and disk for the server.</p>
+      </div>
+      <p class="tour-foot">Fictional demo data. The panel also has a file manager, temporary SFTP logins, extra ports, cloning and a Startup page for template variables.</p>
+    </section>
+
+    <section class="block spec" id="features" aria-labelledby="spec-h">
+      <h2 id="spec-h">The hard parts, already handled.</h2>
+      <div class="spec-grid">
+        <div class="spec-item spec-disk">
+          <h3>Disk limits the kernel enforces</h3>
+          <p>Each server gets its own volume, so a full disk stops writes instead of filling the host. Resize it from the panel.</p>
+          <div class="disks" aria-hidden="true">
+            <div class="disk" style="--f:.42"><span>survival</span><em>8.4 of 20 GB</em></div>
+            <div class="disk" style="--f:.71"><span>creative</span><em>7.1 of 10 GB</em></div>
+            <div class="disk full" style="--f:1"><span>modded</span><em>15 of 15 GB, writes refused</em></div>
+          </div>
+          <a href="agent/disk-limits">How disk limits work</a>
+        </div>
+        <div class="spec-item">
+          <h3>Backups and failover</h3>
+          <p>Verified backups to any S3-compatible storage, with retention. When a node goes offline, Fledge can rebuild its servers from the newest backup on another node.</p>
+          <a href="operate/failover">Failover and moves</a>
+        </div>
+        <div class="spec-item">
+          <h3>Autopilot</h3>
+          <p>Cron schedules with chained steps: command, wait, backup, restart. Crashed servers come back on their own, with crash-loop protection. Alerts go to Discord, Slack, webhooks or email.</p>
+          <a href="panel/schedules">Schedules</a>
+        </div>
+        <div class="spec-item">
+          <h3>People and quotas</h3>
+          <p>Accounts for the people you host, collaborators with fine-grained permissions per server, and quotas on servers, memory, CPU, disk, backups and ports.</p>
+          <a href="panel/customers">Customers and quotas</a>
+        </div>
+        <div class="spec-item">
+          <h3>Sign-in that holds</h3>
+          <p>Two-factor sign-in is mandatory for administrators. Passkeys, device sign-out, an admin network allow-list, scoped API tokens and an audit log you can export.</p>
+          <a href="security/">Security model</a>
+        </div>
+        <div class="spec-item">
+          <h3>Clone and move</h3>
+          <p>Copy a server with or without its world, or move it to another node in a planned move when you need the room.</p>
+          <a href="panel/clone">Clone a server</a>
+        </div>
+        <div class="spec-item">
+          <h3>An API under everything</h3>
+          <p>Every endpoint is described in OpenAPI and documented on this site, alongside Prometheus metrics and webhooks.</p>
+          <a href="api/">API reference</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block plugins" id="plugins" aria-labelledby="plug-h">
+      <div class="plugins-copy">
+        <h2 id="plug-h">Plugins that can’t reach what they shouldn’t.</h2>
+        <p>
+          Plugin code runs in QuickJS compiled to WebAssembly, inside its own container, with no database credentials and no Docker
+          socket. A plugin can only reach the hosts it declares, and you see every permission before you install it.
+        </p>
+        <p>
+          Two come with Fledge. The <b>Modrinth Mod Browser</b> covers Fabric, Quilt, Forge and NeoForge; the <b>Modrinth Plugin Browser</b>
+          covers Paper, Purpur, Folia and Spigot. Search, review the dependencies, install, and the node checks each file’s SHA-512
+          before it lands.
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary" href="plugins/tutorial">Write your first plugin</a>
+          <a class="btn btn-line" href="plugins/security">Read the sandbox model</a>
+        </div>
+      </div>
+      <div class="plugins-side">
+        <div class="code">
+          <p class="code-name">fledge-plugin.json</p>
+<pre><code>{
+  <span class="k">"id"</span>: <span class="s">"tiny-catalog"</span>,
+  <span class="k">"apiVersion"</span>: 1,
+  <span class="k">"permissions"</span>: [
+    <span class="s">"network:downloads.example.org"</span>,
+    <span class="s">"servers:read"</span>,
+    <span class="s">"servers:files.write"</span>
+  ],
+  <span class="k">"catalogs"</span>: [{ <span class="k">"id"</span>: <span class="s">"tiny"</span>, <span class="k">"kind"</span>: <span class="s">"mod"</span> }]
+}</code></pre>
+        </div>
+        <dl class="limits">
+          <div><dt>Time per call</dt><dd>25 s</dd></div>
+          <div><dt>Memory per call</dt><dd>64 MB</dd></div>
+          <div><dt>Requests per call</dt><dd>40</dd></div>
+          <div><dt>Outbound traffic</dt><dd>HTTPS to declared public hosts</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="block templates" aria-labelledby="tpl-h">
+      <h2 id="tpl-h">Ready for the games you already run.</h2>
+      <ul class="tpl-list">
+        <li>Minecraft Java <small>Paper, Purpur, Fabric, Forge, NeoForge</small></li>
+        <li>Minecraft Bedrock</li>
+        <li>Valheim</li>
+        <li>Node.js, Python, Go, Bun, .NET</li>
+        <li>Your Pterodactyl eggs <small>imported as templates</small></li>
+      </ul>
+    </section>
+
+    <section class="block final" aria-labelledby="final-h">
+      <h2 id="final-h">Bring your worlds home.</h2>
+      <p>Free and open source under the AGPL-3.0. Set it up on a spare machine tonight and connect your first node in minutes.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="guide/quickstart">Read the quickstart</a>
+        <a class="btn btn-line" href="https://discord.gg/gu49ZF6tQh">Ask on Discord</a>
+      </div>
+      <p class="status">
+        Fledge is in active development and suited to evaluation and controlled testing. It has not had a production security review.
+        <a href="guide/status">Status and known gaps</a>
+      </p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="foot-brand"><img src="fledge-symbol.png" alt="" width="22" height="22" />Fledge</div>
+    <nav aria-label="Documentation">
+      <a href="guide/quickstart">Quickstart</a>
+      <a href="operate/install">Install</a>
+      <a href="panel/servers">Panel</a>
+      <a href="agent/">Node agent</a>
+      <a href="plugins/">Plugins</a>
+      <a href="api/">API</a>
+      <a href="security/">Security</a>
+      <a href="releases/">Releases</a>
+      <a href="https://github.com/kavaliersdelikt/fledge">GitHub</a>
+    </nav>
+    <p class="foot-note">AGPL-3.0-only. The black hole at the top is rendered live on your graphics card: every pixel is a ray of light bent through Schwarzschild space-time. <button class="linkish" id="bh-toggle" type="button">Pause it</button></p>
+  </footer>
+
+  <script type="module" src="landing.js"></script>
+</body>
+</html>
