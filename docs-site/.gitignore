@@ -9,4 +9,6 @@ docs/reference/plugin-manifest.md
 docs/reference/events.md
 docs/reference/schema.md
 docs/reference/jobs.md
+docs/reference/theme-tokens.md
 generated/
+screenshots/demo-session.json

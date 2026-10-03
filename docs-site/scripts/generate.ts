@@ -5,6 +5,7 @@
 //   - notification events     from api/src/notifications.ts
 //   - database schema         from db/schema.sql
 //   - agent job kinds         from agent/main.go and scripts/job-descriptions.json
+//   - theme tokens, presets   from shared/theme.ts
 //   - release notes           from docs/releases/*.md
 //
 //   node ../api/node_modules/tsx/dist/cli.mjs scripts/generate.ts
@@ -14,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { EVENTS } from '../../api/src/notifications.ts';
 import { KNOWN_HOOKS, FIXED_PERMISSIONS, describePermission, API_VERSION } from '../../api/src/plugins/manifest.ts';
 import { defaultLimits } from '../../plugins/host/src/sandbox.ts';
+import { COLOR_TOKENS, DENSITIES, FONTS, PRESETS, RADII, TEXT_SCALES, checkTokens, derivePalette, FLEDGE_DARK_INPUT, FLEDGE_LIGHT_INPUT } from '../../shared/theme.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const site = join(here, '..');
@@ -258,6 +260,47 @@ const problems: string[] = [];
     out('api/reference/index.md', idx);
     writeFileSync(join(site, 'generated', 'coverage.json'), JSON.stringify({ total, undocumented }));
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Theme tokens and presets (the appearance settings)
+// ---------------------------------------------------------------------------------------------------------------------------
+{
+  const use: Record<string, string> = {
+    bg: 'Page background', surface: 'Cards and panels', 'surface-2': 'Inputs, raised areas', 'surface-3': 'Hover and pressed states', raised: 'Menus, dialogs, toasts',
+    border: 'Dividers and card borders', 'border-strong': 'Input and button borders', 'border-hover': 'Borders on hover',
+    text: 'Body text', 'text-2': 'Secondary text', 'text-3': 'Hints, placeholders, disabled text',
+    primary: 'Main button', 'primary-hover': 'Main button on hover', 'primary-text': 'Text on the main button', accent: 'Links, focus rings, switches, highlights', 'on-accent': 'The knob of a switch that is on',
+    ok: 'Success', warn: 'Warning', bad: 'Error and delete', busy: 'Busy and information', 'on-bad': 'Text on a solid delete button',
+    'seg-alt': 'Second colour in stacked bars', 'terminal-bg': 'Console and file editor background', 'terminal-text': 'Console text', 'shadow-ink': 'Colour of shadows', wash: 'Hover overlays (white on dark, black on light)', gloss: 'Highlight on buttons', scrim: 'Dimmed backdrop behind dialogs',
+  };
+  for (const t of COLOR_TOKENS) if (!use[t]) problems.push(`theme token ${t} has no description in scripts/generate.ts`);
+  const dark = derivePalette(FLEDGE_DARK_INPUT, 'dark').tokens, light = derivePalette(FLEDGE_LIGHT_INPUT, 'light').tokens;
+  const sw = (hex: string) => `\`${hex}\``;
+  let md = `---\ntitle: Theme tokens and presets\n---\n\n# Theme tokens and presets\n\n${GENERATED('shared/theme.ts')}\n`;
+  md += 'This is the reference behind [Appearance](/panel/appearance): the colours Fledge calculates, the checks it runs and the built-in presets. The same file is used by the panel (live preview) and by the API (validation), so these tables are what the code does.\n\n';
+  md += '## Colour tokens\n\nEach token is a CSS custom property named `--<token>`. The first two columns are Fledge\'s own palettes; other palettes are calculated from an accent colour and a tint.\n\n| Token | Used for | Fledge dark | Fledge light |\n| --- | --- | --- | --- |\n';
+  for (const t of COLOR_TOKENS) md += `| \`--${t}\` | ${use[t]} | ${sw((dark as any)[t])} | ${sw((light as any)[t])} |\n`;
+  md += '\nSoft and line variants (`--accent-soft`, `--ok-soft`, `--warn-soft`, `--bad-soft`, `--busy-soft`, `--accent-line`) are always mixed from their base colour in the stylesheet, so changing a base colour changes them too.\n\n';
+  const std = checkTokens(dark, 'standard'), high = checkTokens(dark, 'high');
+  md += '## Readability checks\n\nEvery palette is checked before it can be saved. **Cannot be saved** means the pair fails the minimum; **Warning** only reports it. *High contrast* raises the minimums.\n\n| Pair | Minimum | Minimum (high contrast) | If it fails |\n| --- | --- | --- | --- |\n';
+  for (const p of std.pairs) {
+    const h = high.pairs.find((x) => x.id === p.id);
+    md += `| ${p.label} | ${p.min}:1 | ${h ? `${h.min}:1` : 'n/a'} | ${p.severity === 'error' ? 'Cannot be saved' : 'Warning'} |\n`;
+  }
+  md += '| The four status colours | Look different with red-green colour blindness | | Warning |\n\n';
+  md += 'Calculated palettes also keep hints and placeholders at 4.5:1 on every surface. The built-in Fledge dark palette is the exception: it keeps its original 3.6:1 for hints so that an untouched panel looks exactly as before, which is why the *Fledge* preset can show that row as a warning in the editor; every other preset, and *High contrast*, passes.\n\nA chosen accent that is too dim is **moved** (lighter on dark, darker on light) until the first rows pass, and the editor says so. Only colours you pin yourself, or exotic combinations, can fail.\n\n';
+  md += '## Presets\n\nEvery preset has a dark and a light palette. Choosing one also sets the font, corner radius and density shown.\n\n| Preset | Description | Dark (page, accent) | Light (page, accent) | Font | Corners | Density |\n| --- | --- | --- | --- | --- | --- | --- |\n';
+  for (const p of PRESETS) {
+    const d = derivePalette(p.dark, 'dark').tokens, l = derivePalette(p.light, 'light').tokens;
+    md += `| **${p.name}** | ${p.description} | ${sw(d.bg)}, ${sw(d.accent)} | ${sw(l.bg)}, ${sw(l.accent)} | ${FONTS[p.font ?? 'geist'].label} | ${p.radius ?? 10} px | ${p.density ?? 'comfortable'} |\n`;
+  }
+  md += '\n## Fonts, sizes and shape\n\n| Setting | Choices |\n| --- | --- |\n';
+  md += `| Font | ${(Object.keys(FONTS) as (keyof typeof FONTS)[]).map((k) => `${FONTS[k].label} (${FONTS[k].note.toLowerCase()})`).join('; ')}. Fonts are bundled with the panel; nothing is loaded from other sites. |\n`;
+  md += `| Text size | ${TEXT_SCALES.map((s) => `${Math.round(s * 100)}%`).join(', ')} (\`--text-scale\`) |\n`;
+  md += `| Corner radius | ${RADII.map((r) => (r === 0 ? 'square' : `${r} px`)).join(', ')} (\`--radius-scale\`, 10 px is 1) |\n`;
+  md += `| Density | ${Object.entries(DENSITIES).map(([k, v]) => `${k} (${v})`).join(', ')} (\`--density\`, scales control and row heights) |\n`;
+  out('reference/theme-tokens.md', md);
 }
 
 if (problems.length) {
