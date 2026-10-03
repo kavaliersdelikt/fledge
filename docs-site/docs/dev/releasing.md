@@ -4,7 +4,7 @@ title: Releasing
 
 # Releasing
 
-Versions have four parts, `major.minor.patch.release` (for example `0.6.2.1`).
+Versions have four parts, `major.minor.patch.release` (for example `0.7.1.1`).
 
 ## Checklist
 
