@@ -59,7 +59,7 @@ test("colours come from tokens", () => {
 test("control heights follow the density setting", () => {
   const css = read("globals.css");
   for (const selector of [".btn", ".input", ".nav__item", ".table td"]) {
-    const block = new RegExp(`^${selector.replace(/[.]/g, "\\.")} \\{[^}]*\\}`, "m").exec(css)?.[0] || "";
+    const block = new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{[^}]*\\}`, "m").exec(css)?.[0] || "";
     assert.match(block, /var\(--density\)/, `${selector} should use --density`);
   }
 });
