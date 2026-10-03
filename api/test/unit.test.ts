@@ -11,9 +11,20 @@ import {payloadFor,EVENTS} from '../src/notifications.ts';
 import {isPrivateAddress} from '../src/netguard.ts';
 import {safeTest,validPattern} from '../src/saferegex.ts';
 import {tokenScopeFor} from '../src/openapi.ts';
-import {looksLikeEmail,looksLikeMailbox} from '../src/core.ts';
+import {checkTotp,looksLikeEmail,looksLikeMailbox} from '../src/core.ts';
+import {authenticator} from 'otplib';
 
 const base={id:'demo-plugin',name:'Demo',version:'1.0.0',apiVersion:1,description:'d',author:'a',license:'MIT'};
+test('TOTP verification tolerates one adjacent time step only',()=>{
+ const realNow=Date.now,now=Math.floor(realNow()/30_000)*30_000+1_000,secret=authenticator.generateSecret();
+ const codeAt=(epoch:number)=>authenticator.clone({epoch}).generate(secret);
+ Date.now=()=>now;
+ try{
+  assert.equal(checkTotp(secret,codeAt(now-30_000)),true,'a code from the immediately preceding time step is accepted');
+  assert.equal(checkTotp(secret,codeAt(now-60_000)),false,'older codes remain invalid');
+  assert.equal(checkTotp(secret,'not-a-code'),false,'malformed codes remain invalid');
+ }finally{Date.now=realNow;}
+});
 test('manifest validation accepts good manifests and explains bad ones',()=>{
  const m=validateManifest({...base,permissions:['network:api.example.com','servers:read','storage'],catalogs:[{id:'c',label:'C',kind:'mod'}]});
  assert.deepEqual(networkHosts(m.permissions),['api.example.com']);

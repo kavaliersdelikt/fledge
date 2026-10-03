@@ -42,7 +42,7 @@ export async function audit(actor:string|null,action:string,targetType:string,ta
 export function encrypt(s:string){const k=process.env.ENCRYPTION_KEY;if(!k||!/^([a-f0-9]{64})$/i.test(k)) fail(500,'ENCRYPTION_KEY must be 32-byte hexadecimal');const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',Buffer.from(k!,'hex'),iv),data=Buffer.concat([cipher.update(s,'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64');}
 export function decrypt(s:string){const b=Buffer.from(s,'base64'),k=Buffer.from(process.env.ENCRYPTION_KEY!,'hex'),d=createDecipheriv('aes-256-gcm',k,b.subarray(0,12));d.setAuthTag(b.subarray(12,28));return Buffer.concat([d.update(b.subarray(28)),d.final()]).toString('utf8');}
 export const makeTotp=()=>authenticator.generateSecret();
-export const checkTotp=(s:string,code:string)=>/^\d{6}$/.test(code)&&authenticator.check(code,s);
+export const checkTotp=(s:string,code:string)=>/^\d{6}$/.test(code)&&authenticator.clone({window:1}).check(code,s);
 export const passwordHash=(s:string)=>bcrypt.hash(s,12);
 export const passwordCheck=(s:string,h:string)=>bcrypt.compare(s,h);
 export async function migrate(){const schema=readFileSync(fileURLToPath(new URL('../../db/schema.sql',import.meta.url)),'utf8');await pool.query(schema);}
