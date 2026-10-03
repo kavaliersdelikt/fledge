@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import "./globals.css";
 import "./appearance.css";
+import "./commerce.css";
 import { BrandProvider } from "@/lib/brand";
 import { INIT_SCRIPT, MODE_COOKIE, isPersonalMode } from "@/lib/brand-init";
 import { getBranding } from "@/lib/branding-server";

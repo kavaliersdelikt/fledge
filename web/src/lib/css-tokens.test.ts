@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const dir = join(import.meta.dirname, "..", "app");
-const files = ["globals.css", "appearance.css"];
+const files = ["globals.css", "appearance.css", "commerce.css"];
 const read = (f: string) => readFileSync(join(dir, f), "utf8").split("\r\n").join("\n");
 
 /** Strips comments but keeps line numbers. */

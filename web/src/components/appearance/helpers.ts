@@ -52,6 +52,8 @@ export const NAV_LABELS: Record<string, string> = {
   api: "API",
   updates: "Updates",
   settings: "Settings",
+  store: "Store",
+  billing: "Billing",
 };
 
 /** Local date-time input value (yyyy-mm-ddThh:mm) from an ISO string, and back. */
