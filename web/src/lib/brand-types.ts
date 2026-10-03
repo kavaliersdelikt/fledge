@@ -41,7 +41,7 @@ export type BrandingAdmin = {
 };
 
 export const LINK_ICONS = ["link", "book", "life-buoy", "message-circle", "shield", "activity", "server", "globe", "heart", "mail", "file-text", "help-circle", "users", "star"] as const;
-export const NAV_IDS = ["overview", "servers", "nodes", "resilience", "templates", "plugins", "customers", "activity", "api", "updates", "settings"] as const;
+export const NAV_IDS = ["overview", "servers", "nodes", "resilience", "templates", "plugins", "customers", "activity", "api", "updates", "settings", "store", "billing"] as const;
 
 /** What the panel shows when the API cannot be reached (and what a fresh install receives). */
 export const DEFAULT_PUBLIC: PublicBranding = {
