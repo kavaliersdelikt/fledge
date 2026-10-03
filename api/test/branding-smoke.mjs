@@ -12,7 +12,7 @@ const smtp=new SMTPServer({authOptional:true,allowInsecureAuth:true,disabledComm
 await new Promise(r=>smtp.listen(0,'127.0.0.1',r));
 const smtpPort=smtp.server.address().port;
 
-const stack=await bootStack({db:'fledge_branding_smoke',apiPort:4181,hostPort:4529,mock:null,apiEnv:{SLOW_SWEEP_MS:'1500',RATE_LIMIT_AUTH_WRITE:'5000'}});
+const stack=await bootStack({db:'fledge_branding_smoke',apiPort:4181,hostPort:4529,mock:null,apiEnv:{SLOW_SWEEP_MS:'1500',SWEEP_INTERVAL_MS:'500',RATE_LIMIT_AUTH_WRITE:'5000'}});
 const admin=client(stack.base);const {call,ok,status,check}=admin;
 const anon=client(stack.base);
 let failed=null,second=null;
