@@ -182,6 +182,7 @@ export default function Templates() {
   return (
     <>
       <PageHeader
+        nav="templates"
         title="Templates"
         actions={
           <>

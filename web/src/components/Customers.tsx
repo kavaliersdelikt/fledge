@@ -331,6 +331,7 @@ export default function Customers() {
   return (
     <>
       <PageHeader
+        nav="customers"
         title="Customers"
         actions={
           <Button variant="primary" onClick={() => setCreating(true)}>

@@ -8,6 +8,7 @@ import { CopyButton, Modal, Secret } from "./feedback";
 import { Button, Card, Confirm, Field, Form, PageHeader, Row, Select, State, Status, useLoad } from "./shared";
 import { Plus } from "lucide-react";
 import AdminSettings from "./AdminSettings";
+import { AppearanceLink } from "./AppearancePage";
 import { PasskeysCard, PlanCard, SessionsCard } from "./AccountSecurity";
 import NotificationsCard from "./Notifications";
 import Link from "next/link";
@@ -84,7 +85,7 @@ export default function SettingsPage({ user }: { user: User }) {
 
   return (
     <>
-      <PageHeader title="Settings" />
+      <PageHeader nav="settings" title="Settings" />
       <div className="settings">
         <Section title="Account">
           <Card>
@@ -126,6 +127,12 @@ export default function SettingsPage({ user }: { user: User }) {
             <Button onClick={() => setAsk("recovery")}>Generate recovery codes</Button>
           </div>
         </Section>
+
+        {admin && (
+          <Section title="Appearance" description="The panel’s name, logo, colours, sign-in page and announcements.">
+            <AppearanceLink />
+          </Section>
+        )}
 
         {admin && (
           <Section title="Panel" description="Everything here takes effect immediately and is stored encrypted in the panel’s database — no .env editing or restarts.">

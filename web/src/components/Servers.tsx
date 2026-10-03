@@ -102,6 +102,7 @@ export default function Servers({ admin }: { admin: boolean }) {
   return (
     <>
       <PageHeader
+        nav="servers"
         title="Servers"
         actions={
           admin ? (

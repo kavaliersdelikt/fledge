@@ -1,4 +1,5 @@
 "use client";
+import { useBrand } from "@/lib/brand";
 import { request } from "@/lib/api";
 import { CircleAlert, CircleCheck, Info, LoaderCircle, TriangleAlert } from "lucide-react";
 import {
@@ -60,18 +61,23 @@ export function PageHeader({
   actions,
   meta,
   crumb,
+  nav,
 }: {
+  /** Id of the sidebar entry this page belongs to: the administrator may have renamed it (Settings, Appearance). */
+  nav?: string;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
   crumb?: ReactNode;
 }) {
+  const { brand } = useBrand();
+  const label = nav ? brand.navigation.labels[nav] : undefined;
   return (
     <header className="page-header">
       <div className="page-header__text">
         {crumb}
-        <h1>{title}</h1>
+        <h1>{label || title}</h1>
         {description ? <p>{description}</p> : null}
         {meta ? <div className="page-header__meta">{meta}</div> : null}
       </div>

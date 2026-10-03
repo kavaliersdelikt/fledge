@@ -4,21 +4,23 @@ import { askPasskey, passkeyProblem, passkeysSupported } from "@/lib/webauthn";
 import { Fingerprint, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Secret } from "./feedback";
+import { BrandMark, useBrand } from "@/lib/brand";
+import { PublicAnnouncementBanner } from "./AnnouncementBanner";
 import { Button, Notice, Segmented } from "./shared";
 
 type Mode = "loading" | "login" | "challenge" | "bootstrap" | "setup" | "recover" | "forgot" | "token";
 type Method = "totp" | "passkey";
 
-const copy: Record<Mode, [string, string]> = {
-  loading: ["Fledge", ""],
+const copyFor = (name: string): Record<Mode, [string, string]> => ({
+  loading: [name, ""],
   login: ["Sign in", ""],
   challenge: ["Two-factor authentication", ""],
-  bootstrap: ["Set up Fledge", "Create the first administrator account for this panel."],
+  bootstrap: [`Set up ${name}`, "Create the first administrator account for this panel."],
   setup: ["Turn on two-factor authentication", "Administrators need an authenticator app. Add this key to yours, then enter the code it shows."],
   recover: ["Recover your account", "Use one of your saved recovery codes to set a new password."],
   forgot: ["Reset your password", "Enter your email address and we’ll send you a link to choose a new one."],
   token: ["Choose a password", "Pick a password of at least 12 characters to finish."],
-};
+});
 
 const METHOD_KEY = "fledge.2fa-method";
 const readMethod = (): Method | null => {
@@ -191,7 +193,8 @@ export default function Auth({
     }
   }
 
-  const [title, rawSubtitle] = copy[mode];
+  const { brand } = useBrand();
+  const [title, rawSubtitle] = copyFor(brand.identity.name)[mode];
   const subtitle =
     mode === "challenge"
       ? method === "passkey"
@@ -233,11 +236,23 @@ export default function Auth({
   const noPasskeySupport = mode === "challenge" && method === "passkey" && !passkeysSupported();
 
   return (
-    <main className="auth">
+    <main className={`auth auth--${brand.login.layout} auth--bg-${brand.login.background}`}>
+      {brand.login.layout === "split" || brand.login.background === "image" ? (
+        <aside className="auth__aside" aria-hidden={brand.login.layout === "split" ? undefined : true} style={brand.login.background === "image" && brand.images.login ? { backgroundImage: `url(${brand.images.login})` } : undefined}>
+          {brand.login.layout === "split" ? (
+            <div className="auth__aside-text">
+              <div className="auth__brand auth__brand--large">
+                <BrandMark />
+              </div>
+              {brand.identity.tagline ? <p className="auth__tagline">{brand.identity.tagline}</p> : null}
+            </div>
+          ) : null}
+        </aside>
+      ) : null}
       <div className="auth__panel">
-        <div className="auth__brand">
-          <img src="/fledge-symbol.png" alt="" />
-          Fledge
+        <PublicAnnouncementBanner />
+        <div className={`auth__brand${brand.login.layout === "split" ? " auth__brand--compact" : ""}`}>
+          <BrandMark />
         </div>
         {mode === "loading" ? (
           error ? (
@@ -255,6 +270,8 @@ export default function Auth({
             <div className="auth__head">
               <h1>{title}</h1>
               {subtitle ? <p>{subtitle}</p> : null}
+              {mode === "login" && brand.login.welcome ? <p className="auth__welcome">{brand.login.welcome}</p> : null}
+              {mode === "login" && !brand.login.welcome && brand.identity.tagline && brand.login.layout !== "split" ? <p className="auth__welcome">{brand.identity.tagline}</p> : null}
             </div>
             {mode === "forgot" && sent ? (
               <div className="form">
@@ -406,6 +423,20 @@ export default function Auth({
             )}
           </>
         )}
+        {brand.login.footerLinks.length || brand.identity.showPoweredBy ? (
+          <footer className="auth__legal">
+            {brand.login.footerLinks.map((l) => (
+              <a key={l.url + l.label} href={l.url} {...(l.newTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noopener noreferrer" })}>
+                {l.label}
+              </a>
+            ))}
+            {brand.identity.showPoweredBy ? (
+              <a href="https://kavaliersdelikt.github.io/fledge/" target="_blank" rel="noopener noreferrer" className="auth__powered">
+                Powered by {brand.product.name}
+              </a>
+            ) : null}
+          </footer>
+        ) : null}
       </div>
     </main>
   );

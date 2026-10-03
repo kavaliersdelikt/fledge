@@ -236,6 +236,7 @@ export default function Resilience() {
   return (
     <>
       <PageHeader
+        nav="resilience"
         title="Resilience"
         actions={
           <Link href="/settings" className="btn btn--secondary">

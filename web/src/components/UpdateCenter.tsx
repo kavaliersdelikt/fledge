@@ -103,6 +103,7 @@ export default function UpdateCenter() {
   return (
     <>
       <PageHeader
+        nav="updates"
         title="Updates"
         meta={
           info ? (

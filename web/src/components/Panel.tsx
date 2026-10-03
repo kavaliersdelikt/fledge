@@ -1,10 +1,12 @@
 "use client";
 import { ApiError, json, request, type User } from "@/lib/api";
+import { MarkImage, useBrand } from "@/lib/brand";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import ActivityPage from "./ActivityPage";
 import ApiDocs from "./ApiDocs";
+import AppearancePage from "./AppearancePage";
 import Auth from "./Auth";
 import Customers from "./Customers";
 import ServerDetail from "./Detail";
@@ -25,6 +27,7 @@ export default function Panel() {
   const router = useRouter(),
     pathname = usePathname(),
     query = useSearchParams();
+  const { brand, setMode } = useBrand();
   const [user, setUser] = useState<User | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
@@ -33,6 +36,8 @@ export default function Panel() {
     request<User>("/auth/me")
       .then((u) => {
         if (active) setUser(u);
+        // A choice made on another device follows the account.
+        if (active && u.preferences?.mode && brand.theme.allowUserMode) setMode(u.preferences.mode);
       })
       .catch((e) => {
         if (active && (!(e instanceof ApiError) || e.status !== 401))
@@ -48,14 +53,14 @@ export default function Panel() {
   if (loading)
     return (
       <div className="splash" role="status" aria-label="Loading">
-        <img src="/fledge-symbol.png" alt="" />
+        <MarkImage />
       </div>
     );
   if (error)
     return (
       <div className="splash">
         <div className="splash__box">
-          <img src="/fledge-symbol.png" alt="" />
+          <MarkImage />
           <h1>Can’t reach the panel API</h1>
           <Notice tone="bad">{error}</Notice>
           <Button variant="primary" onClick={() => location.reload()}>
@@ -103,6 +108,12 @@ export default function Panel() {
         actorId={user.id}
         tab={query.get("tab") || "console"}
       />
+    );
+  else if (seg[0] === "settings" && seg[1] === "appearance" && seg.length === 2)
+    page = admin ? (
+      <AppearancePage />
+    ) : (
+      <Empty title="Administrator access required">Only panel administrators can change the appearance.</Empty>
     );
   else if (seg.length > 1) page = null;
   else

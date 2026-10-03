@@ -65,6 +65,7 @@ export default function Nodes() {
   return (
     <>
       <PageHeader
+        nav="nodes"
         title="Nodes"
         actions={
           <>

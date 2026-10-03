@@ -1,12 +1,12 @@
 import Link from "next/link";
+import { BrandMark } from "@/lib/brand";
 import { ArrowUpRight, BookOpen, ChevronRight, Download, HardDrive } from "lucide-react";
 
 export default function InstallPage() {
   return (
     <main className="doc">
       <Link href="/" className="auth__brand">
-        <img src="/fledge-symbol.png" alt="" />
-        Fledge
+        <BrandMark />
       </Link>
       <header>
         <h1>Your panel is already installed</h1>

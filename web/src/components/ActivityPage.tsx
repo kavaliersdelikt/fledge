@@ -153,6 +153,7 @@ export default function ActivityPage() {
   return (
     <>
       <PageHeader
+        nav="activity"
         title="Activity"
         actions={
           <span className="btn-group">

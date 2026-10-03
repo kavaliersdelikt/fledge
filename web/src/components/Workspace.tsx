@@ -3,11 +3,26 @@
 import {
   Activity,
   ArrowDown,
+  Check,
+  Info,
   ArrowUp,
   BookOpen,
   Box,
   ChevronsUpDown,
   Code2,
+  ExternalLink,
+  Globe,
+  Heart,
+  HelpCircle,
+  LifeBuoy,
+  Link2,
+  Mail,
+  MessageCircle,
+  Monitor,
+  Moon,
+  Sun,
+  Star,
+  FileText,
   CornerDownLeft,
   Download,
   HardDrive,
@@ -25,7 +40,12 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import { items, request, type Node, type Server as ServerInfo, type User } from "@/lib/api";
+import { BrandMark, useBrand, useDocumentTitle } from "@/lib/brand";
+import type { BrandLink } from "@/lib/brand-types";
+import type { PersonalMode } from "@/lib/brand-init";
+import AboutDialog from "./AboutDialog";
+import AnnouncementBanner from "./AnnouncementBanner";
+import { items, json, request, type Node, type Server as ServerInfo, type User } from "@/lib/api";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -41,6 +61,7 @@ import { useGlide } from "./motion";
 import { Status, btn } from "./shared";
 
 type Destination = {
+  id: string;
   title: string;
   url: string;
   icon: LucideIcon;
@@ -49,18 +70,35 @@ type Destination = {
 };
 
 export const destinations: Destination[] = [
-  { title: "Overview", url: "/", icon: LayoutGrid, group: "", adminOnly: true },
-  { title: "Servers", url: "/servers", icon: Server, group: "", adminOnly: false },
-  { title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
-  { title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
-  { title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
-  { title: "Plugins", url: "/plugins", icon: Puzzle, group: "Infrastructure", adminOnly: true },
-  { title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
-  { title: "Activity", url: "/activity", icon: Activity, group: "Administration", adminOnly: true },
-  { title: "API", url: "/api-docs", icon: Code2, group: "Administration", adminOnly: true },
-  { title: "Updates", url: "/updates", icon: Download, group: "Administration", adminOnly: true },
-  { title: "Settings", url: "/settings", icon: Settings, group: "Administration", adminOnly: false },
+  { id: "overview", title: "Overview", url: "/", icon: LayoutGrid, group: "", adminOnly: true },
+  { id: "servers", title: "Servers", url: "/servers", icon: Server, group: "", adminOnly: false },
+  { id: "nodes", title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
+  { id: "resilience", title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
+  { id: "templates", title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
+  { id: "plugins", title: "Plugins", url: "/plugins", icon: Puzzle, group: "Infrastructure", adminOnly: true },
+  { id: "customers", title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
+  { id: "activity", title: "Activity", url: "/activity", icon: Activity, group: "Administration", adminOnly: true },
+  { id: "api", title: "API", url: "/api-docs", icon: Code2, group: "Administration", adminOnly: true },
+  { id: "updates", title: "Updates", url: "/updates", icon: Download, group: "Administration", adminOnly: true },
+  { id: "settings", title: "Settings", url: "/settings", icon: Settings, group: "Administration", adminOnly: false },
 ];
+
+const linkIcons: Record<string, LucideIcon> = {
+  link: Link2,
+  book: BookOpen,
+  "life-buoy": LifeBuoy,
+  "message-circle": MessageCircle,
+  shield: ShieldCheck,
+  activity: Activity,
+  server: Server,
+  globe: Globe,
+  heart: Heart,
+  mail: Mail,
+  "file-text": FileText,
+  "help-circle": HelpCircle,
+  users: Users,
+  star: Star,
+};
 
 function isActive(pathname: string, url: string) {
   return url === "/" ? pathname === "/" : pathname === url || pathname.startsWith(`${url}/`);
@@ -111,10 +149,17 @@ export default function Workspace({
   const attention = useAttention(admin);
   const notifications = useNotifications();
   // Customers only see two pages, so they get one unlabeled group.
+  const { brand } = useBrand();
+  const labels = brand.navigation.labels;
   const allowed = useMemo(
-    () => destinations.filter((d) => !d.adminOnly || admin).map((d) => (admin ? d : { ...d, group: "" as const })),
-    [admin],
+    () =>
+      destinations
+        .filter((d) => !d.adminOnly || admin)
+        .map((d) => ({ ...d, title: labels[d.id] || d.title, group: admin ? d.group : ("" as const) })),
+    [admin, labels],
   );
+  const current = allowed.find((d) => isActive(pathname, d.url));
+  useDocumentTitle(current?.title);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -164,8 +209,7 @@ export default function Workspace({
               <Menu />
             </button>
             <Link href={admin ? "/" : "/servers"} className="brand">
-              <img src="/fledge-symbol.png" alt="" />
-              Fledge
+              <BrandMark />
             </Link>
             <span className="mobilebar__bell">
               <BellButton center={notifications} variant="icon" />
@@ -174,6 +218,7 @@ export default function Workspace({
               <Search />
             </button>
           </header>
+          <AnnouncementBanner />
           <main id="content" tabIndex={-1} className="page" key={pathname}>
             {children}
           </main>
@@ -204,7 +249,15 @@ function SidebarContent({
 }) {
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState("");
+  const [about, setAbout] = useState(false);
   const [nav, setNav] = useState<HTMLElement | null>(null);
+  const { brand, mode, setMode } = useBrand();
+  const choose = (next: PersonalMode) => {
+    setMode(next);
+    // The choice follows the account to other devices; the cookie already applies it here.
+    json("PUT", "/auth/preferences", { mode: next }).catch(() => {});
+  };
+  const effective: PersonalMode = mode ?? brand.theme.mode;
   useGlide(nav, '[aria-current="page"]', pathname);
   const groups = [...new Set(allowed.map((d) => d.group))];
   const badge = (url: string) =>
@@ -222,8 +275,7 @@ function SidebarContent({
   return (
     <>
       <Link href={user.role === "admin" ? "/" : "/servers"} className="brand">
-        <img src="/fledge-symbol.png" alt="" />
-        <span>Fledge</span>
+        <BrandMark />
       </Link>
       <button className="sidebar-search" onClick={onSearch}>
         <Search />
@@ -250,6 +302,13 @@ function SidebarContent({
               ))}
           </div>
         ))}
+        {brand.navigation.links.length ? (
+          <div className="nav__group nav__group--links">
+            {brand.navigation.links.map((l) => (
+              <ExternalNavLink key={l.url + l.label} link={l} />
+            ))}
+          </div>
+        ) : null}
       </nav>
       <div className="sidebar__foot">
         <DropdownMenu>
@@ -270,7 +329,30 @@ function SidebarContent({
             <DropdownMenuItem render={<Link href="/install" />}>
               <BookOpen /> Getting started
             </DropdownMenuItem>
+            {brand.theme.allowUserMode ? (
+              <>
+                <DropdownMenuSeparator />
+                <div className="menu__label" id="appearance-label">
+                  Appearance
+                </div>
+                {(
+                  [
+                    ["light", "Light", Sun],
+                    ["dark", "Dark", Moon],
+                    ["system", "Match this device", Monitor],
+                  ] as [PersonalMode, string, LucideIcon][]
+                ).map(([value, label, Icon]) => (
+                  <DropdownMenuItem key={value} onClick={() => choose(value)} aria-checked={effective === value} role="menuitemradio">
+                    <Icon /> {label}
+                    {effective === value ? <Check className="menu__check" aria-label="selected" /> : null}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            ) : null}
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setAbout(true)}>
+              <Info /> About {brand.product.name}
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={leaving}
               onClick={async () => {
@@ -293,8 +375,24 @@ function SidebarContent({
             {error}
           </p>
         ) : null}
+        <AboutDialog open={about} onOpenChange={setAbout} />
       </div>
     </>
+  );
+}
+
+function ExternalNavLink({ link }: { link: BrandLink }) {
+  const Icon = linkIcons[link.icon] || Link2;
+  return (
+    <a
+      className="nav__item"
+      href={link.url}
+      {...(link.newTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noopener noreferrer" })}
+    >
+      <Icon />
+      {link.label}
+      {link.newTab ? <ExternalLink className="nav__external" aria-hidden="true" /> : null}
+    </a>
   );
 }
 

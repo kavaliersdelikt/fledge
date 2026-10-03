@@ -191,6 +191,7 @@ export default function Plugins() {
   return (
     <>
       <PageHeader
+        nav="plugins"
         title="Plugins"
         description="Add catalogs and integrations to your servers. Once a plugin is on, matching servers get a Mods or Plugins tab."
       />
