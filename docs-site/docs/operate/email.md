@@ -6,8 +6,10 @@ title: Email
 
 Email is optional. It powers:
 
+- **sign-up** confirmation and welcome emails,
 - **invitations** for new customers and collaborators,
-- **password reset** links,
+- **password reset** links and security notices,
+- **receipts**, payment reminders and other [billing emails](/panel/email-templates),
 - the **email** notification channel.
 
 Without email, invitations return a link you can pass on yourself and password resets are done by an administrator.
@@ -25,6 +27,11 @@ Without email, invitations return a link you can pass on yourself and password r
 
 Use **Send test email** to verify. The same values can seed the form from `.env` (`SMTP_HOST`, `SMTP_PORT`,
 `SMTP_SECURITY`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`); once saved in the panel, the database wins.
+
+## Templates, retries and the delivery log
+
+Every email is a [template](/panel/email-templates) you can edit. Mail goes out immediately; if the mail server is down it is kept and retried with growing pauses (a minute up to six hours, 8 attempts by default).
+The **delivery log** shows status, attempts and the last error. Also settable here: a **Reply-To** address, a **copy** address for receipts and billing alerts, the **messages per minute**, the **attempts** and how long the log is kept.
 
 ## Behaviour
 

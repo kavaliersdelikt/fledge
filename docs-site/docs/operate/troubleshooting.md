@@ -70,8 +70,15 @@ servers** does that) so it has the pipe. See [Console and stopping](/agent/conso
 
 ## Email is not arriving
 
-Use **Send test email** (save first). Check the SMTP security mode matches the port (587 *STARTTLS*, 465 *TLS*). Look at
+Open **Settings → Email templates → Delivery log**: every message has a status and the last error, and failed ones can be tried again. Use **Send test email** (save first). Check the SMTP security mode matches the port (587 *STARTTLS*, 465 *TLS*). Look at
 `docker compose logs api` for the SMTP error.
+
+## Customers cannot sign up, buy or create servers
+
+- **Sign-up unavailable:** it needs working email (Settings → Email) and a mode other than *Nobody*. A flood of registrations pauses it for an hour; a notification says so.
+- **"Payments are not available right now":** see [Recovering from billing problems](/operate/billing-recovery).
+- **A paid server was not created:** [Billing → Subscriptions](/panel/billing#when-the-server-cannot-be-created) shows why and retries by itself.
+- **A limit blocks something you did not expect:** the customer's page → *Edit limits* shows every limit and where it comes from; **Settings → Limits** can switch limits off or to warn only.
 
 ## Backups fail with 503
 

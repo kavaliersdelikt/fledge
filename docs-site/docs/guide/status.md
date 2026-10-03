@@ -4,7 +4,7 @@ title: Status and known gaps
 
 # Status, verification and known gaps
 
-Fledge is **beta**: suitable for evaluation and controlled testing, not for paying customers without the hardening and real-node tests below.
+Fledge is **beta**: suitable for evaluation and controlled testing, not for paying customers without the hardening and real-node tests below. Selling servers (0.7.1.1) is new: it was verified end to end against Stripe's test mode and a signed local stand-in, but not yet with real money or real customers. Start small and follow [Going live](/operate/selling).
 
 ## What is tested
 
@@ -32,6 +32,7 @@ Unresolved operational limits:
 - Live migration without downtime; failover is backup-based.
 - Native Windows services and containers; rootless agent operation.
 - Appearance: one look per panel (no different brand per domain), only the sidebar pages can be renamed (not every word), fonts are the bundled set, and HTML emails are not available. Contrast is checked against WCAG ratios, which is a floor, not a guarantee of good design.
+- Billing: one payment provider (Stripe) is included; tax calculation and invoicing documents are the provider's; there is no usage-based billing, prepaid credit, reseller or affiliate feature. Sign-up verification is by email only.
 - Passkeys with every browser and security key (verified with a software authenticator).
 - Update rollback cannot reverse a database schema migration. Keep independent backups.
 - Account recovery needs a saved recovery code; without one, an administrator with database access must intervene.

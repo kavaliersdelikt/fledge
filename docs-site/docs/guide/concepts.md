@@ -15,9 +15,13 @@ title: Concepts
 | **Job** | A durable unit of work for a node (create, start, stop, backup, file operations...). The agent polls for jobs and reports results. |
 | **Allocation** | A host port reserved for a server on a node. A server's base port plus offsets from its template and extra ports. |
 | **Add-on** | A mod or plugin file installed into a server's folder by a catalog plugin, tracked by the panel. |
-| **Plugin** | A sandboxed program that extends the panel (today: add-on catalogs and event hooks). |
+| **Plugin** | A sandboxed program that extends the panel (today: add-on catalogs, event hooks and payment providers). |
 | **Schedule** | A cron or interval rule that runs a chain of steps on a server (command, wait, backup, power). |
-| **Quota** | Per-customer limits on servers, memory, CPU, disk, backups and extra ports. |
+| **Limits** | What a customer may own. Layered: panel defaults, plans, and per-customer overrides. Can be switched off. See [Limits](/panel/limits). |
+| **Plan** | Something you sell or give: a *server plan* creates one server per subscription, an *account plan* adds to a customer's limits. See [Plans](/panel/plans). |
+| **Subscription** | A customer's hold on a plan, paid through a payment provider (or given for free). Its status controls the server. See [Billing](/panel/billing). |
+| **Store** | Where customers buy plans. Closed until everything it needs works. See [The store](/panel/store). |
+| **Payment provider** | A [plugin](/plugins/payments) that talks to Stripe or another provider. Fledge keeps the orders and entitlements. |
 | **Failover** | Re-creating a server from its newest backup on another node after its node has been silent too long. |
 | **Resilience** | The page that shows backup freshness, failover readiness and history. |
 

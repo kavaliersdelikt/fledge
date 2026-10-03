@@ -27,11 +27,18 @@ npm run test:fit         # quotas, extra ports, clone
 npm run test:autopilot   # schedules, crash policy, notifications, metrics
 npm run test:accounts    # sessions, invitations, passkeys, allow-list, audit, OpenAPI
 npm run test:branding    # appearance: CSS and image checks, public document, history, emails, kill switch
+npm run test:rookery     # sign-up, limits, self-service servers, email templates and outbox (unit tests and an end-to-end suite)
+npm run test:billing     # plans, the store, checkout, webhooks, subscriptions, dunning, refunds, disputes (against a signed Stripe stand-in)
+node --import tsx test/stripe-live.mjs   # by hand: the same plugin against the REAL Stripe test mode through the Stripe CLI (see below)
 node --import tsx test/smoke.mjs   # the original end-to-end smoke test (needs a running API, see below)
 ```
 
 The suites share `api/test/harness.mjs` (boots the stack, client with cookie jar, fake node helpers), `modrinth-mock.mjs`
 (a mock of the Modrinth API), `authenticator.mjs` (a software WebAuthn authenticator), and use an SMTP test server.
+
+`api/test/stripe-mock.mjs` is a small Stripe stand-in with controls that play the customer and send correctly signed webhooks. `api/test/stripe-live.mjs` runs the bundled Stripe plugin against the real
+Stripe API in **test mode** with the [Stripe CLI](https://docs.stripe.com/stripe-cli) you are logged in with. It never reads your API key: the plugin's calls are redirected to a local proxy that performs each one with
+`stripe get|post|delete`, webhooks come from `stripe listen`, and renewals and failures are driven with Stripe test clocks and test payment methods. The one step it cannot do is the customer paying on Stripe's hosted page.
 
 The legacy smoke test expects an API already running on port 4172 against an empty database (`TEST_API_URL`).
 
