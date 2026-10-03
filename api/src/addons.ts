@@ -1,3 +1,4 @@
+import {requireFlag} from './limits.js';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import {pool,fail,asId,serverAccess,audit,enqueue} from './core.js';
 import {backupEnabled} from './storage.js';
@@ -242,6 +243,7 @@ export function addonRoutes(app:FastifyInstance){
  app.post('/api/servers/:id/addons/install',async(req)=>{
   const {server,cap}=await context(req),b=req.body as any,p=await provider(cap,b?.pluginId);
   mustBeWritable(server);if(!canWrite(p))fail(403,'This plugin is not allowed to add files to servers');
+  await requireFlag(server.owner_id,'addons','Installing mods and plugins is not part of your plan.',{actorIsAdmin:req.actor?.role==='admin'});
   const plan=await buildPlan(server,cap,p,{projectId:clean(b?.projectId),versionId:b?.versionId?clean(b.versionId):null,optional:Array.isArray(b?.optional)?b.optional.slice(0,5).map((x:unknown)=>clean(x)):[]});
   if(plan.blockers.length)fail(409,plan.blockers.join(' '));
   const addons=await queueInstall(req,server,cap,p,plan,{backupFirst:b?.backupFirst===true});

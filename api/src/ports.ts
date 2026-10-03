@@ -1,7 +1,8 @@
 import type {FastifyInstance} from 'fastify';
 import {pool,fail,txt,serverAccess,audit,queueRecreate} from './core.js';
 import {active} from './servers.js';
-import {enforceQuota,usageOf,type Quota} from './quota.js';
+import {enforceQuota,usageOf} from './quota.js';
+import {resolveLimits} from './limits.js';
 
 // Extra port mappings per server (query ports, voice, RCON, ...). They are stored as offsets
 // from the server's base port, exactly like the template's own ports, so planned moves and
@@ -15,9 +16,9 @@ async function overview(req:any,s:any){
  const t=(await pool.query('SELECT internal_ports FROM templates WHERE id=$1',[s.template_id])).rows[0];
  const node=(await pool.query('SELECT public_host FROM nodes WHERE id=$1',[s.node_id])).rows[0];
  const extras:Extra[]=s.extra_ports||[];
- const quota=((await pool.query('SELECT quota FROM users WHERE id=$1',[s.owner_id])).rows[0]?.quota||{}) as Quota;
+ const eff=(await resolveLimits(s.owner_id)).values as any;
  const used=(await usageOf(s.owner_id)).extraPorts;
- const limit=quota.maxExtraPorts===undefined||quota.maxExtraPorts===null?null:quota.maxExtraPorts;
+ const limit:number|null=typeof eff.extraPorts==='number'&&eff.extraPortsAllowed!==false?eff.extraPorts:null;
  const admin=req.actor?.role==='admin';
  return {basePort:s.port,publicHost:node?.public_host||null,
   mappings:[...(t.internal_ports as any[]).map(p=>({source:'template',container:p.container,offset:p.offset,hostPort:s.port+p.offset,protocol:p.protocol,label:null,removable:false})),...extras.map(p=>({source:'extra',container:p.container,offset:p.offset,hostPort:s.port+p.offset,protocol:p.protocol,label:p.label||null,removable:true}))],
@@ -35,8 +36,8 @@ export function portRoutes(app:FastifyInstance){
   if(!['tcp','udp'].includes(protocol))fail(400,'protocol must be tcp or udp');
   const label=b?.label===undefined||b?.label===''?undefined:txt(b.label,40);
   if(req.actor!.role!=='admin'){
-   const quota=(await pool.query('SELECT quota FROM users WHERE id=$1',[s.owner_id])).rows[0]?.quota as Quota;
-   if(quota?.maxExtraPorts===undefined||quota?.maxExtraPorts===null)fail(403,'Only your provider can add ports to this server');
+   const eff=(await resolveLimits(s.owner_id)).values as any;
+   if(typeof eff.extraPorts!=='number'||eff.extraPortsAllowed===false)fail(403,'Only your provider can add ports to this server');
   }
   const c=await pool.connect();
   try{

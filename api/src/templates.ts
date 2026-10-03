@@ -109,7 +109,7 @@ async function parseBody(b:any,existing?:any){
 const canon=(v:any):string=>JSON.stringify(v,(_k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
 const snapshot=(t:any)=>({image:t.image,startup:t.startup,stopCommand:t.stop_command,internalPorts:t.internal_ports,env:t.env});
 const shape=(t:any,isAdmin:boolean)=>({id:t.id,name:t.name,description:t.description,image:t.image,startup:isAdmin?t.startup:null,internalPorts:t.internal_ports,env:isAdmin?t.env:Object.fromEntries(Object.keys(t.env).map(k=>[k,'[configured]'])),memoryMb:t.memory_mb,cpuPercent:t.cpu_percent,diskMb:t.disk_mb,
- editableVariables:t.editable_variables,variables:effectiveDefs(t).map(d=>isAdmin?d:{...d}),stopCommand:t.stop_command,official:t.official,version:t.version,addons:t.addons,quickCommands:t.quick_commands,updatedAt:t.updated_at});
+ editableVariables:t.editable_variables,variables:effectiveDefs(t).map(d=>isAdmin?d:{...d}),stopCommand:t.stop_command,official:t.official,customerVisible:!!t.customer_visible,customerDescription:t.customer_description||'',version:t.version,addons:t.addons,quickCommands:t.quick_commands,updatedAt:t.updated_at});
 
 export function templateRoutes(app:FastifyInstance){
  app.get('/api/templates',async(req)=>{
