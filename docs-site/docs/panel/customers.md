@@ -17,9 +17,15 @@ title: Customers and quotas
 Other actions: reset the password (the customer is signed out everywhere and their API tokens are revoked), **sign out
 everywhere**, disable or enable the account.
 
-## Quotas
+## Sign-up, status and plans
 
-A quota limits what a customer **owns**:
+With [sign-up](/panel/signup) on, people who create their own account show up here as **Signed up** or **Invited**. A *Waiting for you* card lists those whose email is unconfirmed or who need your approval.
+The customer's drawer lists their [plans](/panel/plans) and lets you give them one.
+
+## Limits (formerly quotas)
+
+Limits are now layered (panel defaults, the customer's plans, and what you set by hand here) and can be switched off or set to warn only; see [Limits](/panel/limits). **Edit limits** shows what applies and where each number comes
+from, and lets you set the customer's own values. The six original fields are unchanged and still stored under the same names:
 
 | Field | Limit on |
 | --- | --- |
@@ -36,7 +42,7 @@ both slip under the limit. Errors name what would be exceeded ("2048 MB memory i
 
 Administrators can exceed a quota deliberately (the request's `force` option); customers cannot.
 
-Customers see their own quota and usage (`GET /api/account/usage`), including remaining extra ports, in the panel.
+Customers see their own usage (`GET /api/limits/me`, and the older `GET /api/account/usage`) in the panel, with where each limit comes from.
 
 ## Collaborators
 

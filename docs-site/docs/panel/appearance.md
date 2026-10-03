@@ -93,7 +93,7 @@ An announcement set for **everyone** also appears on the sign-in page.
 
 ![A renamed page, extra links and an announcement](/screenshots/appearance-banner.webp){.screenshot}
 
-- **Rename pages.** Give any of the eleven sidebar entries another word (up to 24 characters), for example *Servers* → *Worlds*.
+- **Rename pages.** Give any of the thirteen sidebar entries another word (including *Store* and *Billing*) (up to 24 characters), for example *Servers* → *Worlds*.
   The new word is used in the sidebar, the page title, the browser tab and the search. Other text in the panel keeps
   saying "server".
 - **Extra links** (up to 8) appear at the bottom of the sidebar for everyone, for example a status page, the rules or a
