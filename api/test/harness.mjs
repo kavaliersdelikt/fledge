@@ -69,14 +69,14 @@ export async function finishJob(c,node,job,success=true,result={},error){
 }
 
 /** Boots mock Modrinth + plugin host + API. Returns handles and a stop() function. */
-export async function bootStack({db,apiPort,hostPort,mock,apiEnv={},quiet=true}){
+export async function bootStack({db,apiPort,hostPort,mock,apiEnv={},quiet=true,hostMap=''}){
  const dir=mkdtempSync(join(tmpdir(),'fledge-plugin-test-'));
  const tokenFile=join(dir,'token');
  const databaseUrl=await freshDatabase(db);
- const map=mock?`api.modrinth.com=127.0.0.1:${mock.port},cdn.modrinth.com=127.0.0.1:${mock.port}`:'';
- const host=startProcess('host',join(repoDir,'plugins','host'),'src/server.ts',{PORT:String(hostPort),PLUGIN_TOKEN_FILE:tokenFile,PLUGIN_HOST_UNSAFE_TEST_ALLOW_LOCAL:'1',PLUGIN_HOST_UNSAFE_TEST_HOST_MAP:map,APP_VERSION:'0.6.2.1'},{quiet});
+ const map=[mock?`api.modrinth.com=127.0.0.1:${mock.port},cdn.modrinth.com=127.0.0.1:${mock.port}`:'',hostMap].filter(Boolean).join(',');
+ const host=startProcess('host',join(repoDir,'plugins','host'),'src/server.ts',{PORT:String(hostPort),PLUGIN_TOKEN_FILE:tokenFile,PLUGIN_HOST_UNSAFE_TEST_ALLOW_LOCAL:'1',PLUGIN_HOST_UNSAFE_TEST_HOST_MAP:map,APP_VERSION:'0.7.1.1'},{quiet});
  // The API creates the shared token file on first use; start it first so the host can read it.
- const api=startProcess('api',apiDir,'src/index.ts',{DATABASE_URL:databaseUrl,ENCRYPTION_KEY:'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',WEB_ORIGIN:'http://localhost:3000',PORT:String(apiPort),APP_VERSION:'0.6.2.1',PLUGIN_HOST_URL:`http://127.0.0.1:${hostPort}`,PLUGIN_TOKEN_FILE:tokenFile,FLEDGE_TEST_ALLOW_LOCAL_FETCH:'1',...apiEnv},{quiet});
+ const api=startProcess('api',apiDir,'src/index.ts',{DATABASE_URL:databaseUrl,ENCRYPTION_KEY:'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',WEB_ORIGIN:'http://localhost:3000',PORT:String(apiPort),APP_VERSION:'0.7.1.1',PLUGIN_HOST_URL:`http://127.0.0.1:${hostPort}`,PLUGIN_TOKEN_FILE:tokenFile,FLEDGE_TEST_ALLOW_LOCAL_FETCH:'1',...apiEnv},{quiet});
  await waitFor(`http://127.0.0.1:${apiPort}/api/health`);
  await waitFor(`http://127.0.0.1:${hostPort}/health`);
  const stop=async()=>{for(const p of [api,host])p.kill();await sleep(300);};
