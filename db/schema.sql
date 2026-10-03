@@ -367,3 +367,148 @@ CREATE TABLE IF NOT EXISTS branding_history(
 );
 -- A person's own light or dark choice follows their account.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- ===========================================================================
+-- 0.7.1.1 "Rookery": sign-up, self-service servers, limits, plans, store, payments, email.
+-- Everything here is additive and idempotent; nothing existing is rewritten.
+-- ===========================================================================
+
+-- Accounts that sign themselves up go through verification (and optionally approval) first.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
+ALTER TABLE users ADD CONSTRAINT users_status_check CHECK(status IN ('active','pending_verification','pending_approval','deletion_pending'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_source text NOT NULL DEFAULT 'admin';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_ip_hash text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name text;
+CREATE INDEX IF NOT EXISTS users_status_idx ON users(status) WHERE status<>'active';
+ALTER TABLE user_tokens DROP CONSTRAINT IF EXISTS user_tokens_kind_check;
+ALTER TABLE user_tokens ADD CONSTRAINT user_tokens_kind_check CHECK(kind IN ('invite','reset','verify','email_change'));
+ALTER TABLE user_tokens ADD COLUMN IF NOT EXISTS payload jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+-- Invite links and codes for invite-only sign-up.
+CREATE TABLE IF NOT EXISTS signup_invites(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code_hash text NOT NULL UNIQUE, email text, note text,
+ created_by uuid REFERENCES users(id) ON DELETE SET NULL, expires_at timestamptz NOT NULL,
+ max_uses integer NOT NULL DEFAULT 1 CHECK(max_uses BETWEEN 1 AND 10000), uses integer NOT NULL DEFAULT 0,
+ plan_id uuid, created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Servers: who created them, what keeps them alive and why they are suspended.
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS subscription_id uuid;
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS suspended_reason text;
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS created_via text NOT NULL DEFAULT 'admin';
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS pending_delete_at timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS servers_subscription_idx ON servers(subscription_id) WHERE subscription_id IS NOT NULL AND deleted_at IS NULL;
+-- Templates are invisible to customers until an administrator says otherwise.
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS customer_visible boolean NOT NULL DEFAULT false;
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS customer_description text;
+
+-- Plans: something that can be given or sold. A server plan carries a preset (one server per
+-- subscription); an account plan carries an allowance added to the customer's limits.
+CREATE TABLE IF NOT EXISTS plans(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slug text NOT NULL UNIQUE, name text NOT NULL, description text NOT NULL DEFAULT '',
+ kind text NOT NULL CHECK(kind IN ('server','account')),
+ visibility text NOT NULL DEFAULT 'public' CHECK(visibility IN ('public','hidden','private')),
+ active boolean NOT NULL DEFAULT true, sort_order integer NOT NULL DEFAULT 0,
+ features jsonb NOT NULL DEFAULT '[]'::jsonb, preset jsonb NOT NULL DEFAULT '{}'::jsonb, limits jsonb NOT NULL DEFAULT '{}'::jsonb,
+ options jsonb NOT NULL DEFAULT '{}'::jsonb,
+ stock integer CHECK(stock IS NULL OR stock>=0), per_customer_max integer NOT NULL DEFAULT 1 CHECK(per_customer_max>=1),
+ trial_once boolean NOT NULL DEFAULT true, retention_days integer CHECK(retention_days IS NULL OR retention_days BETWEEN 0 AND 3650),
+ archived_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS plan_prices(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), plan_id uuid NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+ cycle text NOT NULL CHECK(cycle IN ('month','quarter','semiannual','year')),
+ amount bigint NOT NULL CHECK(amount>=0), currency text NOT NULL CHECK(currency ~ '^[a-z]{3}$'),
+ trial_days integer NOT NULL DEFAULT 0 CHECK(trial_days BETWEEN 0 AND 365), setup_fee bigint NOT NULL DEFAULT 0 CHECK(setup_fee>=0),
+ active boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now()
+);
+-- One current price per plan, interval and currency; older prices stay for the subscriptions that use them.
+CREATE UNIQUE INDEX IF NOT EXISTS plan_prices_current ON plan_prices(plan_id,cycle,currency) WHERE active;
+
+-- A checkout attempt. The payment is matched to an order, never to what the browser says.
+CREATE TABLE IF NOT EXISTS orders(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id), plan_id uuid NOT NULL REFERENCES plans(id),
+ price_id uuid NOT NULL REFERENCES plan_prices(id),
+ status text NOT NULL DEFAULT 'created' CHECK(status IN ('created','pending','paid','expired','failed','canceled')),
+ snapshot jsonb NOT NULL, details jsonb NOT NULL DEFAULT '{}'::jsonb,
+ provider text NOT NULL, provider_session_id text, provider_customer_id text, livemode boolean NOT NULL DEFAULT false,
+ terms_version text, subscription_id uuid, error text,
+ created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz NOT NULL DEFAULT now()+interval '24 hours', paid_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS orders_user_idx ON orders(user_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS orders_session_idx ON orders(provider,provider_session_id) WHERE provider_session_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS subscriptions(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id), plan_id uuid NOT NULL REFERENCES plans(id),
+ price_id uuid REFERENCES plan_prices(id), order_id uuid REFERENCES orders(id),
+ provider text NOT NULL, provider_subscription_id text, provider_customer_id text, livemode boolean NOT NULL DEFAULT false,
+ status text NOT NULL DEFAULT 'incomplete' CHECK(status IN ('incomplete','trialing','active','past_due','suspended','canceled','terminated')),
+ cancel_at_period_end boolean NOT NULL DEFAULT false,
+ cycle text NOT NULL CHECK(cycle IN ('month','quarter','semiannual','year')), amount bigint NOT NULL DEFAULT 0 CHECK(amount>=0), currency text NOT NULL DEFAULT 'eur',
+ current_period_start timestamptz, current_period_end timestamptz, trial_end timestamptz,
+ past_due_since timestamptz, suspended_at timestamptz, canceled_at timestamptz, ended_at timestamptz, terminated_at timestamptz, retention_until timestamptz,
+ manual_ends_at timestamptz, note text,
+ fulfilment text NOT NULL DEFAULT 'none' CHECK(fulfilment IN ('none','pending','done','failed')),
+ fulfilment_attempts integer NOT NULL DEFAULT 0, fulfilment_error text, next_fulfilment_at timestamptz,
+ server_details jsonb NOT NULL DEFAULT '{}'::jsonb, dunning jsonb NOT NULL DEFAULT '{}'::jsonb, holds jsonb NOT NULL DEFAULT '[]'::jsonb,
+ version integer NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_provider_idx ON subscriptions(provider,provider_subscription_id) WHERE provider_subscription_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions(user_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS subscriptions_status_idx ON subscriptions(status) WHERE status NOT IN ('canceled','terminated');
+CREATE TABLE IF NOT EXISTS subscription_events(
+ id bigserial PRIMARY KEY, subscription_id uuid NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE, at timestamptz NOT NULL DEFAULT now(),
+ from_status text, to_status text, reason text NOT NULL, source text NOT NULL, ref text, detail jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS subscription_events_sub ON subscription_events(subscription_id,id DESC);
+-- Servers and plans may only point at rows that exist.
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='servers_subscription_fk') THEN
+  ALTER TABLE servers ADD CONSTRAINT servers_subscription_fk FOREIGN KEY(subscription_id) REFERENCES subscriptions(id);
+ END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS invoices(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), subscription_id uuid REFERENCES subscriptions(id) ON DELETE SET NULL, user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+ provider text NOT NULL, provider_invoice_id text NOT NULL, number text, status text NOT NULL,
+ amount_due bigint NOT NULL DEFAULT 0, amount_paid bigint NOT NULL DEFAULT 0, amount_refunded bigint NOT NULL DEFAULT 0, currency text NOT NULL,
+ period_start timestamptz, period_end timestamptz, hosted_url text, pdf_url text, description text,
+ livemode boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now(), paid_at timestamptz,
+ UNIQUE(provider,provider_invoice_id)
+);
+CREATE INDEX IF NOT EXISTS invoices_user_idx ON invoices(user_id,created_at DESC);
+CREATE TABLE IF NOT EXISTS billing_customers(
+ user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider text NOT NULL, livemode boolean NOT NULL DEFAULT false,
+ provider_customer_id text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,provider,livemode)
+);
+-- The webhook inbox: stored first, acknowledged, processed with retries. Unique per provider event.
+CREATE TABLE IF NOT EXISTS billing_events(
+ id bigserial PRIMARY KEY, provider text NOT NULL, event_id text NOT NULL, type text NOT NULL, livemode boolean NOT NULL DEFAULT false,
+ refs jsonb NOT NULL DEFAULT '{}'::jsonb, received_at timestamptz NOT NULL DEFAULT now(), processed_at timestamptz,
+ attempts integer NOT NULL DEFAULT 0, next_attempt_at timestamptz NOT NULL DEFAULT now(), error text, UNIQUE(provider,event_id)
+);
+CREATE INDEX IF NOT EXISTS billing_events_pending ON billing_events(next_attempt_at) WHERE processed_at IS NULL;
+
+-- Email: editable templates and a retrying outbox.
+CREATE TABLE IF NOT EXISTS email_templates(
+ id text PRIMARY KEY, subject text NOT NULL, text_body text NOT NULL, html_body text, enabled boolean NOT NULL DEFAULT true,
+ updated_at timestamptz NOT NULL DEFAULT now(), updated_by uuid REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS email_outbox(
+ id bigserial PRIMARY KEY, to_addr text NOT NULL, template text NOT NULL, user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+ subject text NOT NULL, text_body text, html_body text, status text NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','sending','sent','failed')),
+ attempts integer NOT NULL DEFAULT 0, next_attempt_at timestamptz NOT NULL DEFAULT now(), last_error text, dedupe_key text,
+ created_at timestamptz NOT NULL DEFAULT now(), sent_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS email_outbox_dedupe ON email_outbox(dedupe_key) WHERE dedupe_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS email_outbox_due ON email_outbox(next_attempt_at) WHERE status IN ('queued','sending');
+CREATE INDEX IF NOT EXISTS email_outbox_recent ON email_outbox(id DESC);
+
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reconciled_at timestamptz;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS provider_status text;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_url text;
