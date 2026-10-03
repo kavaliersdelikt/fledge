@@ -19,7 +19,7 @@ try{
  check(list.plugins.length===0,'nothing is installed by default');
  const store=ok(await call('GET','/api/plugins/store'),'store');
  const ids=store.items.map(i=>i.id).sort();
- check(JSON.stringify(ids)===JSON.stringify(['modrinth-mods','modrinth-plugins']),'both bundled plugins are offered');
+ check(JSON.stringify(ids)===JSON.stringify(['modrinth-mods','modrinth-plugins','stripe']),'all bundled plugins are offered (the two Modrinth browsers and Stripe Payments)');
  const modsItem=store.items.find(i=>i.id==='modrinth-mods');
  check(modsItem.tier==='bundled'&&!modsItem.installed&&modsItem.installable,'bundled plugin is installable');
  check(modsItem.permissions.some(p=>p.id==='network:api.modrinth.com'&&/Connect to api\.modrinth\.com/.test(p.text)),'permissions are described in plain language');
@@ -71,7 +71,7 @@ try{
  check(vers.map(v=>v.id).join()==='LITH-BETA,LITH-NEW,LITH-OLD','only versions for 1.21.11 + fabric, newest first: '+vers.map(v=>v.id));
  const wrongKind=await call('GET',`${A}/search?pluginId=modrinth-plugins`);status(wrongKind,404,'a plugin catalog is not offered for a mod server');
  const ua=mock.calls.find(c=>c.path==='/v2/search').ua;
- check(/^Fledge\/0\.6\.2\.1 \(https:\/\/github\.com\/kavaliersdelikt\/fledge; ops@example\.org\)$/.test(ua),'User-Agent identifies Fledge as Modrinth asks: '+ua);
+ check(/^Fledge\/0\.7\.1\.1 \(https:\/\/github\.com\/kavaliersdelikt\/fledge; ops@example\.org\)$/.test(ua),'User-Agent identifies Fledge as Modrinth asks: '+ua);
 
  // --- Plan and install ------------------------------------------------------------------------
  const plan=ok(await call('POST',`${A}/plan`,{pluginId:'modrinth-mods',projectId:'LITHIUM1'}),'plan');
