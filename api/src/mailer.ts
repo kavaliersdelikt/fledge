@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import {settings} from './settings.js';
 import {fail} from './core.js';
+import {brand,senderWithName} from './branding.js';
 
 // Outgoing email (invitations, password resets, notification channels). Configured in
 // Settings → Email; the SMTP password is stored encrypted like the other secrets.
@@ -13,7 +14,9 @@ export async function sendMail(msg:{to:string;subject:string;text:string;html?:s
  const transport=nodemailer.createTransport({host:cfg.host,port:cfg.port,secure:cfg.security==='tls',requireTLS:cfg.security==='starttls',ignoreTLS:cfg.security==='none',
   auth:cfg.user?{user:cfg.user,pass:cfg.password}:undefined,connectionTimeout:10_000,greetingTimeout:10_000,socketTimeout:20_000});
  try{
-  await transport.sendMail({from:cfg.from,to:msg.to,subject:msg.subject.replace(/[\r\n]+/g,' ').slice(0,200),text:msg.text,...(msg.html?{html:msg.html}:{})});
+  // Appearance settings add a sender name (when the configured address has none) and a footer to every email.
+  const b=await brand();
+  await transport.sendMail({from:senderWithName(cfg.from,b.emailFromName),to:msg.to,subject:msg.subject.replace(/[\r\n]+/g,' ').slice(0,200),text:b.footer?`${msg.text.replace(/\s+$/,'')}\n\n${b.footer}\n`:msg.text,...(msg.html?{html:msg.html}:{})});
  }catch(e:any){
   throw Object.assign(new Error(`The mail server refused or could not be reached: ${String(e?.response||e?.message||'error').slice(0,200)}`),{statusCode:502,error:'mail_failed'});
  }finally{transport.close();}

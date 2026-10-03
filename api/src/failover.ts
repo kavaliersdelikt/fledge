@@ -1,6 +1,7 @@
 import type {FastifyInstance} from 'fastify';
 import {pool,admin,fail,asId,audit} from './core.js';
 import {settings} from './settings.js';
+import {brand} from './branding.js';
 import {backupEnabled} from './storage.js';
 import {emit} from './notifications.js';
 
@@ -20,7 +21,7 @@ type Settings=Awaited<ReturnType<typeof settings>>['failover'];
 export async function notify(title:string,detail:Record<string,unknown>={}){
  const url=(await settings()).failover.webhookUrl;
  if(!url)return;
- const text=`Fledge: ${title}`;
+ const text=`${(await brand()).name}: ${title}`;
  try{
   // `text` and `content` make the payload work with Slack, Discord and Mattermost; `event` carries the data.
   await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,content:text,event:{title,...detail,at:new Date().toISOString()}}),signal:AbortSignal.timeout(5000)});
@@ -371,7 +372,7 @@ export function failoverRoutes(app:FastifyInstance){
  app.post('/api/settings/failover/test-webhook',async(req)=>{
   admin(req);
   const url=(await settings()).failover.webhookUrl;if(!url)fail(400,'No webhook is saved');
-  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:'Fledge: test notification',content:'Fledge: test notification',event:{title:'test',at:new Date().toISOString()}}),signal:AbortSignal.timeout(6000)}).catch((e:any)=>fail(502,`Could not reach the webhook: ${e?.cause?.code||e?.message||'error'}`));
+  const r=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:`${(await brand()).name}: test notification`,content:`${(await brand()).name}: test notification`,event:{title:'test',at:new Date().toISOString()}}),signal:AbortSignal.timeout(6000)}).catch((e:any)=>fail(502,`Could not reach the webhook: ${e?.cause?.code||e?.message||'error'}`));
   if(!r.ok)fail(502,`The webhook answered ${r.status}`);return {ok:true};
  });
 }

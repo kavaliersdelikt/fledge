@@ -3,6 +3,7 @@ import {pool,admin,fail,txt,asId,audit,encrypt,decrypt,looksLikeEmail} from './c
 import {safeRequest,GuardError} from './netguard.js';
 import {sendMail,mailerReady} from './mailer.js';
 import {settings} from './settings.js';
+import {brand} from './branding.js';
 
 // The notification center. Things worth knowing about (a server crashed, a backup failed, a node
 // went offline ...) become an inbox entry for the people concerned and are delivered to the
@@ -31,8 +32,8 @@ const eventDef=(id:string)=>EVENTS.find(e=>e.id===id);
 
 export type Emit={kind:string;title:string;body?:string;severity?:Severity;serverId?:string|null;nodeId?:string|null;data?:Record<string,unknown>;dedupe?:{key:string;minutes:number}};
 
-export function payloadFor(channelKind:string,ev:{kind:string;severity:Severity;title:string;body:string;server?:{id:string;name:string}|null;nodeId?:string|null;data?:Record<string,unknown>;at?:string}){
- const text=`Fledge: ${ev.title}${ev.server?` (${ev.server.name})`:''}${ev.body?` — ${ev.body}`:''}`.slice(0,1900);
+export function payloadFor(channelKind:string,ev:{kind:string;severity:Severity;title:string;body:string;server?:{id:string;name:string}|null;nodeId?:string|null;data?:Record<string,unknown>;at?:string},brandName='Fledge'){
+ const text=`${brandName}: ${ev.title}${ev.server?` (${ev.server.name})`:''}${ev.body?` — ${ev.body}`:''}`.slice(0,1900);
  if(channelKind==='discord')return {content:text};
  if(channelKind==='slack')return {text};
  // `text` and `content` make the generic payload work with Slack, Discord and Mattermost; `event` carries the data.
@@ -44,11 +45,12 @@ async function deliver(ch:any,ev:{kind:string;severity:Severity;title:string;bod
  try{
   if(ch.kind==='email'){
    if(!(await mailerReady()))throw new Error('Email is not set up');
-   const text=`${ev.title}\n\n${ev.body||''}${ev.server?`\n\nServer: ${ev.server.name}`:''}\n\n— Fledge`;
-   await sendMail({to:String(ch.config?.to||''),subject:`[Fledge] ${ev.title}`,text});
+   const b=await brand();
+   const text=`${ev.title}\n\n${ev.body||''}${ev.server?`\n\nServer: ${ev.server.name}`:''}\n\n— ${b.name}`;
+   await sendMail({to:String(ch.config?.to||''),subject:`[${b.short}] ${ev.title}`,text});
   }else{
    const url=JSON.parse(decrypt(ch.secret)).url as string;
-   const res=await safeRequest(url,{method:'POST',body:JSON.stringify(payloadFor(ch.kind,ev)),headers:{'content-type':'application/json'},maxBytes:64*1024,timeoutMs:8000,redirects:0,
+   const res=await safeRequest(url,{method:'POST',body:JSON.stringify(payloadFor(ch.kind,ev,(await brand()).name)),headers:{'content-type':'application/json'},maxBytes:64*1024,timeoutMs:8000,redirects:0,
     ...(ch.scope==='user'?{}:{allowPrivate:true,allowHttp:true}),...(process.env.FLEDGE_TEST_ALLOW_LOCAL_FETCH==='1'?{allowPrivate:true,allowHttp:true}:{})});
    if(res.status<200||res.status>=300)throw new Error(`The endpoint answered ${res.status}`);
   }

@@ -3,6 +3,7 @@ import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthentic
 import {pool,admin,fail,txt,asId,hash,token,passwordHash,audit,WEB_ORIGIN,looksLikeEmail} from './core.js';
 import {mailerReady,sendMail} from './mailer.js';
 import {settings} from './settings.js';
+import {brand} from './branding.js';
 import {ipAllowed} from './cidr.js';
 import {mfaFailed,mfaLocked} from './auth.js';
 
@@ -35,9 +36,9 @@ async function mailLink(kind:'invite'|'reset',user:{id:string;email:string},ttl:
  const link=`${WEB_ORIGIN.replace(/\/$/,'')}/?token=${raw}`;
  let sent=false;
  if(await mailerReady()){
-  const invite=kind==='invite';
-  await sendMail({to:user.email,subject:invite?'You have been invited to Fledge':'Reset your Fledge password',
-   text:invite?`You have been invited to Fledge, the game server panel.\n\nSet your password here (the link works for 7 days):\n${link}\n`:`Someone asked to reset the password for this Fledge account.\n\nChoose a new password here (the link works for one hour):\n${link}\n\nIf this was not you, ignore this email: nothing changes.\n`});
+  const invite=kind==='invite',{name}=await brand();
+  await sendMail({to:user.email,subject:invite?`You have been invited to ${name}`:`Reset your ${name} password`,
+   text:invite?`You have been invited to ${name}, the game server panel.\n\nSet your password here (the link works for 7 days):\n${link}\n`:`Someone asked to reset the password for this ${name} account.\n\nChoose a new password here (the link works for one hour):\n${link}\n\nIf this was not you, ignore this email: nothing changes.\n`});
   sent=true;
  }
  return {sent,link};
@@ -116,7 +117,8 @@ export function accountRoutes(app:FastifyInstance){
   admin(req);
   const to=txt((req.body as any)?.to,254);
   if(!looksLikeEmail(to))fail(400,'Enter a valid email address');
-  await sendMail({to,subject:'Fledge test email',text:'If you can read this, Fledge can send email.'});
+  const {name}=await brand();
+  await sendMail({to,subject:`${name} test email`,text:`If you can read this, ${name} can send email.`});
   await audit(req.actor!.id,'settings.email.test','settings','email');
   return {ok:true};
  });
@@ -137,7 +139,7 @@ export function accountRoutes(app:FastifyInstance){
   cookieOnly(req);
   const existing=(await pool.query('SELECT id,transports FROM passkeys WHERE user_id=$1',[req.actor!.id])).rows;
   if(existing.length>=10)fail(409,'You can register at most 10 passkeys');
-  const options=await generateRegistrationOptions({rpName:'Fledge',rpID:rpID(),userName:req.actor!.email,userID:new TextEncoder().encode(req.actor!.id),attestationType:'none',
+  const options=await generateRegistrationOptions({rpName:(await brand()).name,rpID:rpID(),userName:req.actor!.email,userID:new TextEncoder().encode(req.actor!.id),attestationType:'none',
    excludeCredentials:existing.map((p:any)=>({id:p.id,transports:p.transports})),authenticatorSelection:{residentKey:'preferred',userVerification:'preferred'}});
   await saveChallenge(req.actor!.id,'register',options.challenge);
   return options;
