@@ -17,6 +17,7 @@ restart.
 | **Automatic failover** | See [Failover](/operate/failover): wait time, parallel recoveries, location preference, backup age limit, self-fencing, stale-copy retention, optional webhook |
 | **Email** | SMTP for invitations, reset and email channels; **Send a test email** (save first). See [Email](/operate/email) |
 | **Security** | The **administrator IP allow-list** and the **audit retention**. The editor shows the address the API sees for you and refuses a list that would lock you out. `ADMIN_IP_ALLOW_DISABLE=true` is the break-glass switch |
+| **Appearance** | The panel's name, logo, colours, font, sign-in page, sidebar links and announcement. Opens its own page: see [Appearance](/panel/appearance) |
 | **Updates** | Where the panel and node agents look for new versions (a GitHub repository, or your own download URL with `VERSION`, `SHA256SUMS` and `fledge-agent_linux_{amd64,arm64}`), and automatic agent updates |
 | **Notifications** | Your [notification channels](/panel/notifications) |
 | **Plugins** (on the Plugins page) | Registry URL, trusted keys and *Allow community plugins*. See [Using the store](/plugins/using) |
@@ -30,4 +31,6 @@ or the API only sees the proxy's address.
 
 ## Your account
 
-See [Account security](/panel/account-security) for two-factor, passkeys, devices and API tokens.
+See [Account security](/panel/account-security) for two-factor, passkeys, devices and API tokens. The account menu
+(bottom of the sidebar) also lets you choose **Light**, **Dark** or **Match this device** for yourself, unless an administrator
+turned that off under [Appearance](/panel/appearance#each-persons-choice).
