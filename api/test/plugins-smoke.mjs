@@ -71,7 +71,7 @@ try{
  check(vers.map(v=>v.id).join()==='LITH-BETA,LITH-NEW,LITH-OLD','only versions for 1.21.11 + fabric, newest first: '+vers.map(v=>v.id));
  const wrongKind=await call('GET',`${A}/search?pluginId=modrinth-plugins`);status(wrongKind,404,'a plugin catalog is not offered for a mod server');
  const ua=mock.calls.find(c=>c.path==='/v2/search').ua;
- check(/^Fledge\/0\.6\.1\.1 \(https:\/\/github\.com\/kavaliersdelikt\/fledge; ops@example\.org\)$/.test(ua),'User-Agent identifies Fledge as Modrinth asks: '+ua);
+ check(/^Fledge\/0\.6\.2\.1 \(https:\/\/github\.com\/kavaliersdelikt\/fledge; ops@example\.org\)$/.test(ua),'User-Agent identifies Fledge as Modrinth asks: '+ua);
 
  // --- Plan and install ------------------------------------------------------------------------
  const plan=ok(await call('POST',`${A}/plan`,{pluginId:'modrinth-mods',projectId:'LITHIUM1'}),'plan');

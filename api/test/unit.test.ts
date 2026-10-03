@@ -112,6 +112,8 @@ test('notification payloads work with Slack, Discord and Mattermost',()=>{
  assert.deepEqual(Object.keys(payloadFor('discord',ev)),['content']);assert.deepEqual(Object.keys(payloadFor('slack',ev)),['text']);
  const g:any=payloadFor('webhook',ev);assert.ok(g.text&&g.content&&g.event.kind==='server.crashed');
  assert.ok((payloadFor('slack',{...ev,body:'x'.repeat(5000)}) as any).text.length<=1900);
+ assert.ok((payloadFor('slack',ev) as any).text.startsWith('Fledge: '),'the default prefix is the product name');
+ assert.ok((payloadFor('slack',ev,'Acme Hosting') as any).text.startsWith('Acme Hosting: '),'the panel name replaces it when set');
  assert.ok(EVENTS.every(e=>/^[a-z]+\.[a-z_]+$/.test(e.id)));assert.equal(new Set(EVENTS.map(e=>e.id)).size,EVENTS.length);
 });
 test('private address detection for outbound requests',()=>{
