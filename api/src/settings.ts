@@ -1,5 +1,6 @@
 import type {FastifyInstance} from 'fastify';
 import {pool,admin,fail,encrypt,decrypt,audit} from './core.js';
+import {validCidr,ipAllowed} from './cidr.js';
 
 // Panel-managed configuration. Environment variables only seed a section until
 // an administrator saves it in the panel; from then on the database wins.
@@ -8,9 +9,12 @@ export type NodeSettings={allowedImagePrefixes:string[];sftpEnabled:boolean;sftp
 export type AgentUpdateSettings={auto:boolean;source:'github'|'url';baseUrl:string};
 export type UpdateSettings={repository:string;githubToken:string};
 export type FailoverSettings={enabled:boolean;graceMinutes:number;maxConcurrent:number;maxBackupAgeHours:number;allowWithoutBackup:boolean;sameLocationOnly:boolean;cooldownMinutes:number;protectionEnabled:boolean;protectionIntervalMinutes:number;selfFence:boolean;evictStaleData:boolean;evictedRetentionDays:number;webhookUrl:string};
-type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings};
+export type PluginSettings={registryUrl:string;trustedKeys:string[];allowCommunity:boolean};
+export type EmailSettings={enabled:boolean;host:string;port:number;security:'none'|'starttls'|'tls';user:string;password:string;from:string};
+export type SecuritySettings={adminAllowedCidrs:string[];auditRetentionDays:number};
+type Sections={storage:StorageSettings;nodes:NodeSettings;agentUpdates:AgentUpdateSettings;updates:UpdateSettings;failover:FailoverSettings;plugins:PluginSettings;email:EmailSettings;security:SecuritySettings};
 type Section=keyof Sections;
-const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl']};
+const secretFields:Record<Section,string[]>={storage:['secretKey'],nodes:[],agentUpdates:[],updates:['githubToken'],failover:['webhookUrl'],plugins:[],email:['password'],security:[]};
 const defaultImages='itzg/minecraft-server:,itzg/minecraft-bedrock-server:,ghcr.io/lloesche/valheim-server:,node:,python:,oven/bun:,golang:,eclipse-temurin:,php:,ruby:,mcr.microsoft.com/dotnet/';
 const list=(v:string)=>v.split(',').map(s=>s.trim()).filter(Boolean);
 
@@ -22,6 +26,9 @@ function envDefaults():Sections{
   agentUpdates:{auto:false,source:'github',baseUrl:''},
   updates:{repository:(e.GITHUB_REPOSITORY||'kavaliersdelikt/fledge').trim(),githubToken:e.GITHUB_TOKEN||''},
   failover:{enabled:false,graceMinutes:5,maxConcurrent:2,maxBackupAgeHours:24,allowWithoutBackup:false,sameLocationOnly:false,cooldownMinutes:30,protectionEnabled:false,protectionIntervalMinutes:60,selfFence:false,evictStaleData:true,evictedRetentionDays:7,webhookUrl:''},
+  plugins:{registryUrl:e.PLUGIN_REGISTRY_URL??'https://raw.githubusercontent.com/kavaliersdelikt/fledge/main/plugins/registry/index.json',trustedKeys:[],allowCommunity:false},
+  email:{enabled:Boolean(e.SMTP_HOST),host:e.SMTP_HOST||'',port:Number(e.SMTP_PORT)||587,security:(['none','starttls','tls'].includes(e.SMTP_SECURITY||'')?e.SMTP_SECURITY:'starttls') as EmailSettings['security'],user:e.SMTP_USER||'',password:e.SMTP_PASSWORD||'',from:e.SMTP_FROM||''},
+  security:{adminAllowedCidrs:[],auditRetentionDays:0},
  };
 }
 
@@ -81,6 +88,32 @@ function validate(section:Section,body:any,current:Sections):any{
    if(v.enabled&&!current.storage.enabled&&!v.allowWithoutBackup)fail(400,'Failover restores servers from backups, so object storage must be on. Turn it on first, or allow recovery without a backup.');
    return v;
   }
+  case 'plugins':{
+   const registryUrl=url(str(body.registryUrl??'','Registry URL',500),'Registry URL');
+   if(registryUrl&&!registryUrl.startsWith('https://'))fail(400,'The registry URL must use HTTPS');
+   if(!Array.isArray(body.trustedKeys)||body.trustedKeys.length>10)fail(400,'Trusted keys must be a list of at most 10 entries');
+   const trustedKeys=[...new Set((body.trustedKeys as any[]).map(k=>str(k,'Trusted key',200)).filter(Boolean))];
+   for(const k of trustedKeys)if(!/^[A-Za-z0-9+/=]{40,200}$/.test(k))fail(400,'A trusted key must be a base64 Ed25519 public key (SPKI DER)');
+   return {registryUrl,trustedKeys,allowCommunity:bool(body.allowCommunity,'Community plugins')};
+  }
+  case 'email':{
+   const enabled=bool(body.enabled,'Email');
+   const port=Number(body.port);if(!Number.isInteger(port)||port<1||port>65535)fail(400,'SMTP port must be 1–65535');
+   if(!['none','starttls','tls'].includes(body.security))fail(400,'Unknown connection security');
+   const from=str(body.from??'','From address',200);
+   const v={enabled,host:str(body.host??'','SMTP host',253),port,security:body.security,user:str(body.user??'','SMTP user',254),password:body.password===undefined||body.password===null?current.email.password:str(body.password,'SMTP password',512),from};
+   if(enabled&&(!v.host||!from))fail(400,'A host and a From address are required to turn email on');
+   if(from&&!/^(?:[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+|[^<>]{1,80}<[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+>)$/.test(from))fail(400,'From must look like admin@example.com or Fledge <admin@example.com>');
+   if(v.host&&!/^[A-Za-z0-9.:\[\]-]+$/.test(v.host))fail(400,'Enter an SMTP host name or address');
+   return v;
+  }
+  case 'security':{
+   if(!Array.isArray(body.adminAllowedCidrs)||body.adminAllowedCidrs.length>50)fail(400,'The allow-list must be a list of at most 50 entries');
+   const cidrs=[...new Set((body.adminAllowedCidrs as any[]).map(c=>str(c,'Address range',64)).filter(Boolean))];
+   for(const c of cidrs)if(!validCidr(c))fail(400,`“${c}” is not an IP address or range (for example 203.0.113.0/24)`);
+   const days=Number(body.auditRetentionDays);if(!Number.isInteger(days)||days<0||days>3650)fail(400,'Audit log retention must be 0 (keep everything) to 3650 days');
+   return {adminAllowedCidrs:cidrs,auditRetentionDays:days};
+  }
   case 'updates':{
    const repository=str(body.repository,'Repository',140);
    if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository))fail(400,'Repository must be OWNER/NAME');
@@ -113,6 +146,7 @@ export function settingsRoutes(app:FastifyInstance,hooks:{onSave?:(section:Secti
   admin(req);const section=(req.params as any).section as Section;
   if(!(section in secretFields))fail(404,'Unknown settings section');
   const current=await settings(),value=validate(section,req.body,current);
+  if(section==='security'&&value.adminAllowedCidrs.length&&process.env.ADMIN_IP_ALLOW_DISABLE!=='true'&&!ipAllowed(req.ip,value.adminAllowedCidrs))fail(400,`Your own address (${req.ip}) is not in this list, so saving it would lock you out. Add it first.`);
   await saveSection(section,value,req.actor!.id);
   await audit(req.actor!.id,'settings.update','settings',section,{fields:Object.keys(value).filter(k=>!secretFields[section].includes(k))});
   hooks.onSave?.(section);

@@ -33,7 +33,7 @@ export const passwordHash=(s:string)=>bcrypt.hash(s,12);
 export const passwordCheck=(s:string,h:string)=>bcrypt.compare(s,h);
 export async function migrate(){const schema=readFileSync(fileURLToPath(new URL('../../db/schema.sql',import.meta.url)),'utf8');await pool.query(schema);}
 export async function authenticate(req:FastifyRequest,reply:FastifyReply){
- const url=req.url.split('?')[0];if(url==='/api/health'||['/api/auth/bootstrap','/api/auth/status','/api/auth/login','/api/auth/challenge','/api/auth/recover'].includes(url)||url.startsWith('/api/agent/'))return;
+ const url=req.url.split('?')[0];if(url==='/api/health'||['/api/auth/bootstrap','/api/auth/status','/api/auth/login','/api/auth/challenge','/api/auth/recover','/api/auth/forgot','/api/auth/token/accept','/api/auth/passkey/options','/api/auth/passkey/verify'].includes(url)||url.startsWith('/api/agent/'))return;
  const cookie=(req.cookies as any)?.fledge_session; const auth=req.headers.authorization;const bearer=auth?.startsWith('Bearer ');
  // An explicit bearer token must never silently inherit a browser cookie's
  // broader permissions (including secret-bearing admin detail responses).
@@ -41,13 +41,13 @@ export async function authenticate(req:FastifyRequest,reply:FastifyReply){
  let rows:any[]=[];
  if(bearer){rows=(await pool.query(`SELECT u.id,u.email,u.role,(u.totp_secret IS NOT NULL) AS "has2fa",t.scopes AS "tokenScopes" FROM api_tokens t JOIN users u ON u.id=t.user_id WHERE t.token_hash=$1 AND (t.expires_at IS NULL OR t.expires_at>now()) AND NOT u.disabled`,[hash(auth!.slice(7))])).rows;}
  else if(cookie){rows=(await pool.query(`SELECT u.id,u.email,u.role,(u.totp_secret IS NOT NULL) AS "has2fa" FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND NOT u.disabled`,[hash(cookie)])).rows;}
- if(!rows.length) fail(401,'Authentication required'); req.actor=rows[0] as Actor;
+ if(!rows.length) fail(401,'Authentication required'); req.actor=rows[0] as Actor;if(cookie&&!bearer)pool.query("UPDATE sessions SET last_seen_at=now() WHERE token_hash=$1 AND last_seen_at<now()-interval '1 minute'",[hash(cookie)]).catch(()=>{});
  if(req.actor.role==='admin'&&!req.actor.has2fa&&!['/api/auth/me','/api/auth/2fa/setup','/api/auth/2fa/confirm','/api/auth/logout'].includes(url))fail(403,'Enable provider two-factor authentication before operating the panel');
  if(req.actor.tokenScopes){const scopes=req.actor.tokenScopes,p=req.url.split('?')[0];const readable=req.method==='GET'&&scopes.includes('read')&&(p==='/api/auth/me'||p==='/api/customers'||/^\/api\/customers\/[a-f0-9-]+$/.test(p)||p==='/api/servers'||/^\/api\/servers\/[a-f0-9-]+$/.test(p)||p==='/api/jobs'||p==='/api/templates');const provision=req.method==='POST'&&scopes.includes('provision')&&(p==='/api/customers'||p==='/api/servers');const suspend=req.method==='POST'&&scopes.includes('suspend')&&/^\/api\/servers\/[a-f0-9-]+\/actions$/.test(p);if(!readable&&!provision&&!suspend)fail(403,'API token scope does not allow this endpoint');}
 
 }
 export async function serverAccess(req:FastifyRequest,id:string,permission?:string){
- const r=await pool.query(`SELECT s.*,n.name AS node_name,n.location,n.status AS node_status,t.image,t.startup,t.internal_ports,t.env,t.editable_variables,t.name AS template_name,
+ const r=await pool.query(`SELECT s.*,n.name AS node_name,n.location,n.status AS node_status,n.version AS node_version,t.image,t.startup,t.internal_ports,t.env,t.editable_variables,t.addons AS template_addons,t.variables AS template_variables,t.version AS template_current_version,t.name AS template_name,
  c.permissions FROM servers s JOIN nodes n ON n.id=s.node_id JOIN templates t ON t.id=s.template_id
  LEFT JOIN collaborators c ON c.server_id=s.id AND c.user_id=$2 WHERE s.id=$1 AND s.deleted_at IS NULL`,[asId(id),req.actor!.id]);
  const s=r.rows[0];if(!s) fail(404,'Server not found');
@@ -63,4 +63,20 @@ export async function serverAccess(req:FastifyRequest,id:string,permission?:stri
 export const effectivePermissions=(req:FastifyRequest,s:any)=>req.actor?.tokenScopes?['view']:req.actor?.role==='admin'||req.actor?.id===s.owner_id||(s.permissions||[]).includes('manage')?['view','console','files','backups','manage']:(s.permissions||[]).filter((p:string)=>['view','console','files','backups'].includes(p));
 export function serverShape(s:any){return {id:s.id,name:s.name,status:s.node_status==='disconnected'?'unreachable':s.observed_status,observedStatus:s.observed_status,desiredStatus:s.desired_status,ownerId:s.owner_id,nodeId:s.node_id,nodeName:s.node_name,location:s.location,templateId:s.template_id,supportsRcon:!!s.image?.startsWith('itzg/minecraft-server:'),memoryMb:s.memory_mb,cpuPercent:s.cpu_percent,diskMb:s.disk_mb,port:s.port,suspended:s.suspended,usage:s.usage,createdAt:s.created_at};}
 export function nodeShape(n:any){return {id:n.id,name:n.name,location:n.location,status:n.status,lastSeenAt:n.last_seen_at,draining:n.draining,headroomMb:n.headroom_mb,capacity:{memoryMb:n.memory_mb,cpuPercent:n.cpu_percent,diskMb:n.disk_mb},reserved:{memoryMb:Number(n.reserved_memory||0),cpuPercent:Number(n.reserved_cpu||0),diskMb:Number(n.reserved_disk||0)},usage:n.usage,version:n.version,agent:n.agent||{},publicHost:n.public_host||null};}
+// Recreating a container starts the server; a server that should stay stopped gets a follow-up stop so a port or
+// template change never boots a stopped (or suspended) server.
+export async function queueRecreate(db:{query:(q:string,p?:any[])=>Promise<any>},row:{node_id:string;id:string;desired_status?:string;suspended?:boolean}){
+ const job=(await db.query("INSERT INTO jobs(node_id,server_id,kind,payload) VALUES($1,$2,'configure',$3) RETURNING id,state",[row.node_id,row.id,JSON.stringify({recreate:true})])).rows[0] as {id:string;state:string};
+ if(row.suspended||(row.desired_status&&row.desired_status!=='running'))await db.query("INSERT INTO jobs(node_id,server_id,kind,payload) VALUES($1,$2,'stop','{}')",[row.node_id,row.id]);
+ return job;
+}
+// Runs fn only if no other API replica holds the same advisory lock; returns false when someone else does.
+export async function withAdvisoryLock(key:number,fn:()=>Promise<void>){
+ const c=await pool.connect();
+ try{
+  if(!(await c.query('SELECT pg_try_advisory_lock($1) AS ok',[key])).rows[0].ok)return false;
+  try{await fn();}finally{await c.query('SELECT pg_advisory_unlock($1)',[key]).catch(()=>{});}
+  return true;
+ }finally{c.release();}
+}
 export async function enqueue(nodeId:string,serverId:string|null,kind:string,payload:any={}){return (await pool.query('INSERT INTO jobs(node_id,server_id,kind,payload) VALUES($1,$2,$3,$4) RETURNING *',[nodeId,serverId,kind,JSON.stringify(payload)])).rows[0];}

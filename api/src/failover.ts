@@ -2,6 +2,7 @@ import type {FastifyInstance} from 'fastify';
 import {pool,admin,fail,asId,audit} from './core.js';
 import {settings} from './settings.js';
 import {backupEnabled} from './storage.js';
+import {emit} from './notifications.js';
 
 // ---------------------------------------------------------------------------
 // Automatic failover, planned migration and the health data behind them.
@@ -27,7 +28,7 @@ export async function notify(title:string,detail:Record<string,unknown>={}){
 }
 
 type Need={memory:number;cpu:number;disk:number;ports:{offset:number;protocol:string}[];location:string|null};
-async function pickNode(c:any,need:Need,opts:{exclude:string[];sameLocationOnly:boolean;preferNode?:string|null}){
+export async function pickNode(c:any,need:Need,opts:{exclude:string[];sameLocationOnly:boolean;preferNode?:string|null}){
  const nodes=(await c.query("SELECT * FROM nodes WHERE status='connected' AND NOT draining AND deleted_at IS NULL AND NOT (id=ANY($1::uuid[])) AND ($2::uuid IS NULL OR id=$2) AND ($3::text IS NULL OR location=$3) ORDER BY (location IS NOT DISTINCT FROM $4::text) DESC,(memory_mb-headroom_mb) DESC,id FOR UPDATE",[opts.exclude,opts.preferNode||null,opts.sameLocationOnly?need.location:null,need.location])).rows;
  const rejected:string[]=[];
  for(const n of nodes){
@@ -61,7 +62,7 @@ export async function planServer(server:any,cfg:Settings,excludeNodes:string[],u
  const c=await pool.connect();let target:any;
  try{
   await c.query('BEGIN');
-  const r=await pickNode(c,{memory:server.memory_mb,cpu:server.cpu_percent,disk:server.disk_mb,ports:tpl?.internal_ports||[],location:server.location||null},{exclude:excludeNodes,sameLocationOnly:cfg.sameLocationOnly});
+  const r=await pickNode(c,{memory:server.memory_mb,cpu:server.cpu_percent,disk:server.disk_mb,ports:[...(tpl?.internal_ports||[]),...(server.extra_ports||[])],location:server.location||null},{exclude:excludeNodes,sameLocationOnly:cfg.sameLocationOnly});
   await c.query('ROLLBACK');
   if(r.node)target={id:r.node.id,name:r.node.name,port:r.port};else blockers.push(...r.rejected);
  }finally{c.release();}
@@ -76,13 +77,13 @@ async function moveServer(serverId:string,opts:{kind:'failover'|'migration';reas
   await c.query('BEGIN');
   const s=(await c.query("SELECT s.*,n.location,t.internal_ports FROM servers s JOIN nodes n ON n.id=s.node_id JOIN templates t ON t.id=s.template_id WHERE s.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF s",[serverId])).rows[0];
   if(!s||s.node_id!==opts.fromNode||s.observed_status==='deleting'){await c.query('ROLLBACK');return null;}
-  const r=await pickNode(c,{memory:s.memory_mb,cpu:s.cpu_percent,disk:s.disk_mb,ports:s.internal_ports,location:s.location},{exclude:[opts.fromNode],sameLocationOnly:cfg.sameLocationOnly,preferNode:opts.preferNode});
+  const r=await pickNode(c,{memory:s.memory_mb,cpu:s.cpu_percent,disk:s.disk_mb,ports:[...s.internal_ports,...(s.extra_ports||[])],location:s.location},{exclude:[opts.fromNode],sameLocationOnly:cfg.sameLocationOnly,preferNode:opts.preferNode});
   if(!r.node){await c.query('ROLLBACK');throw Object.assign(new Error(r.rejected.join('; ')),{blocked:true});}
   // Pending work on the old node no longer applies to this server.
   const cancelled=await c.query("UPDATE jobs SET state='failed',error='Server was moved to another node',finished_at=now(),lease_until=NULL WHERE server_id=$1 AND state IN ('queued','running') RETURNING id",[serverId]);
   if(cancelled.rowCount)await c.query("UPDATE backups SET state='failed',error='Server was moved to another node',completed_at=now() WHERE job_id=ANY($1::uuid[]) AND state IN ('queued','running')",[cancelled.rows.map((x:any)=>x.id)]);
   await c.query('DELETE FROM allocations WHERE server_id=$1',[serverId]);
-  for(const x of s.internal_ports)await c.query('INSERT INTO allocations(node_id,server_id,port,protocol) VALUES($1,$2,$3,$4)',[r.node.id,serverId,r.port+x.offset,x.protocol]);
+  for(const x of [...s.internal_ports,...(s.extra_ports||[])])await c.query('INSERT INTO allocations(node_id,server_id,port,protocol) VALUES($1,$2,$3,$4)',[r.node.id,serverId,r.port+x.offset,x.protocol]);
   await c.query("UPDATE servers SET node_id=$1,port=$2,observed_status='provisioning',usage='{}'::jsonb,updated_at=now() WHERE id=$3",[r.node.id,r.port,serverId]);
   await c.query("INSERT INTO jobs(node_id,server_id,kind,created_at) VALUES($1,$2,'create',clock_timestamp())",[r.node.id,serverId]);
   let jobId:string|null=null;
@@ -109,11 +110,13 @@ async function startFailover(server:any,cfg:Settings,reason:string,actor:string|
  if(!plan.ok){
   const first=await recordBlocked(server.id,server.node_id,plan.blockers.join('; '));
   if(first)await notify(`${server.name} cannot be recovered automatically`,{server:server.name,blockers:plan.blockers});
+  if(first)await emit({kind:'failover.blocked',title:`${server.name} cannot be recovered automatically`,body:plan.blockers.join('; '),serverId:server.id});
   return null;
  }
  try{
   const r=await moveServer(server.id,{kind:'failover',reason,actor,backup:plan.backup||null,fromNode:server.node_id});
   if(r)await notify(`${r.serverName} is being recovered on ${r.toName}`,{server:r.serverName,toNode:r.toName,dataAgeMinutes:plan.backup?Math.round(plan.backup.age/60):null,reason});
+  if(r)await emit({kind:'failover.started',title:`${r.serverName} is being recovered on ${r.toName}`,body:plan.backup?`Using a backup that is ${Math.round(plan.backup.age/60)} minutes old.`:'No backup was available; it starts with empty data.',serverId:server.id});
   return r;
  }catch(e:any){
   if(e?.blocked){await recordBlocked(server.id,server.node_id,e.message);return null;}
@@ -144,6 +147,7 @@ async function advanceEvents(){
     await pool.query("UPDATE failover_events SET state='failed',error=$2,finished_at=now(),updated_at=now() WHERE id=$1",[e.id,msg]);
     await pool.query("UPDATE servers SET observed_status='failed' WHERE id=$1 AND deleted_at IS NULL",[e.server_id]);
     await notify(`Recovery of ${e.server_name} failed`,{server:e.server_name,error:msg});
+    await emit({kind:'failover.blocked',title:`Recovery of ${e.server_name} failed`,body:msg,serverId:e.server_id,severity:'bad'});
    }
   }else if(e.state==='backing-up'){
    if(e.job_state==='failed'){
@@ -174,6 +178,7 @@ async function trackNodes(resumed:Date){
  for(const n of down){
   await pool.query("INSERT INTO node_events(node_id,kind) VALUES($1,'down')",[n.id]);
   await notify(`Node ${n.name} went offline`,{node:n.name});
+  await emit({kind:'node.offline',title:`Node ${n.name} went offline`,nodeId:n.id});
  }
 }
 
