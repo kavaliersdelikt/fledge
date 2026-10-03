@@ -3,6 +3,7 @@
 //   - environment variables   from .env.example, compose.yaml usage and scripts/env-descriptions.json
 //   - plugin permissions etc. from api/src/plugins/manifest.ts and the plugin host limits
 //   - notification events     from api/src/notifications.ts
+//   - email templates         from api/src/email-defaults.ts
 //   - database schema         from db/schema.sql
 //   - agent job kinds         from agent/main.go and scripts/job-descriptions.json
 //   - theme tokens, presets   from shared/theme.ts
@@ -13,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, rmSync
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EVENTS } from '../../api/src/notifications.ts';
+import { TEMPLATES, COMMON_VARS } from '../../api/src/email-defaults.ts';
 import { KNOWN_HOOKS, FIXED_PERMISSIONS, describePermission, API_VERSION } from '../../api/src/plugins/manifest.ts';
 import { defaultLimits } from '../../plugins/host/src/sandbox.ts';
 import { COLOR_TOKENS, DENSITIES, FONTS, PRESETS, RADII, TEXT_SCALES, checkTokens, derivePalette, FLEDGE_DARK_INPUT, FLEDGE_LIGHT_INPUT } from '../../shared/theme.ts';
@@ -140,6 +142,32 @@ const problems: string[] = [];
   md += 'Every event can be sent to the inbox and to any [channel](/panel/notifications). *Scope* says whether it is about a server (customers see events for their own servers) or about the panel (administrators only). Webhook bodies are described in [Webhook payloads](/api/webhooks).\n\n| Event | Meaning | Scope | Severity |\n| --- | --- | --- | --- |\n';
   for (const e of EVENTS) md += `| \`${e.id}\` | ${esc(e.label)} | ${e.scope} | ${e.severity} |\n`;
   out('reference/events.md', md);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Email templates
+// ---------------------------------------------------------------------------------------------------------------------------
+{
+  let md = `---\ntitle: Email templates and variables\n---\n\n# Email templates and variables\n\n${GENERATED('api/src/email-defaults.ts')}\n`;
+  md += 'Every email the panel sends, with the values you can use in it. Edit them under [Settings → Email templates](/panel/email-templates). Write a value as `{{name}}`; show text only when a value exists with `{{#if name}}…{{/if}}`.\n\n';
+  md += '## Available in every template\n\n| Variable | Meaning | Example |\n| --- | --- | --- |\n';
+  for (const v of COMMON_VARS) md += `| \`{{${v.name}}}\` | ${esc(v.help)} | ${esc(v.sample)} |\n`;
+  for (const group of ['Account', 'Billing', 'Limits', 'Administrators', 'System'] as const) {
+    md += `\n## ${group}\n`;
+    for (const t of TEMPLATES.filter((x) => x.group === group)) {
+      md += `\n### ${t.label}\n\n\`${t.id}\` · to ${t.audience === 'admin' ? 'administrators' : 'the customer'} · ${t.critical ? 'always sent' : 'can be switched off'}${t.bccAdmin ? ' · a copy goes to the copy address' : ''}\n\n${t.description}\n\n`;
+      if (t.vars.length) {
+        md += '| Variable | Meaning | Example |\n| --- | --- | --- |\n';
+        for (const v of t.vars) md += `| \`{{${v.name}}}\` | ${esc(v.help)} | ${esc(v.sample)} |\n`;
+        md += '\n';
+      }
+      md += `Subject: \`${t.subject}\`\n\n\`\`\`text\n${t.body}\n\`\`\`\n`;
+    }
+  }
+  // The templates are full of {{values}}, which the page generator would otherwise try to evaluate.
+  const marker = 'Every email the panel sends';
+  const [head, ...rest] = md.split(marker);
+  out('reference/email-templates.md', `${head}<div v-pre>\n\n${marker}${rest.join(marker)}\n</div>\n`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

@@ -40,6 +40,7 @@
   "PLUGIN_HOST_URL": { "scope": "api", "group": "process", "description": "Address of the plugin host (`http://plugins:4020`); set by Compose. Empty disables plugins." },
   "PLUGIN_TOKEN_FILE": { "scope": "plugin-host", "group": "process", "default": "/run/fledge-plugins/token", "description": "Shared bearer token file between the API and the plugin host." },
   "BUNDLED_PLUGINS_DIR": { "scope": "api", "group": "process", "description": "Where the bundled plugins are read from; defaults to the copy inside the image." },
+  "FLEDGE_TEST_CAPTCHA_URL": { "scope": "test", "group": "test", "description": "Tests only: address the sign-up bot check is verified against, so tests need no real Turnstile or hCaptcha account. Never set in production." },
   "FLEDGE_TEST_ALLOW_LOCAL_FETCH": { "scope": "test", "group": "test", "description": "Tests only: lets notification webhooks and plugin registry fetches use local HTTP addresses. Never set in production." },
   "PLUGIN_HOST_NO_LISTEN": { "scope": "test", "group": "test", "description": "Tests only: import the plugin host without listening." },
   "PLUGIN_HOST_UNSAFE_TEST_ALLOW_LOCAL": { "scope": "test", "group": "test", "description": "Tests only: lets the plugin host reach local HTTP. Never set in production." },
