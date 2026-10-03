@@ -8,7 +8,7 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https:",
+  "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   // The API is on another port or host in most deployments, including its WebSocket endpoints.
   "connect-src 'self' http: https: ws: wss:",
@@ -21,6 +21,8 @@ const csp = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // The theme engine in ../shared is also used by the API, so it lives outside this folder.
+  experimental: { externalDir: true },
   async headers() {
     return [
       {

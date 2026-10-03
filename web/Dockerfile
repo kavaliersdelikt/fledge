@@ -3,6 +3,8 @@ WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
+# Shared with the API: the theme engine used by the appearance editor.
+COPY shared /shared
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_GITHUB_REPOSITORY=
