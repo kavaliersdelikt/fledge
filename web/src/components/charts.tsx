@@ -32,6 +32,7 @@ export function Sparkline({
   format,
   label,
   empty = "Collecting samples…",
+  formatTime,
 }: {
   points: Point[];
   max: number;
@@ -39,6 +40,8 @@ export function Sparkline({
   format: (v: number) => string;
   label: string;
   empty?: string;
+  /** Tooltip time; defaults to the clock time, which is right for short ranges. */
+  formatTime?: (t: number) => string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -126,7 +129,7 @@ export function Sparkline({
       {active ? (
         <span className="spark__tip" style={{ left: Math.min(Math.max(x(active), 40), width - 40) }}>
           {format(active.v)}
-          <small>{new Date(active.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</small>
+          <small>{formatTime ? formatTime(active.t) : new Date(active.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</small>
         </span>
       ) : null}
     </div>
