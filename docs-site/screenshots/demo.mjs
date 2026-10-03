@@ -13,9 +13,9 @@ export const WEB = 'http://localhost:3100';
 export const API = 'http://localhost:4300';
 export const ADMIN = { email: 'maya@fledge.demo', password: 'demo-password-2026' };
 
-export async function bootDemo() {
+export async function bootDemo(extra = {}) {
   const stack = await bootStack({
-    db: 'fledge_docs_demo', apiPort: 4300, hostPort: 4593,
+    db: 'fledge_docs_demo', apiPort: 4300, hostPort: 4593, hostMap: extra.hostMap || '',
     apiEnv: {
       WEB_ORIGIN: WEB, SWEEP_INTERVAL_MS: '3000', SLOW_SWEEP_MS: '10000', RATE_LIMIT_AUTH_WRITE: '5000',
       // Object storage is configured (and never contacted) so the backup features are shown as they look when it is on.

@@ -40,3 +40,10 @@ Add an entry to `shots.mjs`, run it with `ONLY=<name>`, look at the result, then
 `![Meaningful alt text](/screenshots/<name>.webp){.screenshot}`. `npm run check` fails for missing files or empty alt text.
 
 When the UI changes noticeably, re-run the whole set and commit the new files.
+
+## The hosting screenshots (0.7.1.1 "Rookery")
+
+`rookery-demo.mjs` extends the demo with a fictional hosting business, *Willow Hosting*: a payment plugin talking to a **local stand-in for Stripe** (`api/test/stripe-mock.mjs`), a mail sink, four plans, customers at different points of
+their subscription (a trial, a yearly plan, a late payment, a cancellation), and two people waiting to be approved. `shots.rookery.mjs` takes the screenshots of sign-up, the store, billing, limits and email templates from it. Take just those with
+`ONLY=store,store-buy,billing-customer,self-service-create,billing-overview,billing-plans,billing-plan-editor,billing-subscription,billing-health,settings-signup,settings-self-service,settings-limits,settings-store,email-templates,customers-pending,limits-usage,stripe-plugin,signup-form npm run screenshots`.
+`keep.rookery.mjs` keeps the same demo running for looking around by hand.

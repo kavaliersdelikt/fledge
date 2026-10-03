@@ -5,12 +5,13 @@
 //   TEST_DATABASE_URL=postgres://user:pass@localhost:5432/postgres npm run screenshots
 //
 // ONLY=nodes,files limits the run to some screenshots. CHROME_PATH points at a Chrome/Chromium binary (default: the installed Chrome).
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { createRequire } from 'node:module';
-import { bootDemo, seedDemo, seedConsole, ADMIN, WEB, API } from './demo.mjs';
+import { seedDemo, seedConsole, ADMIN, WEB, API } from './demo.mjs';
+import { bootRookery, seedRookery } from './rookery-demo.mjs';
 import { sleep } from '../../api/test/harness.mjs';
 import { shots } from './shots.mjs';
 
@@ -20,7 +21,7 @@ const outDir = join(here, '..', 'docs', 'public', 'screenshots');
 mkdirSync(outDir, { recursive: true });
 const only = (process.env.ONLY || '').split(',').filter(Boolean);
 
-const demo = await bootDemo();
+const demo = await bootRookery();
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, channel: process.env.CHROME_PATH ? undefined : 'chrome', headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1360, height: 860 }, deviceScaleFactor: 1, colorScheme: 'dark', locale: 'en-US', timezoneId: 'Europe/Berlin' });
@@ -58,6 +59,8 @@ try {
 
   const seeded = await seedDemo(demo);
   ctx.seeded = seeded;
+  // The hosting side: plans, store, subscriptions, sign-ups (a local stand-in for Stripe; nothing real).
+  await seedRookery(demo, seeded);
   // Sign in through the API and hand the session cookie to the browser.
   const step = await fetch(API + '/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: ADMIN.email, password: ADMIN.password, stepwise: true }) }).then((r) => r.json());
   const res = await fetch(API + '/api/auth/challenge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ challenge: step.challenge, code: authenticator.generate(seeded.totpSecret) }) });
@@ -68,7 +71,12 @@ try {
 
   for (const [name, fn] of Object.entries(shots)) {
     if (only.length && !only.includes(name)) continue;
-    try { await fn(ctx); } catch (e) { console.error(`FAILED ${name}: ${String(e.message).split('\n')[0]}`); process.exitCode = 1; await page.screenshot({ path: join(outDir, `_failed-${name}.png`) }).catch(() => {}); }
+    try { await fn(ctx); } catch (e) {
+      console.error(`FAILED ${name}: ${String(e.message).split('\n')[0]}`);
+      process.exitCode = 1;
+      try { unlinkSync(join(outDir, `${name}.webp`)); } catch (cleanupError) { if (cleanupError.code !== 'ENOENT') throw cleanupError; }
+      await page.screenshot({ path: join(outDir, `_failed-${name}.png`) }).catch(() => {});
+    }
   }
 } finally {
   await browser.close();

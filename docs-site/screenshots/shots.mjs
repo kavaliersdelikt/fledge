@@ -1,4 +1,5 @@
 import { appearanceShots } from './shots.appearance.mjs';
+import { rookeryShots } from './shots.rookery.mjs';
 
 // One entry per screenshot. Each receives { page, save, sleep, WEB, seeded, demo, seedConsole }.
 // Keep them short and resilient: wait for visible text, not for fixed times.
@@ -114,4 +115,4 @@ const baseShots = {
   },
 };
 
-export const shots = { ...baseShots, ...appearanceShots };
+export const shots = { ...baseShots, ...rookeryShots, ...appearanceShots };
