@@ -30,6 +30,7 @@ Rootless operation, load testing, external monitoring and credential-rotation op
 | API to node | The node only connects outward; its credential is a high-entropy secret stored hashed; jobs are leased, attempt-fenced and idempotent; path confinement on all file operations |
 | Node to game | Docker memory, CPU and PID limits, `no-new-privileges`, kernel-enforced disk limits, an image allow-list |
 | API to plugins | Separate container (read-only root, no capabilities, own network), bearer token, WebAssembly sandbox, declared network hosts, public-address-only egress, validated results, node-side checksum verification of add-on files |
+| Appearance | Only administrators with a browser session can change it (not API tokens), every change is audited and versioned; uploaded images are checked by their contents and served sandboxed; custom CSS is off by default and cannot load anything from another server; safe mode and `BRANDING_DISABLED` recover from a bad theme. See [Appearance](/panel/appearance#advanced) |
 | Secrets at rest | AES-256-GCM with `ENCRYPTION_KEY` for two-factor secrets, S3 and SMTP credentials, webhook URLs and plugin secrets |
 | Supply chain | Release checksums, optional signatures and attestations, SBOMs, signed plugin registry; see [Verifying releases](/security/supply-chain) |
 
@@ -44,6 +45,7 @@ Rootless operation, load testing, external monitoring and credential-rotation op
 - **Defensive outbound requests.** Webhooks, the plugin registry and the plugin host refuse private and link-local addresses (except
   for administrator webhooks by design), pin the connection to the checked address and re-check redirects.
 - **No double running.** Failover fences old copies; see [Failover](/operate/failover).
+- **Appearance is data, not code.** Names, links and announcements are plain text; colours are validated hex values from which Fledge calculates every other colour; images are identified by their bytes, plain SVGs only. The one free-form field, custom CSS, is off by default, refuses `@import`, fonts and remote `url()`, and runs under the unchanged content security policy.
 - **Audit log.** Sign-ins, changes, installs and exports are recorded, with filters and export.
 
 ## What is not protected

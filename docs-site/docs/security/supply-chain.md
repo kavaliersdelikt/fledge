@@ -18,8 +18,8 @@ A Fledge release is created by the GitHub Actions workflow *Release Linux node a
 ## Verify an agent binary
 
 ```sh
-curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.1.1/fledge-agent_linux_amd64
-curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.1.1/SHA256SUMS
+curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.2.1/fledge-agent_linux_amd64
+curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.2.1/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -28,8 +28,8 @@ The one-line connector and the panel's agent updater do the checksum comparison 
 ### Signature
 
 ```sh
-curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.1.1/SHA256SUMS.sig
-curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.1.1/SHA256SUMS.pem
+curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.2.1/SHA256SUMS.sig
+curl -fsSLO https://github.com/kavaliersdelikt/fledge/releases/download/v0.6.2.1/SHA256SUMS.pem
 cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \
   --certificate-identity-regexp 'https://github.com/kavaliersdelikt/fledge/.github/workflows/release-agent.yml@.*' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
