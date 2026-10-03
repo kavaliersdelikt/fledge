@@ -116,17 +116,37 @@ tabs($('.tour-tabs'), (b) => {
   }, reduced ? 0 : 180);
 });
 
-// A small tilt that follows the pointer while it is over the screenshot.
-const frame = $('#frame');
+// ---------- Example themes ----------
+const themes = [
+  { src: 'theme-lumen', url: 'panel.lumen.example/servers', alt: 'The server list in the Lumen Hosting theme: dark with a teal accent, the page renamed to Worlds, extra sidebar links and an announcement', cap: 'Lumen Hosting: its own logo, a teal accent, “Servers” renamed to “Worlds”, a status link and a maintenance banner.' },
+  { src: 'theme-paper', url: 'panel.paperplane.example/servers', alt: 'The server list in the Paperplane theme: light, warm white with a deep green accent', cap: 'Paperplane: the Paper preset in its light version. Every person can still switch to dark for themselves.' },
+  { src: 'theme-ember', url: 'panel.ember.example/instances', alt: 'The server list in the Ember Servers theme: warm dark with an orange accent, Inter as the font, and the page renamed to Instances', cap: 'Ember Servers: warm dark, an orange accent, Inter, slightly tighter corners and “Instances” instead of “Servers”.' },
+  { src: 'theme-terminal', url: 'node.garden/machines', alt: 'The server list in the node.garden theme: black with phosphor green, a monospace font, square corners and compact rows', cap: 'node.garden: the Terminal preset. Monospace, square corners and compact rows, with the page renamed to “Machines”.' },
+];
+const bimg = $('#brand-img'), bcap = $('#brand-caption'), burl = $('#brand-url');
+themes.forEach((s) => { const i = new Image(); i.src = `screenshots/${s.src}.webp`; });
+tabs($('.brand-tabs'), (b) => {
+  const s = themes[Number(b.dataset.i)];
+  bimg.classList.add('swap');
+  setTimeout(() => {
+    bimg.src = `screenshots/${s.src}.webp`; bimg.alt = s.alt;
+    burl.textContent = s.url; bcap.textContent = s.cap;
+    bimg.classList.remove('swap');
+  }, reduced ? 0 : 180);
+});
+
+// A small tilt that follows the pointer while it is over a screenshot.
 if (!reduced) {
-  frame.addEventListener('pointermove', (e) => {
-    if (e.pointerType !== 'mouse') return;
-    const r = frame.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
-    frame.style.setProperty('--ry', `${x * 5}deg`);
-    frame.style.setProperty('--rx', `${-y * 4}deg`);
-  });
-  frame.addEventListener('pointerleave', () => { frame.style.setProperty('--rx', '0deg'); frame.style.setProperty('--ry', '0deg'); });
+  for (const frame of $$('.frame')) {
+    frame.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const r = frame.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+      frame.style.setProperty('--ry', `${x * 5}deg`);
+      frame.style.setProperty('--rx', `${-y * 4}deg`);
+    });
+    frame.addEventListener('pointerleave', () => { frame.style.setProperty('--rx', '0deg'); frame.style.setProperty('--ry', '0deg'); });
+  }
 }
 
 // ---------- Orbit diagram ----------

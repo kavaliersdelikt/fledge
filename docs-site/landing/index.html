@@ -37,7 +37,7 @@
   <main id="main">
     <section class="hero">
       <div class="hero-inner">
-        <a class="news intro i1" href="releases/v0.6.1.1">New in 0.6.1.1: plugins, autopilot and passkeys</a>
+        <a class="news intro i1" href="releases/v0.6.2.1">New in 0.6.2.1: your name, your colours, light and dark</a>
         <h1 class="intro i2"><span class="l1">Your servers,</span><span class="l2">in orbit.</span></h1>
         <p class="lede intro i3">
           Fledge is a self-hosted control panel for game servers on your own Linux Docker hosts. The panel sits at the centre;
@@ -204,6 +204,37 @@
           <div><dt>Outbound traffic</dt><dd>HTTPS to declared public hosts</dd></div>
         </dl>
       </div>
+    </section>
+
+    <section class="block brandsec" id="brand" aria-labelledby="brand-h">
+      <div class="tour-head">
+        <h2 id="brand-h">Your name on the door.</h2>
+        <div class="tour-tabs brand-tabs" role="tablist" aria-label="Example themes">
+          <button role="tab" aria-selected="true" data-i="0">Lumen Hosting</button>
+          <button role="tab" aria-selected="false" data-i="1" tabindex="-1">Paperplane</button>
+          <button role="tab" aria-selected="false" data-i="2" tabindex="-1">Ember Servers</button>
+          <button role="tab" aria-selected="false" data-i="3" tabindex="-1">node.garden</button>
+        </div>
+      </div>
+      <div class="brandsec-grid">
+        <div class="brandsec-copy">
+          <p>Rename the panel, add your logo, pick colours and a font, and offer light and dark. Restyle the sign-in page, add links to the sidebar, show an announcement. It all happens in the browser, in <b>Settings, Appearance</b>.</p>
+          <ul class="points">
+            <li><b>Readable by construction.</b> Fledge works out every colour from your accent and checks each text pair as you edit. A theme that nobody could read cannot be saved.</li>
+            <li><b>Try it for a minute.</b> Put the draft on the real panel; it rolls itself back unless you keep it.</li>
+            <li><b>Always a way back.</b> The last 20 versions, a safe mode for the address bar, and one switch in <code>.env</code> as a last resort.</li>
+          </ul>
+          <div class="cta"><a class="btn btn-line" href="panel/appearance">How appearance works</a></div>
+        </div>
+        <div class="frame-wrap">
+          <div class="frame" id="brand-frame" role="tabpanel">
+            <div class="frame-bar"><i></i><i></i><i></i><span id="brand-url">panel.lumen.example/servers</span></div>
+            <img id="brand-img" src="screenshots/theme-lumen.webp" alt="The server list in the Lumen Hosting theme: dark with a teal accent, the page renamed to Worlds, extra sidebar links and an announcement" width="1360" height="860" loading="lazy" />
+          </div>
+          <p class="tour-caption" id="brand-caption" aria-live="polite">Lumen Hosting: its own logo, a teal accent, “Servers” renamed to “Worlds”, a status link and a maintenance banner.</p>
+        </div>
+      </div>
+      <p class="tour-foot">Fictional brands on demo data. Your panel keeps a small “About Fledge” entry in the account menu; the licence and a link to the source stay visible.</p>
     </section>
 
     <section class="block templates" aria-labelledby="tpl-h">

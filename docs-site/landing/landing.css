@@ -297,6 +297,17 @@ h1 .l2 { padding-left: 1.15em; }
 .limits dt { color: var(--dust); }
 .limits dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
+/* Example themes. */
+.brandsec-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
+.brandsec-copy > p { color: #cfc9de; max-width: 52ch; margin-bottom: 26px; }
+.points { list-style: none; margin: 0 0 30px; padding: 0; display: grid; }
+.points li { padding: 14px 0; border-top: 1px solid var(--line); color: var(--dust); font-size: 0.98rem; }
+.points li:last-child { border-bottom: 1px solid var(--line); }
+.points b { color: var(--starlight); }
+.points code { font: 0.86em var(--mono); color: var(--starlight); }
+.brandsec .tour-foot { margin-top: 18px; }
+@media (max-width: 960px) { .brandsec-grid { grid-template-columns: 1fr; } }
+
 /* Templates. */
 .templates h2 { margin-bottom: 32px; }
 .tpl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
