@@ -13,10 +13,14 @@ set -eu
 printf '%s\n' "$*" >> "$MOCK_LOG"
 case "$*" in
   info|compose\ version|compose\ up\ --build\ -d) exit 0 ;;
+  compose\ exec\ -T\ plugins*) [ "${MOCK_PLUGINS_UP:-1}" = 1 ] ;;
   *) echo "Unexpected docker invocation: $*" >&2; exit 91 ;;
 esac
 EOF
-chmod 755 "$mock/docker"
+printf '#!/bin/sh
+exit 0
+' > "$mock/curl"
+chmod 755 "$mock/docker" "$mock/curl"
 export MOCK_LOG="$tmp/docker.log"
 export PATH="$mock:$PATH"
 
@@ -35,4 +39,14 @@ sh "$project/install.sh" --no-wait
 printf 'POSTGRES_PASSWORD=REPLACE_WITH_secret\nENCRYPTION_KEY=REPLACE_WITH_key\n' > "$project/.env"
 if sh "$project/install.sh" --no-wait >/dev/null 2>&1; then echo 'Placeholder .env was accepted' >&2; exit 1; fi
 [ "$(grep -c '^compose up --build -d$' "$MOCK_LOG")" -eq 2 ] || { echo 'Compose was called unexpectedly' >&2; exit 1; }
-echo 'PASS installer smoke: check-only, secret creation, private permissions, idempotent env preservation, and placeholder rejection'
+# Waiting mode also checks the plugin host: healthy is reported, unhealthy only warns.
+printf 'POSTGRES_PASSWORD=%s
+ENCRYPTION_KEY=%s
+' abc123 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$project/.env"
+sh "$project/install.sh" > "$tmp/wait.out" 2>&1 || { cat "$tmp/wait.out" >&2; echo 'Installer failed with a healthy stack' >&2; exit 1; }
+grep -q 'Fledge is ready' "$tmp/wait.out" || { echo 'No ready message' >&2; exit 1; }
+grep -q '^compose exec -T plugins ' "$MOCK_LOG" || { echo 'Plugin host health was not checked' >&2; exit 1; }
+MOCK_PLUGINS_UP=0 INSTALL_PLUGIN_WAIT_ATTEMPTS=1 sh "$project/install.sh" > "$tmp/warn.out" 2>&1 || { cat "$tmp/warn.out" >&2; echo 'An unhealthy plugin host failed the install' >&2; exit 1; }
+grep -q 'plugin host did not become healthy' "$tmp/warn.out" || { echo 'No warning for the plugin host' >&2; exit 1; }
+grep -q 'Fledge is ready' "$tmp/warn.out" || { echo 'The installer stopped before finishing' >&2; exit 1; }
+echo 'PASS installer smoke: check-only, secret creation, private permissions, idempotent env preservation, placeholder rejection, and plugin host health check'

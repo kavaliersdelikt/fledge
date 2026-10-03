@@ -137,3 +137,76 @@ func TestStopContainerFallsBackToDockerStop(t *testing.T) {
 		t.Fatalf("expected docker stop fallback, got %#v", calls)
 	}
 }
+
+func TestStopContainerQueuesStopOnConsolePipeWhileMinecraftIsBooting(t *testing.T) {
+	prior := runDocker
+	defer func() { runDocker = prior }()
+	running := "true"
+	var calls []string
+	runDocker = func(args ...string) (string, error) {
+		line := strings.Join(args, " ")
+		calls = append(calls, line)
+		switch {
+		case strings.Contains(line, "Config.Image"):
+			return "itzg/minecraft-server:java21-alpine", nil
+		case strings.Contains(line, "rcon-cli"):
+			return "", errors.New("Failed to connect to RCON server")
+		case strings.Contains(line, "stat -c %u /data"):
+			return "1000", nil
+		case strings.Contains(line, "test -p /tmp/minecraft-console-in"):
+			return "", nil
+		case strings.Contains(line, "mc-send-to-console"):
+			running = "false"
+			return "", nil
+		case args[0] == "inspect":
+			return running, nil
+		}
+		return "", errors.New("unexpected docker call: " + line)
+	}
+	if err := stopContainer("mc", 5); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(calls, "\n")
+	if !strings.Contains(joined, "exec --user 1000 mc mc-send-to-console stop") {
+		t.Fatalf("stop was not queued on the console pipe: %s", joined)
+	}
+	if strings.Contains(joined, "stop -t") {
+		t.Fatalf("docker stop (SIGKILL after the timeout) must not be needed: %s", joined)
+	}
+}
+
+func TestSendToConsoleGivesUpOnAPipeNobodyReads(t *testing.T) {
+	prior := runDocker
+	defer func() { runDocker = prior }()
+	release := make(chan struct{})
+	defer close(release)
+	runDocker = func(args ...string) (string, error) {
+		<-release // a write to a FIFO without a reader blocks forever
+		return "", nil
+	}
+	start := time.Now()
+	if _, err := dockerWithin(100*time.Millisecond, "exec", "mc", "mc-send-to-console", "stop"); err == nil {
+		t.Fatal("expected a timeout")
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("did not give up in time")
+	}
+}
+
+func TestSendToConsoleRefusesWithoutAPipe(t *testing.T) {
+	prior := runDocker
+	defer func() { runDocker = prior }()
+	runDocker = func(args ...string) (string, error) {
+		line := strings.Join(args, " ")
+		if strings.Contains(line, "test -p /tmp/minecraft-console-in") {
+			return "", errors.New("exit status 1")
+		}
+		if strings.Contains(line, "mc-send-to-console") {
+			t.Fatalf("nothing must be written when there is no pipe: %s", line)
+		}
+		return "1000", nil
+	}
+	if err := sendToConsole("mc", "stop"); err == nil {
+		t.Fatal("expected an error without a console pipe")
+	}
+}

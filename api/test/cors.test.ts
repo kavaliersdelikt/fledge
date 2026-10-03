@@ -33,3 +33,14 @@ test('panel CORS refuses wildcard, null, and non-origin configuration',async()=>
   }
  }finally{await app.close()}
 });
+
+test('downloads and exports expose their file name to the panel',async()=>{
+ const app=Fastify();
+ await registerPanelCors(app,'http://localhost:3000');
+ await app.get('/api/activity/export',async()=>({ok:true}));
+ await app.ready();
+ try{
+  const r=await app.inject({method:'GET',url:'/api/activity/export',headers:{origin:'http://localhost:3000'}});
+  assert.match(String(r.headers['access-control-expose-headers']),/Content-Disposition/i);
+ }finally{await app.close()}
+});
