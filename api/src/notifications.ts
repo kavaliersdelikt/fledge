@@ -27,6 +27,12 @@ export const EVENTS:EventDef[]=[
  {id:'agent.update_failed',label:'A node agent update failed',scope:'panel',severity:'warn'},
  {id:'update.available',label:'A new Fledge version is available',scope:'panel',severity:'info'},
  {id:'plugin.disabled',label:'A plugin was turned off after repeated failures',scope:'panel',severity:'warn'},
+ {id:'signup.pending',label:'A new customer is waiting for approval',scope:'panel',severity:'info'},
+ {id:'billing.fulfilment_failed',label:'A paid server could not be created',scope:'panel',severity:'bad'},
+ {id:'billing.payment_failed',label:'A customer’s payment failed',scope:'panel',severity:'warn'},
+ {id:'billing.dispute',label:'A customer opened a payment dispute',scope:'panel',severity:'bad'},
+ {id:'billing.health',label:'Billing needs attention (webhooks, drift)',scope:'panel',severity:'warn'},
+ {id:'limit.exceeded',label:'A customer went over a limit',scope:'panel',severity:'warn'},
 ];
 const eventDef=(id:string)=>EVENTS.find(e=>e.id===id);
 
@@ -82,6 +88,18 @@ export async function emit(ev:Emit){
   const channels=(await pool.query("SELECT * FROM notification_channels WHERE enabled AND $1=ANY(events) AND (scope='panel' OR user_id=ANY($2::uuid[])) AND (server_ids IS NULL OR $3::uuid=ANY(server_ids) OR $3::uuid IS NULL)",[ev.kind,recipients,server?.id||null])).rows;
   const payload={kind:ev.kind,severity,title,body,server,nodeId:ev.nodeId||null,data};
   void Promise.allSettled(channels.map(ch=>deliver(ch,payload)));
+ }catch(e){console.error('Could not record a notification:',(e as Error)?.message);}
+}
+
+/** An in-panel notification for one person (or null for the administrators), with optional de-duplication. */
+export async function notifyUser(userId:string|null,ev:{kind:string;title:string;body?:string;severity?:Severity;data?:Record<string,unknown>;dedupe?:{key:string;minutes:number}}){
+ try{
+  if(ev.dedupe){
+   const hit=await pool.query("SELECT 1 FROM notifications WHERE kind=$1 AND data->>'dedupe'=$2 AND created_at>now()-make_interval(mins=>$3::int) LIMIT 1",[ev.kind,ev.dedupe.key,ev.dedupe.minutes]);
+   if(hit.rowCount)return;
+  }
+  const data={...(ev.data||{}),...(ev.dedupe?{dedupe:ev.dedupe.key}:{})};
+  await pool.query('INSERT INTO notifications(user_id,kind,severity,title,body,data) VALUES($1,$2,$3,$4,$5,$6)',[userId,ev.kind,ev.severity||'info',ev.title.slice(0,200),(ev.body||'').slice(0,1000),JSON.stringify(data)]);
  }catch(e){console.error('Could not record a notification:',(e as Error)?.message);}
 }
 

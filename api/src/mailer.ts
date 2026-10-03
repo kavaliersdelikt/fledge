@@ -8,7 +8,7 @@ import {brand,senderWithName} from './branding.js';
 
 export async function mailerReady(){const e=(await settings()).email;return e.enabled&&!!e.host&&!!e.from;}
 
-export async function sendMail(msg:{to:string;subject:string;text:string;html?:string}){
+export async function sendMail(msg:{to:string;subject:string;text:string;html?:string;bcc?:string;/** The text already carries the footer (templated mail). */raw?:boolean}){
  const cfg=(await settings()).email;
  if(!cfg.enabled||!cfg.host||!cfg.from)fail(503,'Email is not set up. An administrator can turn it on in Settings → Email.');
  const transport=nodemailer.createTransport({host:cfg.host,port:cfg.port,secure:cfg.security==='tls',requireTLS:cfg.security==='starttls',ignoreTLS:cfg.security==='none',
@@ -16,7 +16,7 @@ export async function sendMail(msg:{to:string;subject:string;text:string;html?:s
  try{
   // Appearance settings add a sender name (when the configured address has none) and a footer to every email.
   const b=await brand();
-  await transport.sendMail({from:senderWithName(cfg.from,b.emailFromName),to:msg.to,subject:msg.subject.replace(/[\r\n]+/g,' ').slice(0,200),text:b.footer?`${msg.text.replace(/\s+$/,'')}\n\n${b.footer}\n`:msg.text,...(msg.html?{html:msg.html}:{})});
+  await transport.sendMail({from:senderWithName(cfg.from,b.emailFromName),to:msg.to,subject:msg.subject.replace(/[\r\n]+/g,' ').slice(0,200),text:b.footer&&!msg.raw?`${msg.text.replace(/\s+$/,'')}\n\n${b.footer}\n`:msg.text,...(msg.html?{html:msg.html}:{}),...(cfg.replyTo?{replyTo:cfg.replyTo}:{}),...(msg.bcc?{bcc:msg.bcc}:{})});
  }catch(e:any){
   throw Object.assign(new Error(`The mail server refused or could not be reached: ${String(e?.response||e?.message||'error').slice(0,200)}`),{statusCode:502,error:'mail_failed'});
  }finally{transport.close();}
