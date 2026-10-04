@@ -4,6 +4,7 @@ import { json, type EmailSettings, type SecuritySettings, type User } from "@/li
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Card, ErrorNotice, Notice, Skeleton, Status, Switch, useLoad } from "./shared";
 import { useToast } from "./toast";
+import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from "./ui/tabs";
 
 type Settings = {
   storage: { enabled: boolean; endpoint: string; region: string; bucket: string; accessKey: string; forcePathStyle: boolean; secretKeySet: boolean };
@@ -557,6 +558,7 @@ function UpdatesCard({ agent, panel, reload }: { agent: Settings["agentUpdates"]
 
 export default function AdminSettings() {
   const { data, error, loading, reload } = useLoad<Settings>("/settings");
+  const [tab, setTab] = useState<"storage" | "nodes" | "failover" | "email" | "security" | "updates">("storage");
   if (loading) return <Skeleton rows={3} />;
   if (error || !data) return <ErrorNotice message={error || "Settings could not be loaded."} />;
   const unsaved = Object.keys(data.saved).length === 0;
@@ -565,12 +567,23 @@ export default function AdminSettings() {
       {unsaved ? (
         <Notice>Nothing is saved yet, so the panel is using the values from its install. Saving a section here takes over from them.</Notice>
       ) : null}
-      <StorageCard value={data.storage} reload={reload} />
-      <NodesCard value={data.nodes} reload={reload} />
-      <FailoverCard value={data.failover} storageOn={data.storage.enabled} reload={reload} />
-      <EmailCard value={data.email} reload={reload} />
-      <SecurityCard value={data.security} reload={reload} />
-      <UpdatesCard agent={data.agentUpdates} panel={data.updates} reload={reload} />
+      <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}>
+        <TabsList aria-label="Panel configuration sections">
+          <TabsTrigger value="storage">Storage</TabsTrigger>
+          <TabsTrigger value="nodes">Game nodes</TabsTrigger>
+          <TabsTrigger value="failover">Failover</TabsTrigger>
+          <TabsTrigger value="email">Email delivery</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="updates">Updates</TabsTrigger>
+          <TabsIndicator />
+        </TabsList>
+        <TabsContent value="storage" keepMounted><StorageCard value={data.storage} reload={reload} /></TabsContent>
+        <TabsContent value="nodes" keepMounted><NodesCard value={data.nodes} reload={reload} /></TabsContent>
+        <TabsContent value="failover" keepMounted><FailoverCard value={data.failover} storageOn={data.storage.enabled} reload={reload} /></TabsContent>
+        <TabsContent value="email" keepMounted><EmailCard value={data.email} reload={reload} /></TabsContent>
+        <TabsContent value="security" keepMounted><SecurityCard value={data.security} reload={reload} /></TabsContent>
+        <TabsContent value="updates" keepMounted><UpdatesCard agent={data.agentUpdates} panel={data.updates} reload={reload} /></TabsContent>
+      </Tabs>
     </div>
   );
 }
