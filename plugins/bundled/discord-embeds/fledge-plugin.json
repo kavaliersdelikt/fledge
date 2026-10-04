@@ -1,0 +1,38 @@
+{
+  "id": "discord-embeds",
+  "name": "Better Discord Notifications",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Rich Discord messages for Fledge notifications: colour-coded embeds with the server, the cause, a link to the panel and the last console lines. Works for administrators' and customers' Discord channels.",
+  "author": "Fledge",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://kavaliersdelikt.github.io/fledge/plugins/discord-embeds",
+  "minPanelVersion": "0.8.1.1",
+  "permissions": ["notifications"],
+  "notifications": {
+    "channel": "discord",
+    "styles": [
+      { "id": "embed", "label": "Rich embed", "description": "Colour-coded card with fields, a link and a footer." },
+      { "id": "compact", "label": "Compact embed", "description": "A slim, colour-coded line. Good for busy channels." }
+    ]
+  },
+  "settings": [
+    { "key": "botName", "label": "Sender name", "type": "string", "placeholder": "Your panel's name", "help": "The name Discord shows for the messages. Leave empty to use your panel's name from Appearance." },
+    { "key": "avatarUrl", "label": "Sender picture (https link)", "type": "string", "pattern": "^(https://[^\\s]+)?$", "placeholder": "https://example.com/logo.png", "help": "Optional. Must be an https link to an image. Leave empty to use the picture set on the Discord webhook." },
+    { "key": "showEmoji", "label": "Emoji in titles", "type": "boolean", "default": true },
+    { "key": "showLinks", "label": "Link titles to the panel", "type": "boolean", "default": true, "help": "The title opens the server or page in your panel. Only your panel's own address is used." },
+    { "key": "showTimestamp", "label": "Show the time", "type": "boolean", "default": true, "help": "Discord shows it in each reader's own time zone." },
+    { "key": "showEventCode", "label": "Show the event code in the footer", "type": "boolean", "default": true, "help": "For example server.crashed. Handy when you filter or search." },
+    { "key": "showLogTail", "label": "Show the last console lines of a crash", "type": "boolean", "default": true, "help": "Server output can contain player names and chat. Turn this off if the Discord channel is more public than the panel." },
+    { "key": "colorBad", "label": "Colour: needs attention", "type": "string", "default": "ED4245", "pattern": "^#?[0-9a-fA-F]{6}$", "help": "Six hex digits, for example ED4245." },
+    { "key": "colorWarn", "label": "Colour: warning", "type": "string", "default": "F0B232", "pattern": "^#?[0-9a-fA-F]{6}$" },
+    { "key": "colorOk", "label": "Colour: recovered", "type": "string", "default": "3BA55D", "pattern": "^#?[0-9a-fA-F]{6}$" },
+    { "key": "colorInfo", "label": "Colour: information", "type": "string", "default": "5865F2", "pattern": "^#?[0-9a-fA-F]{6}$" },
+    { "key": "pingRoleId", "label": "Discord role to ping (administrators' channels only)", "type": "string", "pattern": "^(\\d{17,20})?$", "placeholder": "e.g. 123456789012345678", "help": "The numeric ID of a role (turn on Developer Mode in Discord, then right-click the role and choose Copy Role ID). Customers' channels never ping anyone." },
+    { "key": "pingWhen", "label": "Ping the role for", "type": "select", "default": "bad", "options": [
+      { "value": "never", "label": "Never" },
+      { "value": "bad", "label": "Things that need attention (crashes, offline nodes, failed payments)" },
+      { "value": "warn", "label": "Warnings and things that need attention" }
+    ] }
+  ]
+}

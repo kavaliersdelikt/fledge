@@ -7,11 +7,14 @@ export type SettingField={key:string;label:string;type:'string'|'number'|'boolea
 export type Catalog={id:string;label:string;kind:string;description?:string};
 /** A plugin that can take payments (see billing/provider.ts). */
 export type PaymentsCapability={id:string;label:string;intervals:string[];currencies:string[];features:string[]};
+/** A plugin that lays out notifications for one kind of channel (see notification-styles.ts). It never sees the channel's address. */
+export type NotificationsCapability={channel:'discord';styles:{id:string;label:string;description?:string}[]};
+export const NOTIFICATION_CHANNELS=['discord'] as const;
 export const PAYMENT_INTERVALS=['month','quarter','semiannual','year'];
 export const PAYMENT_FEATURES=['checkout','portal','refund','trial','tax','coupons','change'];
 export type Manifest={
  id:string;name:string;version:string;apiVersion:number;description:string;author:string;license:string;homepage?:string;
- minPanelVersion?:string;minAgentVersion?:string;permissions:string[];settings:SettingField[];catalogs:Catalog[];hooks:string[];payments?:PaymentsCapability;
+ minPanelVersion?:string;minAgentVersion?:string;permissions:string[];settings:SettingField[];catalogs:Catalog[];hooks:string[];payments?:PaymentsCapability;notifications?:NotificationsCapability;
 };
 export class ManifestError extends Error{constructor(public problems:string[]){super(problems.join('; '));this.name='ManifestError';}}
 
@@ -20,7 +23,7 @@ const VERSION=/^\d{1,4}\.\d{1,4}\.\d{1,4}(?:\.\d{1,4})?(?:-[0-9A-Za-z.-]{1,20})?
 const HOST=/^(?:\*\.)?(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 const KEY=/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/;
 export const KNOWN_HOOKS=['server.created','server.deleted','server.updated','addon.installed','addon.removed'] as const;
-export const FIXED_PERMISSIONS=['servers:read','servers:files.write','storage','hooks','payments'];
+export const FIXED_PERMISSIONS=['servers:read','servers:files.write','storage','hooks','payments','notifications'];
 
 // Wildcards on hosting platforms would let a plugin talk to any customer's site on that platform.
 const SHARED_HOSTING=/\*\.(github\.io|githubusercontent\.com|gitlab\.io|pages\.dev|workers\.dev|vercel\.app|netlify\.app|herokuapp\.com|amazonaws\.com|cloudfront\.net|web\.app|firebaseapp\.com|azurewebsites\.net|onrender\.com|fly\.dev|repl\.co|blogspot\.com|appspot\.com|ngrok\.io|trycloudflare\.com)$/;
@@ -38,7 +41,7 @@ export function permissionProblem(p:unknown):string|null{
 /** Plain-language description for the permission prompt. */
 export function describePermission(p:string):string{
  if(p.startsWith('network:'))return `Connect to ${p.slice(8)}`;
- return ({'servers:read':'Read the game, version and add-on folder of servers you open its tools on','servers:files.write':'Add and remove files in server folders on your behalf (only after you confirm an install)','storage':'Keep a small private data store','hooks':'Be notified when servers or add-ons change','payments':'Take payments and manage subscriptions through this provider. It sees order details and customers’ email addresses, and holds your API keys'} as Record<string,string>)[p]||p;
+ return ({'servers:read':'Read the game, version and add-on folder of servers you open its tools on','servers:files.write':'Add and remove files in server folders on your behalf (only after you confirm an install)','storage':'Keep a small private data store','hooks':'Be notified when servers or add-ons change','notifications':'Read the text of notifications to lay them out as rich messages. It cannot send anything anywhere and never sees the webhook address','payments':'Take payments and manage subscriptions through this provider. It sees order details and customers’ email addresses, and holds your API keys'} as Record<string,string>)[p]||p;
 }
 
 const text=(v:unknown,name:string,max:number,problems:string[],required=true)=>{
@@ -131,8 +134,25 @@ export function validateManifest(raw:unknown):Manifest{
   }
  }
  if(permissions.includes('payments')&&!m.payments)problems.push('the "payments" permission is only for payment providers');
+ let notifications:NotificationsCapability|undefined;
+ if(m.notifications!==undefined){
+  const n=m.notifications;
+  if(!n||typeof n!=='object'||Array.isArray(n))problems.push('notifications must be an object');
+  else{
+   if(!NOTIFICATION_CHANNELS.includes(n.channel))problems.push('notifications.channel must be "discord"');
+   const styles:{id:string;label:string;description?:string}[]=[];
+   if(!Array.isArray(n.styles)||!n.styles.length||n.styles.length>5)problems.push('notifications.styles must list 1 to 5 styles');
+   else for(const st of n.styles){
+    if(!st||!/^[a-z][a-z0-9-]{0,30}$/.test(String(st.id||''))||st.id==='plain'||typeof st.label!=='string'||!st.label.trim()){problems.push('each notification style needs a label and an id (lowercase, not "plain")');continue;}
+    styles.push({id:st.id,label:st.label.slice(0,40),...(typeof st.description==='string'?{description:st.description.slice(0,160)}:{})});
+   }
+   if(!permissions.includes('notifications'))problems.push('a notification formatter needs the "notifications" permission');
+   if(styles.length)notifications={channel:n.channel,styles};
+  }
+ }
+ if(permissions.includes('notifications')&&!m.notifications)problems.push('the "notifications" permission is only for notification formatters');
  if(problems.length)throw new ManifestError(problems);
- return {id,name,version,apiVersion:API_VERSION,description,author,license,...(homepage?{homepage}:{}),...(minPanelVersion?{minPanelVersion}:{}),...(minAgentVersion?{minAgentVersion}:{}),permissions,settings,catalogs,hooks,...(payments?{payments}:{})};
+ return {id,name,version,apiVersion:API_VERSION,description,author,license,...(homepage?{homepage}:{}),...(minPanelVersion?{minPanelVersion}:{}),...(minAgentVersion?{minAgentVersion}:{}),permissions,settings,catalogs,hooks,...(payments?{payments}:{}),...(notifications?{notifications}:{})};
 }
 
 export const networkHosts=(permissions:string[])=>permissions.filter(p=>p.startsWith('network:')).map(p=>p.slice(8));
