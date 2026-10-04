@@ -64,5 +64,5 @@ Details and what is and is not claimed: [Plugin security model](/plugins/securit
 ## What plugins cannot do (yet)
 
 Plugins cannot add pages or routes to the panel, define their own notification channels or call the panel's API. The
-interface covers catalogs, event hooks and, since 0.7.1.1, payment providers (see [the payments contract](/plugins/payments); a
+interface covers catalogs, event hooks, since 0.8.1.1 the layout of Discord notifications (see [Notification styles](/plugins/notification-styles); a formatter returns a message and Fledge sends it) and, since 0.7.1.1, payment providers (see [the payments contract](/plugins/payments); a
 payment provider still cannot add pages or call the rest of the panel). Custom plugin UI is a candidate for a later release.

@@ -4,9 +4,10 @@ title: The bundled plugins
 
 # The bundled plugins
 
-Three plugins ship inside the panel image (`plugins/bundled`) and are never downloaded. The two Modrinth browsers share about 200 lines of
-code (`_shared/modrinth.js`) and differ in a seven-line entry file, which makes them good examples. The third, **Stripe Payments**, is the
-first [payment provider](/plugins/payments); it has [its own page](/plugins/stripe).
+Four plugins ship inside the panel image (`plugins/bundled`) and are never downloaded. The two Modrinth browsers share about 200 lines of
+code (`_shared/modrinth.js`) and differ in a seven-line entry file, which makes them good examples. **Stripe Payments** is the
+first [payment provider](/plugins/payments); it has [its own page](/plugins/stripe). **Better Discord Notifications** is the first
+[notification style](/plugins/notification-styles) plugin: it turns Discord messages into colour-coded embeds ([its page](/plugins/discord-embeds)).
 
 | | **Modrinth Mod Browser** (`modrinth-mods`) | **Modrinth Plugin Browser** (`modrinth-plugins`) |
 | --- | --- | --- |

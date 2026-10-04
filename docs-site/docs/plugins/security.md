@@ -24,6 +24,8 @@ A plugin with the `payments` permission holds your payment provider's API key an
 can reach only `api.stripe.com`. Whatever a payment plugin returns is checked by Fledge: amounts to charge always come from the database, redirect addresses must be https, and subscription states are
 mapped through a fixed table of allowed moves. Webhooks are public, so the plugin verifies the provider's signature itself (with `host.crypto`) and Fledge stores each event once. See [the payments contract](/plugins/payments).
 
+A plugin with the `notifications` permission reads the text of notifications (server names, console output of crashes and, for billing events, customer email addresses) to lay them out, but it has no network access and never sees the channel address. What it returns is rebuilt from an allow-list before Fledge sends it, and it can never mention users or `@everyone`; see [Notification styles](/plugins/notification-styles).
+
 ## What is enforced
 
 1. **Isolation.** Plugin code runs in QuickJS compiled to WebAssembly: separate heap, no Node APIs, no file
