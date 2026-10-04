@@ -40,7 +40,7 @@ export const NUMBER_FIELDS: { title: string; fields: Field[] }[] = [
   },
 ];
 export const FLAG_FIELDS: { key: string; label: string; hint: string }[] = [
-  { key: "selfCreate", label: "May create servers", hint: "In account plans, grants fixed-size server creation when Settings, Customers is set to Account plans." },
+  { key: "selfCreate", label: "May create servers", hint: "Lets them create servers themselves, from the kinds you released. Set on a customer it works in every mode except Nothing; in a plan it works in Account plans mode. Free choice (Settings, Customers) lets everyone unless this says No." },
   { key: "selfDelete", label: "May delete their own servers", hint: "Needs deleting to be allowed in Settings, Customers." },
   { key: "sftp", label: "May use SFTP", hint: "File access with an SFTP client." },
   { key: "addons", label: "May install mods and plugins", hint: "The add-on browsers on a server." },

@@ -242,11 +242,11 @@ function SelfServiceCard({ value, reload }: { value: Raw; reload: () => void }) 
           onChange={(mode) => set({ mode })}
           options={[
             ["off", "Nothing: only administrators create servers"],
-            ["presets", "Buy fixed servers from server plans (free plans without payment, paid ones through the store)"],
-            ["plans", "Create fixed-size servers only when an account plan grants permission"],
+            ["presets", "Buy fixed servers from server plans (free plans without payment, paid ones through the store). You can still let single customers create their own"],
+            ["plans", "Create fixed-size servers when an account plan or you grant permission"],
             ["custom", "Also create servers freely within their limits"],
           ]}
-          hint="Account plans use the limits under Billing → Plans. Choose which templates and locations each plan allows, set resource caps, and turn on “May create servers” for that plan. Free choice uses the global limits under Limits."
+          hint="Account plans use the limits under Billing → Plans. Choose which templates and locations each plan allows, set resource caps, and turn on “May create servers” for that plan, or for one customer under Customers → Edit limits. Free choice uses the global limits under Limits."
         />
         {v.mode !== "off" ? (
           <>
@@ -275,7 +275,7 @@ function SelfServiceCard({ value, reload }: { value: Raw; reload: () => void }) 
         ) : null}
         <Actions busy={busy} error={error} />
       </form>
-      {v.mode !== "off" && v.mode !== "presets" ? (
+      {v.mode !== "off" ? (
         <>
           <hr className="rule" />
           <h3 style={{ fontSize: "calc(14px * var(--text-scale))", marginBottom: 4 }}>Templates customers may use</h3>
