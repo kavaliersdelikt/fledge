@@ -12,7 +12,7 @@ The bell in the header opens your **inbox**. Channels send the same events elsew
 
 The complete, generated list with scopes and severities is in [Notification events](/reference/events). In short:
 crashes and crash loops, recoveries, almost-full disks, failed backups and verifications, failed schedules, failed
-add-on installs, failover starting or blocked, nodes going offline or online, failed agent updates, new Fledge versions
+add-on installs, failover starting or blocked, new customers waiting for approval, failed customer payments, paid servers that could not be created, payment disputes and billing health problems, nodes going offline or online, failed agent updates, new Fledge versions
 and plugins that were switched off.
 
 Repeats are suppressed: the same condition (a node staying offline, a disk staying full) notifies once, not on every
@@ -24,10 +24,12 @@ Add channels under **Settings → Notifications**:
 
 | Channel | Delivers to |
 | --- | --- |
-| **Discord** | A Discord webhook URL |
+| **Discord** | A Discord webhook URL ([set-up guide](/panel/discord-notifications)); plain text, or colour-coded embeds with the [Better Discord Notifications](/plugins/discord-embeds) plugin |
 | **Slack** | A Slack incoming webhook URL |
 | **Webhook** | Any HTTPS endpoint; a JSON body that is also Slack- and Mattermost-compatible (see [Webhook payloads](/api/webhooks)) |
 | **Email** | An address, using the configured [email](/operate/email) settings |
+
+Step by step for Discord, including what the messages look like, how mentions are blocked and how to fix a failing channel: [Discord and webhook notifications](/panel/discord-notifications).
 
 Each channel chooses which events it receives and, optionally, which servers. **Send test** checks a channel; the
 channel shows its last delivery status and error.

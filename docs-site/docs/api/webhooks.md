@@ -26,16 +26,21 @@ channels use their own simple formats.
 }
 ```
 
+- `allowed_mentions` is always empty, so names such as `@everyone` never ping anyone on Discord.
 - `text` and `content` hold the same line, so the payload works with **Slack-compatible** (`text`), **Discord-compatible**
   (`content`) and **Mattermost** endpoints unchanged.
 - `event.kind` is one of the [notification events](/reference/events); `severity` is `ok`, `info`, `warn` or `bad`.
 - `server` and `nodeId` are `null` when the event is not about a server or node. `data` is event specific.
 
+Step-by-step set-up, event suggestions and troubleshooting are in [Discord and webhook notifications](/panel/discord-notifications).
+
 ## Discord and Slack
+
+With the [Better Discord Notifications](/plugins/discord-embeds) plugin a Discord channel can send embeds instead (`embeds`, plus the same `allowed_mentions`).
 
 | Channel | Body |
 | --- | --- |
-| Discord | `{ "content": "<text>" }` |
+| Discord | `{ "content": "<text>", "allowed_mentions": { "parse": [] } }` |
 | Slack | `{ "text": "<text>" }` |
 
 Text is limited to about 1900 characters.
