@@ -76,6 +76,7 @@ test('settings: defaults are valid and safe',()=>{
  assert.deepEqual(validateRookery('limits',defaultLimits(),{}),defaultLimits());
  assert.deepEqual(validateRookery('billing',defaultBilling(),{}),defaultBilling());
  assert.deepEqual(validateRookery('store',defaultStore(),{}),defaultStore());
+ assert.equal(validateRookery('selfService',{...defaultSelfService(),mode:'plans'},{}).mode,'plans');
  assert.throws(()=>validateRookery('signup',{...defaultSignup(),mode:'wild'},cur));
  assert.throws(()=>validateRookery('signup',{...defaultSignup(),captchaProvider:'turnstile'},cur),'a captcha needs keys');
  assert.throws(()=>validateRookery('signup',{...defaultSignup(),requireTerms:true},cur),'terms need an address');
