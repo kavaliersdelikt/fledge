@@ -1,7 +1,7 @@
 // Integration test for the plugin system and the Modrinth add-on flow. Boots a mock Modrinth,
 // the real plugin host and the real API against a throw-away database, and plays the node agent.
 import {startMock,fileSha512} from './modrinth-mock.mjs';
-import {bootStack,client,bootstrapAdmin,makeNode,heartbeat,nextJob,finishJob,dbQuery,sleep} from './harness.mjs';
+import {bootStack,client,bootstrapAdmin,makeNode,heartbeat,nextJob,finishJob,dbQuery,sleep,testAppVersion} from './harness.mjs';
 import {randomBytes} from 'node:crypto';
 
 const mock=await startMock();
@@ -71,7 +71,7 @@ try{
  check(vers.map(v=>v.id).join()==='LITH-BETA,LITH-NEW,LITH-OLD','only versions for 1.21.11 + fabric, newest first: '+vers.map(v=>v.id));
  const wrongKind=await call('GET',`${A}/search?pluginId=modrinth-plugins`);status(wrongKind,404,'a plugin catalog is not offered for a mod server');
  const ua=mock.calls.find(c=>c.path==='/v2/search').ua;
- check(/^Fledge\/0\.7\.2\.2 \(https:\/\/github\.com\/kavaliersdelikt\/fledge; ops@example\.org\)$/.test(ua),'User-Agent identifies Fledge as Modrinth asks: '+ua);
+ check(ua===`Fledge/${testAppVersion} (https://github.com/kavaliersdelikt/fledge; ops@example.org)`,'User-Agent identifies Fledge as Modrinth asks: '+ua);
 
  // --- Plan and install ------------------------------------------------------------------------
  const plan=ok(await call('POST',`${A}/plan`,{pluginId:'modrinth-mods',projectId:'LITHIUM1'}),'plan');

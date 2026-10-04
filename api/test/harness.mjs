@@ -2,7 +2,7 @@
 // processes against a throw-away PostgreSQL database and talk to them over HTTP.
 import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
-import {mkdtempSync} from 'node:fs';
+import {mkdtempSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,6 +12,7 @@ import pg from 'pg';
 const here=dirname(fileURLToPath(import.meta.url));
 export const apiDir=join(here,'..');
 export const repoDir=join(apiDir,'..');
+export const testAppVersion=JSON.parse(readFileSync(join(apiDir,'package.json'),'utf8')).version;
 export const baseDb=process.env.TEST_DATABASE_URL||process.env.DATABASE_URL||'postgres://fledge:testpw@127.0.0.1:55432/fledge';
 
 export async function freshDatabase(name){
@@ -74,9 +75,9 @@ export async function bootStack({db,apiPort,hostPort,mock,apiEnv={},quiet=true,h
  const tokenFile=join(dir,'token');
  const databaseUrl=await freshDatabase(db);
  const map=[mock?`api.modrinth.com=127.0.0.1:${mock.port},cdn.modrinth.com=127.0.0.1:${mock.port}`:'',hostMap].filter(Boolean).join(',');
- const host=startProcess('host',join(repoDir,'plugins','host'),'src/server.ts',{PORT:String(hostPort),PLUGIN_TOKEN_FILE:tokenFile,PLUGIN_HOST_UNSAFE_TEST_ALLOW_LOCAL:'1',PLUGIN_HOST_UNSAFE_TEST_HOST_MAP:map,APP_VERSION:'0.8.1.1'},{quiet});
+ const host=startProcess('host',join(repoDir,'plugins','host'),'src/server.ts',{PORT:String(hostPort),PLUGIN_TOKEN_FILE:tokenFile,PLUGIN_HOST_UNSAFE_TEST_ALLOW_LOCAL:'1',PLUGIN_HOST_UNSAFE_TEST_HOST_MAP:map,APP_VERSION:testAppVersion},{quiet});
  // The API creates the shared token file on first use; start it first so the host can read it.
- const api=startProcess('api',apiDir,'src/index.ts',{DATABASE_URL:databaseUrl,ENCRYPTION_KEY:'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',WEB_ORIGIN:'http://localhost:3000',PORT:String(apiPort),APP_VERSION:'0.8.1.1',PLUGIN_HOST_URL:`http://127.0.0.1:${hostPort}`,PLUGIN_TOKEN_FILE:tokenFile,FLEDGE_TEST_ALLOW_LOCAL_FETCH:'1',...apiEnv},{quiet});
+ const api=startProcess('api',apiDir,'src/index.ts',{DATABASE_URL:databaseUrl,ENCRYPTION_KEY:'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',WEB_ORIGIN:'http://localhost:3000',PORT:String(apiPort),APP_VERSION:testAppVersion,PLUGIN_HOST_URL:`http://127.0.0.1:${hostPort}`,PLUGIN_TOKEN_FILE:tokenFile,FLEDGE_TEST_ALLOW_LOCAL_FETCH:'1',...apiEnv},{quiet});
  await waitFor(`http://127.0.0.1:${apiPort}/api/health`);
  await waitFor(`http://127.0.0.1:${hostPort}/health`);
  const stop=async()=>{for(const p of [api,host])p.kill();await sleep(300);};
