@@ -12,8 +12,8 @@ It is **off** by default.
 | Mode | What customers can do |
 | --- | --- |
 | **Off** (default) | Nothing: only administrators create servers |
-| **Server plans** | Buy a fixed server from a [server plan](/panel/plans), or claim a free one. Self-creation is not available |
-| **Account plans** | Create fixed-size servers only while an active [account plan](/panel/plans) explicitly allows it |
+| **Server plans** | Buy a fixed server from a [server plan](/panel/plans), or claim a free one. Self-creation only for customers you grant it to (see below) |
+| **Account plans** | Create fixed-size servers while an active [account plan](/panel/plans) allows it, or when you grant it to the customer |
 | **Free choice** | Create servers without an account-plan grant, choosing size within their [limits](/panel/limits) |
 
 ## Account-plan creation
@@ -28,6 +28,18 @@ It is **off** by default.
 Customers with the grant get **New server** on the Servers page. They choose a released kind, an allowed location and the settings the template lets people change. Resources use the template's fixed defaults; turn **Customers may rename their servers** off to use the published template name. A customer-level **May create servers: No** override can still block creation. The server is placed exactly as an administrator's would be (capacity, free ports, real free disk), in the same transaction as the limit check, so two clicks at once cannot exceed a limit. If there is no room, the customer gets a plain "no capacity right now" and never sees which nodes exist.
 
 An account-plan grant does not make created servers subscription-owned: they remain the customer's own servers. Ending the plan removes its allowance and creation permission, but does not delete servers. Existing servers keep running; subsequent actions that exceed remaining limits are subject to the configured limits policy.
+
+## Letting one customer create servers
+
+Open **Customers**, choose the customer, **Edit limits**, and set **May create servers** to **Yes**. That customer gets the **New server** button at once, whatever the plan, in every mode except **Off**
+(in **Server plans** and **Account plans** they create fixed-size servers from the released templates; in **Free choice** everyone already can). Set it to **No** to take the right away from one
+person; a **No** always wins over a plan's **Yes**. The customer's allowance, locations and per-hour rate are still checked. The panel explains to customers who cannot create why not and points to the store.
+
+## The create-server guide
+
+Customers who may create servers and have none see a short welcome on the Servers page. **New server** opens a three-step guide: **Choose** the kind of server (cards with a short description and the
+size), **Set up** (name, location, and sliders for memory, CPU and disk in Free choice, limited by what is left of their allowance) and **Review** (what is created and what it uses of the allowance).
+With only one kind released the first step is skipped.
 
 ## Free choice
 

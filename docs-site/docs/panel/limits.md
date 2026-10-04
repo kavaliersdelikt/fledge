@@ -46,7 +46,7 @@ Every customer's effective limits come from three layers. From the bottom:
 1. **Defaults for every customer** (this card). Empty means no limit, exactly like before.
 2. **Their plans.** [Account plans](/panel/plans) add to the defaults. Totals add up (default 2 servers + a plan with 5 = 7), per-server maxima and lists use
    the most generous layer, and a yes from any plan can grant a capability. A plan limit still applies when there is no default. For server creation, the
-   **Account plans** self-service mode additionally requires an explicit **May create servers** grant on an account plan; a default alone never qualifies.
+   **Account plans** self-service mode additionally requires an explicit **May create servers** grant, on an account plan or on the customer (Customers, Edit limits); a default alone never qualifies.
 3. **Set by hand** on the customer's page. An explicit value, including "No limit", always wins. This is what the old quotas were; they are read as this layer
    unchanged.
 

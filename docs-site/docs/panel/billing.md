@@ -17,6 +17,8 @@ is open. Customers have a **Billing** page of their own.
 | **Invoices** | A mirror of what the provider issued, with a CSV export |
 | **Health** | The provider connection, payment events and what needs attention |
 
+Who may buy, cancel or create servers is explained in [Customer permissions](/panel/permissions).
+
 ## The life of a subscription
 
 Status changes happen in one place, follow a fixed table of allowed moves, and are all recorded with their cause in the subscription's timeline. A late, duplicated or out-of-order message

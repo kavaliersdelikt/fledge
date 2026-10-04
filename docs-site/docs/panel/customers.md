@@ -44,6 +44,12 @@ Administrators can exceed a quota deliberately (the request's `force` option); c
 
 Customers see their own usage (`GET /api/limits/me`, and the older `GET /api/account/usage`) in the panel, with where each limit comes from.
 
+## What this customer may do
+
+**Edit limits** also has a **What they may do** section with switches such as **May create servers**, **May use SFTP** and **May share servers**. Setting **May create servers** to **Yes** gives this one customer the
+**New server** button (in every mode except *Off*); **No** takes it away whatever their plans say. How the switches, plans and panel modes fit together is explained in
+[Customer permissions](/panel/permissions).
+
 ## Collaborators
 
 A customer (or an administrator) can invite another customer to a single server with chosen permissions on the server's
