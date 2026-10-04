@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createAccess} from '../src/selfservice.ts';
 import {combine,problemOf,type Usage} from '../src/limits.ts';
 import {validateLimitSet,toStorage,fromStorage,validateRookery,defaultSignup,defaultLimits,defaultBilling,defaultStore,defaultSelfService} from '../src/rookery-settings.ts';
 import {fill,mentioned,lintTemplate} from '../src/email.ts';
@@ -143,4 +144,18 @@ test('dunning: reminders, suspension and termination happen once, on time',()=>{
  assert.deepEqual(dunningActions('suspended',since,at(40),{...cfg,autoTerminate:true},{sent:{r3:'x',r14:'x',suspend:'x'}}),[{kind:'terminate',day:30}]);
  // a server that was missed for a long time catches up in order
  assert.deepEqual(dunningActions('past_due',since,at(20),cfg).map(a=>a.kind),['reminder','final','suspend']);
+});
+
+test('self-service: who may create servers in each mode',()=>{
+ const v=(flagOk:boolean,planGrant:boolean,ownGrant:boolean)=>({flagOk,planGrant,ownGrant});
+ assert.equal(createAccess('off',v(true,true,true)),'off');
+ assert.equal(createAccess('presets',v(true,false,false)),'store-only');
+ assert.equal(createAccess('presets',v(true,true,false)),'store-only');
+ assert.equal(createAccess('presets',v(true,false,true)),'ok');
+ assert.equal(createAccess('plans',v(true,false,false)),'plan-required');
+ assert.equal(createAccess('plans',v(true,true,false)),'ok');
+ assert.equal(createAccess('plans',v(true,false,true)),'ok');
+ assert.equal(createAccess('custom',v(true,false,false)),'ok');
+ assert.equal(createAccess('custom',v(false,false,false)),'denied');
+ assert.equal(createAccess('plans',v(false,true,true)),'denied');
 });

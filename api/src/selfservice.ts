@@ -19,17 +19,47 @@ const CEIL={memoryMb:262144,cpuPercent:6400,diskMb:4194304};
 
 const selfCreateAllowed=(limits:Awaited<ReturnType<typeof resolveLimits>>)=>!limits.enabled||limits.mode==='warn'||limits.values.selfCreate!==false;
 
-async function whoCanCreate(userId:string){
+export type CreateWhy='off'|'store-only'|'plan-required'|'denied'|'ok';
+/**
+ * Pure: may this customer create servers themselves? The panel mode decides what is on offer, the
+ * "May create servers" switch decides who. A grant the administrator sets on the customer
+ * (Customers, Edit limits) works in every mode but "Nothing"; a plan's grant works in "Account plans".
+ */
+export function createAccess(mode:string,v:{flagOk:boolean;planGrant:boolean;ownGrant:boolean}):CreateWhy{
+ if(mode==='off')return 'off';
+ if(!v.flagOk)return 'denied';
+ if(mode==='custom')return 'ok';
+ if(v.ownGrant)return 'ok';
+ if(mode==='plans')return v.planGrant?'ok':'plan-required';
+ return 'store-only';
+}
+
+function grantsOf(r:Awaited<ReturnType<typeof resolveLimits>>){
+ return {flagOk:selfCreateAllowed(r),planGrant:r.planGrants.includes('selfCreate'),ownGrant:r.values.selfCreate===true&&r.sources.selfCreate?.source==='override'};
+}
+
+/** Never throws: used to decide what to show. */
+async function createStatus(userId:string){
  const cfg=(await settings()).selfService;
  const u=(await pool.query("SELECT id,email,status,disabled,email_verified_at,signup_source FROM users WHERE id=$1 AND role='customer'",[userId])).rows[0];
- if(!u||u.disabled||u.status!=='active')fail(403,'This account cannot create servers.');
- if(cfg.requireVerifiedEmail&&!isVerified(u))fail(403,'Confirm your email address before creating servers.');
- const r=await resolveLimits(userId);
- const flagOk=selfCreateAllowed(r);
- const planGrant=r.planGrants.includes('selfCreate');
- const canCreate=cfg.mode==='custom'?flagOk:cfg.mode==='plans'&&planGrant&&flagOk;
- return {cfg,flagOk,planGrant,canCreate,limits:r};
+ const limits=await resolveLimits(userId);
+ const g=grantsOf(limits);
+ let why:CreateWhy|'inactive'|'unverified'=createAccess(cfg.mode,g);
+ if(why==='ok'){
+  if(!u||u.disabled||u.status!=='active')why='inactive';
+  else if(cfg.requireVerifiedEmail&&!isVerified(u))why='unverified';
+ }
+ return {cfg,why,canCreate:why==='ok',limits,...g};
 }
+
+const REFUSAL:Record<string,string>={
+ off:'Creating servers yourself is turned off.',
+ 'store-only':'Creating servers yourself is not part of your account. Choose a server plan in the store instead.',
+ 'plan-required':'An active account plan that allows server creation is required.',
+ denied:'Your plan does not let you create servers yourself.',
+ inactive:'This account cannot create servers.',
+ unverified:'Confirm your email address before creating servers.',
+};
 
 /** Locations a customer may use: the panel's list intersected with their plan's list. */
 export function usableLocations(cfgLocations:string[],planLocations:unknown):string[]|null{
@@ -44,10 +74,7 @@ export function selfServiceRoutes(app:FastifyInstance){
   const all=await settings(),isCustomer=req.actor!.role==='customer';
   const subs=Number((await pool.query('SELECT count(*) n FROM subscriptions WHERE user_id=$1',[req.actor!.id])).rows[0].n);
   const u=(await pool.query('SELECT status FROM users WHERE id=$1',[req.actor!.id])).rows[0];
-  const limits=isCustomer?await resolveLimits(req.actor!.id):null;
-  const canCreate=all.selfService.mode==='custom'
-   ?(!limits||selfCreateAllowed(limits))
-   :all.selfService.mode==='plans'&&!!limits&&limits.planGrants.includes('selfCreate')&&selfCreateAllowed(limits);
+  const canCreate=isCustomer?(await createStatus(req.actor!.id)).canCreate:false;
   return {
    store:{enabled:all.store.enabled||(isCustomer&&all.selfService.mode!=='off'),sells:all.store.enabled,title:all.store.title},
    // Administrators see Billing once it is in use (a provider chosen, a plan made or the store open); customers once they have something there.
@@ -70,12 +97,12 @@ export function selfServiceRoutes(app:FastifyInstance){
  });
  app.get('/api/me/servers/options',async(req)=>{
   if(req.actor!.role!=='customer')fail(403,'Customers only');
-  const {cfg,canCreate,planGrant,limits}=await whoCanCreate(req.actor!.id);
-  const base={mode:cfg?.mode||'off',canCreate,planRequired:cfg?.mode==='plans'&&!planGrant,canDelete:!!cfg&&cfg.allowDelete,coolingHours:cfg?.deleteCoolingHours??0,allowRename:cfg?.allowRename??false};
-  if(!cfg||cfg.mode==='off'||cfg.mode==='presets')return {...base,templates:[],locations:[],limits:null};
-  const locations=usableLocations(cfg.allowedLocations,limits?.values.allowedLocations);
+  const st=await createStatus(req.actor!.id),{cfg,limits,why}=st;
+  const base={mode:cfg.mode,canCreate:st.canCreate,why,planRequired:cfg.mode==='plans'&&!st.planGrant&&!st.ownGrant,canDelete:cfg.allowDelete,coolingHours:cfg.deleteCoolingHours,allowRename:cfg.allowRename};
+  if(!st.canCreate)return {...base,templates:[],locations:[],limits:null};
+  const locations=usableLocations(cfg.allowedLocations,limits.values.allowedLocations);
   const known=(await pool.query("SELECT DISTINCT location FROM nodes WHERE deleted_at IS NULL AND status='connected' AND NOT draining ORDER BY location")).rows.map((r:any)=>r.location as string);
-  const allowedT=limits?.values.allowedTemplates;
+  const allowedT=limits.values.allowedTemplates;
   const templates=(await pool.query("SELECT id,name,customer_description,memory_mb,cpu_percent,disk_mb,editable_variables,variables FROM templates WHERE customer_visible ORDER BY official DESC,name")).rows
    .filter((t:any)=>!Array.isArray(allowedT)||allowedT.includes(t.id))
    .map((t:any)=>({id:t.id,name:t.name,description:t.customer_description||'',memoryMb:t.memory_mb,cpuPercent:t.cpu_percent,diskMb:t.disk_mb,variables:effectiveDefs(t).filter(d=>d.userEditable&&!d.secret).map(d=>({key:d.key,label:d.label,description:d.description,type:d.type,options:d.options,min:d.min,max:d.max,required:d.required}))}));
@@ -85,11 +112,8 @@ export function selfServiceRoutes(app:FastifyInstance){
  app.post('/api/me/servers',async(req)=>{
   if(req.actor!.role!=='customer'||req.actor!.tokenScopes)fail(403,'Browser session required');
   const b=req.body as any;
-  const {cfg,flagOk,planGrant,limits}=await whoCanCreate(req.actor!.id);
-  if(cfg.mode==='off'||cfg.mode==='presets')fail(403,'Creating servers yourself is turned off. Choose a server plan in the store instead.');
-  if(cfg.mode==='plans'&&!planGrant)fail(403,'An active account plan that allows server creation is required.');
-  if(cfg.mode==='plans'&&!flagOk)fail(403,'Your effective limits do not allow you to create servers.');
-  if(cfg.mode==='custom'&&!flagOk)fail(403,'Your plan does not let you create servers yourself.');
+  const {cfg,why,limits}=await createStatus(req.actor!.id);
+  if(why!=='ok')fail(403,REFUSAL[why]||REFUSAL.denied);
   const customResources=cfg.mode==='custom';
   if(!customResources&&['memoryMb','cpuPercent','diskMb'].some(key=>b?.[key]!==undefined))fail(400,'Server resources are fixed in this self-service mode.');
   if(await bump(`create:${req.actor!.id}`,3600)>cfg.createsPerHour)fail(429,'You are creating servers too quickly. Try again a little later.');

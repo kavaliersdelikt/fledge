@@ -269,6 +269,10 @@ try{
  const presetOptions=ok(await buyer.cl.call('GET','/api/me/servers/options'),'server-plan-only options');
  check(presetOptions.mode==='presets'&&!presetOptions.canCreate,'server-plan-only mode does not advertise account-plan server creation');
  status(await buyer.cl.call('POST','/api/me/servers',{templateId:'minecraft-java',name:'Preset mode'}),403,'server-plan-only mode does not allow self-creation');
+ const quota0=(await q('SELECT quota FROM users WHERE email=$1',[buyer.email]))[0].quota;
+ await q('UPDATE users SET quota=$2 WHERE email=$1',[buyer.email,{selfCreate:true}]);
+ check(ok(await buyer.cl.call('GET','/api/me/servers/options'),'granted in server-plan-only mode').canCreate&&(ok(await buyer.cl.call('GET','/api/features'),'granted features')).selfService.canCreate,'an administrator can grant creation to one customer even in server-plan-only mode');
+ await q('UPDATE users SET quota=$2 WHERE email=$1',[buyer.email,quota0]);
  ok(await put('selfService',{mode:'plans'}),'account-plan server creation on');ok(await call('PUT','/api/templates/minecraft-java/store',{customerVisible:true}),'release template');
  const noPlanOptions=ok(await buyer.cl.call('GET','/api/me/servers/options'),'options without plan');
  check(!noPlanOptions.canCreate&&noPlanOptions.planRequired,'account-plan mode requires an explicit account-plan grant');
@@ -280,6 +284,9 @@ try{
  const observerOptions=ok(await observer.cl.call('GET','/api/me/servers/options'),'options for plan without grant');
  check(!observerOptions.canCreate&&observerOptions.planRequired,'a plan without an explicit grant cannot create servers');
  status(await observer.cl.call('POST','/api/me/servers',{templateId:'minecraft-java',name:'Observer server'}),403,'an account plan without the grant cannot create a server');
+ await q('UPDATE users SET quota=$2 WHERE email=$1',[observer.email,{selfCreate:true}]);
+ check(ok(await observer.cl.call('GET','/api/me/servers/options'),'observer granted').canCreate,'a customer-level grant works in account-plan mode without a plan grant');
+ await q('UPDATE users SET quota=$2 WHERE email=$1',[observer.email,{}]);
  const co4=ok(await buyer.cl.call('POST','/api/store/checkout',{planId:creator.id,cycle:'month',acceptTerms:true}),'buy Creator');
  const paid4=await stripe.completeCheckout((await q('SELECT provider_session_id FROM orders WHERE id=$1',[co4.orderId]))[0].provider_session_id);
  await until(async()=>(await q("SELECT status FROM subscriptions WHERE provider_subscription_id=$1",[paid4.subscriptionId]))[0]?.status==='active','Creator active');
