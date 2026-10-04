@@ -42,7 +42,7 @@ export default function Servers({ admin }: { admin: boolean }) {
     ? params.get("status")
     : "all") as Filter;
   const features = useFeatures();
-  const canCreateOwn = !admin && features.selfService.mode === "custom";
+  const canCreateOwn = !admin && features.selfService.canCreate;
   const canStore = !admin && (features.store.enabled || features.selfService.mode === "presets");
   const creating = (admin || canCreateOwn) && params.get("new") === "1";
   const setParams = (next: Record<string, string | null>) => {

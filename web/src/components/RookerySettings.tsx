@@ -9,9 +9,20 @@ import { LimitSetEditor, type LimitSet } from "./LimitsUI";
 import Link from "next/link";
 import { Button, Card, ErrorNotice, Notice, Row, Skeleton, State, Status, btn, useLoad } from "./shared";
 import { useToast } from "./toast";
+import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from "./ui/tabs";
 
 type Raw = Record<string, any>;
 type All = { signup: Raw; selfService: Raw; limits: Raw; billing: Raw; store: Raw; email: Raw };
+type HostingTab = "signup" | "servers" | "limits" | "billing" | "store" | "email";
+
+const hostingTabForHash = (hash: string): HostingTab => {
+  if (hash === "#self-service") return "servers";
+  if (hash === "#limits") return "limits";
+  if (hash === "#billing") return "billing";
+  if (hash === "#store") return "store";
+  if (hash === "#email-templates" || hash === "#email-log") return "email";
+  return "signup";
+};
 
 function Txt({ label, hint, value, onChange, placeholder, mono, type = "text", rows }: { label: string; hint?: ReactNode; value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; type?: string; rows?: number }) {
   return (
@@ -223,7 +234,7 @@ function SelfServiceCard({ value, reload }: { value: Raw; reload: () => void }) 
     }
   };
   return (
-    <Card id="self-service" title="Customers creating servers" description="Let customers create (and delete) servers themselves, within their limits." actions={<Status value={v.mode !== "off" ? "active" : "stopped"} label={v.mode === "off" ? "Off" : v.mode === "presets" ? "Plans only" : "Free choice"} />}>
+    <Card id="self-service" title="Customers creating servers" description="Control whether customers buy fixed servers, spend an account-plan allowance, or create freely within limits." actions={<Status value={v.mode !== "off" ? "active" : "stopped"} label={v.mode === "off" ? "Off" : v.mode === "presets" ? "Server plans" : v.mode === "plans" ? "Account plans" : "Free choice"} />}>
       <form className="form" onSubmit={(e) => { e.preventDefault(); void save(v, "Saved"); }}>
         <Sel
           label="What customers can do"
@@ -231,10 +242,11 @@ function SelfServiceCard({ value, reload }: { value: Raw; reload: () => void }) 
           onChange={(mode) => set({ mode })}
           options={[
             ["off", "Nothing: only administrators create servers"],
-            ["presets", "Get servers from plans (free plans without payment, paid ones through the store)"],
+            ["presets", "Buy fixed servers from server plans (free plans without payment, paid ones through the store)"],
+            ["plans", "Create fixed-size servers only when an account plan grants permission"],
             ["custom", "Also create servers freely within their limits"],
           ]}
-          hint="Free choice uses the limits under Limits. Without limits set, customers could use as much as the nodes have."
+          hint="Account plans use the limits under Billing → Plans. Choose which templates and locations each plan allows, set resource caps, and turn on “May create servers” for that plan. Free choice uses the global limits under Limits."
         />
         {v.mode !== "off" ? (
           <>
@@ -263,7 +275,7 @@ function SelfServiceCard({ value, reload }: { value: Raw; reload: () => void }) 
         ) : null}
         <Actions busy={busy} error={error} />
       </form>
-      {v.mode === "custom" ? (
+      {v.mode !== "off" && v.mode !== "presets" ? (
         <>
           <hr className="rule" />
           <h3 style={{ fontSize: "calc(14px * var(--text-scale))", marginBottom: 4 }}>Templates customers may use</h3>
@@ -614,21 +626,48 @@ export function DeliveryLogCard() {
   );
 }
 
-/** Everything added in 0.7.1.1 that an administrator can configure. */
+/** Customer, billing, limits and email settings for administrators. */
 export default function RookerySettings() {
   const { data, error, loading, reload } = useLoad<All>("/settings");
+  const [tab, setTab] = useState<HostingTab>("signup");
+  useEffect(() => {
+    if (window.location.hash) setTab(hostingTabForHash(window.location.hash));
+  }, []);
   if (loading) return <Skeleton rows={3} />;
   if (error || !data) return <ErrorNotice message={error || "Settings could not be loaded."} />;
   return (
-    <div className="stack">
-      <SignupCard value={data.signup} reload={reload} email={!!data.email?.enabled} />
-      <SelfServiceCard value={data.selfService} reload={reload} />
-      <LimitsCard value={data.limits} reload={reload} />
-      <BillingCard value={data.billing} reload={reload} />
-      <StoreCard value={data.store} reload={reload} />
-      <EmailTemplatesCard />
-      <DeliveryLogCard />
-    </div>
+    <Tabs value={tab} onValueChange={(value) => setTab(value as HostingTab)}>
+      <TabsList aria-label="Customer and billing settings">
+        <TabsTrigger value="signup">Sign-up</TabsTrigger>
+        <TabsTrigger value="servers">Server access</TabsTrigger>
+        <TabsTrigger value="limits">Limits</TabsTrigger>
+        <TabsTrigger value="billing">Billing</TabsTrigger>
+        <TabsTrigger value="store">Store</TabsTrigger>
+        <TabsTrigger value="email">Email</TabsTrigger>
+        <TabsIndicator />
+      </TabsList>
+      <TabsContent value="signup" keepMounted>
+        <SignupCard value={data.signup} reload={reload} email={!!data.email?.enabled} />
+      </TabsContent>
+      <TabsContent value="servers" keepMounted>
+        <SelfServiceCard value={data.selfService} reload={reload} />
+      </TabsContent>
+      <TabsContent value="limits" keepMounted>
+        <LimitsCard value={data.limits} reload={reload} />
+      </TabsContent>
+      <TabsContent value="billing" keepMounted>
+        <BillingCard value={data.billing} reload={reload} />
+      </TabsContent>
+      <TabsContent value="store" keepMounted>
+        <StoreCard value={data.store} reload={reload} />
+      </TabsContent>
+      <TabsContent value="email" keepMounted>
+        <div className="stack">
+          <EmailTemplatesCard />
+          <DeliveryLogCard />
+        </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 void CircleAlert;void CircleCheck;void CircleDashed;

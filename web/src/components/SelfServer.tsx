@@ -53,7 +53,7 @@ export function CreateMyServer({ open, onOpenChange, onCreated }: { open: boolea
     <Drawer open={open} onOpenChange={onOpenChange} title="New server" description="Pick a kind of server and how big it should be. It is ready in a minute or two.">
       <State loading={loading} error={error}>
         {data && !data.canCreate ? (
-          <Notice tone="warn">You cannot create servers yourself right now.{data.limits?.flags?.selfCreate === false ? " Your plan does not include it." : ""} Look at the store for a plan.</Notice>
+          <Notice tone="warn">{data.planRequired ? "An active account plan that allows server creation is required." : `You cannot create servers yourself right now.${data.limits?.flags?.selfCreate === false ? " Your effective limits do not allow it." : ""}`} Look at the store or contact your host.</Notice>
         ) : null}
         {data && data.canCreate && data.templates.length === 0 ? <Notice tone="neutral">No kind of server is available yet. Your provider has to release one first.</Notice> : null}
         {data && data.canCreate && t ? (
@@ -67,10 +67,12 @@ export function CreateMyServer({ open, onOpenChange, onCreated }: { open: boolea
               </select>
               {t.description ? <span className="field__hint">{t.description}</span> : null}
             </label>
-            <label className="field">
-              <span className="field__label">Name</span>
-              <input className="input" required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="Our survival world" />
-            </label>
+            {data.allowRename !== false ? (
+              <label className="field">
+                <span className="field__label">Name</span>
+                <input className="input" required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="Our survival world" />
+              </label>
+            ) : null}
             {custom ? (
               <div className="form-grid">
                 <label className="field">

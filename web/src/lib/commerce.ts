@@ -1,4 +1,4 @@
-// Types and small helpers shared by the sign-up, store, billing and limits screens (0.7.1.1).
+// Types and small helpers shared by the sign-up, store, billing and limits screens (0.7.2.1).
 import { createContext, useContext } from "react";
 
 export type Cycle = "month" | "quarter" | "semiannual" | "year";
@@ -10,14 +10,14 @@ export const cycleShort: Record<Cycle, string> = { month: "month", quarter: "3 m
 export type Features = {
   store: { enabled: boolean; sells: boolean; title: string };
   billing: { subscriptions: number; visible: boolean };
-  selfService: { mode: "off" | "presets" | "custom"; canDelete: boolean; coolingHours: number };
+  selfService: { mode: "off" | "presets" | "plans" | "custom"; canCreate: boolean; canDelete: boolean; coolingHours: number };
   limits: { showUsage: boolean; enabled: boolean; mode: "enforce" | "warn" };
   account: { status: string; allowDeletion: boolean; allowEmailChange: boolean; allowExport: boolean; minPasswordLength: number };
 };
 export const noFeatures: Features = {
   store: { enabled: false, sells: false, title: "Store" },
   billing: { subscriptions: 0, visible: false },
-  selfService: { mode: "off", canDelete: false, coolingHours: 0 },
+  selfService: { mode: "off", canCreate: false, canDelete: false, coolingHours: 0 },
   limits: { showUsage: true, enabled: true, mode: "enforce" },
   account: { status: "active", allowDeletion: false, allowEmailChange: true, allowExport: true, minPasswordLength: 12 },
 };
@@ -63,7 +63,7 @@ export type SignupConfig = {
 };
 
 export type SelfOptions = {
-  mode: "off" | "presets" | "custom"; canCreate: boolean; canDelete: boolean; coolingHours: number; customResources?: boolean;
+  mode: "off" | "presets" | "plans" | "custom"; canCreate: boolean; planRequired?: boolean; canDelete: boolean; coolingHours: number; allowRename?: boolean; customResources?: boolean;
   templates: { id: string; name: string; description: string; memoryMb: number; cpuPercent: number; diskMb: number; variables: { key: string; label: string; description?: string; type: string; options?: { value: string; label: string }[]; min?: number; max?: number; required?: boolean }[] }[];
   locations: string[]; ceilings?: { memoryMb: number; cpuPercent: number; diskMb: number }; limits: LimitsView | null;
 };
