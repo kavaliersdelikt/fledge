@@ -3,6 +3,7 @@
 import { items, json, request, type NotificationChannel, type NotificationEvent, type NotificationKind, type Server, type User } from "@/lib/api";
 import { fmtAgo, fmtTime } from "@/lib/format";
 import { Bell, Mail, Plus, Webhook } from "lucide-react";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Modal } from "./feedback";
 import { useToast } from "./toast";
@@ -23,6 +24,7 @@ const tone = (s: NotificationEvent["severity"]): Tone => (s === "bad" ? "bad" : 
 const severityWord = { bad: "Critical", warn: "Warning", ok: "Good news", info: "Info" } as const;
 
 type Draft = {
+  style: string;
   id: string | null;
   name: string;
   kind: NotificationKind;
@@ -47,6 +49,7 @@ export default function NotificationsCard({ user }: { user: User }) {
 
   function create() {
     setDraft({
+      style: "plain",
       id: null,
       name: "",
       kind: "discord",
@@ -61,6 +64,7 @@ export default function NotificationsCard({ user }: { user: User }) {
   }
   function edit(c: NotificationChannel) {
     setDraft({
+      style: c.style || "plain",
       id: c.id,
       name: c.name,
       kind: c.kind,
@@ -205,6 +209,30 @@ export default function NotificationsCard({ user }: { user: User }) {
   );
 }
 
+/** A tiny picture of what a message style looks like in Discord. Decorative: the label next to it says everything. */
+function StylePreview({ id }: { id: string }) {
+  if (id === "plain")
+    return (
+      <span className="dn-prev dn-prev--plain" aria-hidden="true">
+        <i /> <b>Fledge: Survival crashed (Survival)…</b>
+      </span>
+    );
+  return (
+    <span className={`dn-prev dn-prev--${id}`} aria-hidden="true">
+      <span className="dn-prev__bar" />
+      <span className="dn-prev__body">
+        <b>{id === "compact" ? "💥 Survival crashed · Survival" : "💥 Survival crashed"}</b>
+        {id === "compact" ? <i /> : (
+          <>
+            <i />
+            <span className="dn-prev__fields"><u /><u /><u /></span>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function ChannelEditor({
   draft: initial,
   user,
@@ -225,6 +253,7 @@ function ChannelEditor({
     [error, setError] = useState(""),
     [filter, setFilter] = useState("");
   const editing = !!d.id;
+  const styleList = useLoad<{ discord: { id: string; label: string; description?: string }[] }>(d.kind === "discord" ? "/notification-styles" : null);
   const servers = useLoad<Server[]>(d.limited ? "/servers?limit=100&offset=0" : null);
   const serverList = items(servers.data).filter((s) => s.name.toLowerCase().includes(filter.toLowerCase()));
   const set = (patch: Partial<Draft>) => setD((p) => ({ ...p, ...patch }));
@@ -255,6 +284,7 @@ function ChannelEditor({
       body.kind = d.kind;
       if (admin) body.scope = d.scope;
     }
+    if (d.kind === "discord") body.style = d.style;
     if (d.kind === "email") body.to = d.to.trim();
     else if (d.url.trim()) body.url = d.url.trim();
     else if (!editing) return setError("Paste the webhook address to send messages to.");
@@ -330,6 +360,33 @@ function ChannelEditor({
             </span>
           </label>
         )}
+
+        {d.kind === "discord" ? (
+          <div className="field">
+            <span className="field__label" id="style-label">Message style</span>
+            <div className="dn-styles" role="radiogroup" aria-labelledby="style-label">
+              {(styleList.data?.discord ?? [{ id: "plain", label: "Plain text", description: "One line of text. Works everywhere." }]).map((s) => (
+                <button type="button" role="radio" aria-checked={d.style === s.id} key={s.id} className={`dn-style${d.style === s.id ? " is-picked" : ""}`} onClick={() => set({ style: s.id })}>
+                  <StylePreview id={s.id} />
+                  <strong>{s.label}</strong>
+                  {s.description ? <small>{s.description}</small> : null}
+                </button>
+              ))}
+              {d.style !== "plain" && styleList.data && !styleList.data.discord.some((s) => s.id === d.style) ? (
+                <p className="field__hint">This channel uses a style whose plugin is off right now, so it sends plain text until the plugin is turned on again.</p>
+              ) : null}
+            </div>
+            {styleList.data && styleList.data.discord.length === 1 ? (
+              <span className="field__hint">
+                {admin ? (
+                  <>Want colour-coded embeds? Turn on <Link href="/plugins">Better Discord Notifications</Link> under Plugins.</>
+                ) : (
+                  "Your host can turn on rich embeds by installing the Better Discord Notifications plugin."
+                )}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {admin && (
           <div className="field">
