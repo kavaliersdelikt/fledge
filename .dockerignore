@@ -6,7 +6,7 @@
 **/.gomodcache
 **/.env
 **/.env.*.local
-.git
+.git 
 **/*.log
 **/coverage
 **/.DS_Store
