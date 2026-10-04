@@ -12,7 +12,7 @@ import {invokeHost,HostUnavailable} from './host-client.js';
 // plugin host; this module decides whether, with what settings, and what happens to the result.
 
 export type Tier='bundled'|'verified'|'community';
-export const panelVersion=()=> (process.env.APP_VERSION||'0.7.1.1').replace(/^v/i,'');
+export const panelVersion=()=> (process.env.APP_VERSION||'0.7.2.1').replace(/^v/i,'');
 export const atLeast=(have:string,need:string)=>have===need||newer(have,need);
 const AUTO_DISABLE_AFTER=5;
 const FATAL_CODES=new Set(['timeout','script-error','too-large','host-error','bad-method']);
@@ -214,4 +214,3 @@ export function emitHook(event:string,payload:Record<string,unknown>){
   for(const r of rows)callPlugin(r.id,`hook:${event}`,[payload],{limits:{deadlineMs:8000}}).catch(()=>{});
  })().catch(()=>{});
 }
-

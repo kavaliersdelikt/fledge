@@ -5,7 +5,7 @@ import {dirname} from 'node:path';
 import {admin} from './core.js';
 import {settings} from './settings.js';
 
-const currentVersion=()=> (process.env.APP_VERSION||'0.1.7').replace(/^v/i,'');
+const currentVersion=()=> (process.env.APP_VERSION||'0.7.2.1').replace(/^v/i,'');
 const updater=(process.env.UPDATER_URL||'').replace(/\/$/,'');
 const tokenFile=process.env.UPDATE_TOKEN_FILE||'/run/fledge-updater/token';
 let cached:{at:number;value:any;repo?:string}|undefined;
