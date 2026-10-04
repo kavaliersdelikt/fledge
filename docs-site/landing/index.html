@@ -23,6 +23,7 @@
     <a class="brand" href="./"><img src="fledge-symbol.png" alt="" width="26" height="26" /><span>Fledge</span></a>
     <nav class="links" aria-label="Main">
       <a href="guide/what-is-fledge">Docs</a>
+      <a href="#host">Billing &amp; customers</a>
       <a href="plugins/">Plugins</a>
       <a href="api/">API</a>
       <a href="releases/">Releases</a>
@@ -37,7 +38,7 @@
   <main id="main">
     <section class="hero">
       <div class="hero-inner">
-        <a class="news intro i1" href="releases/v0.7.2.1">New in 0.7.2.1 “Perch”: account plans can unlock fixed-size server creation</a>
+        <a class="news intro i1" href="releases/v0.8.1.1">New in 0.8.1.1 “Aerie”: a guided first server, per-customer permissions and Better Discord Notifications</a>
         <h1 class="intro i2"><span class="l1">Your servers,</span><span class="l2">in orbit.</span></h1>
         <p class="lede intro i3">
           Fledge is a self-hosted control panel for game servers on your own Linux Docker hosts. The panel sits at the centre;
@@ -174,8 +175,8 @@
           socket. A plugin can only reach the hosts it declares, and you see every permission before you install it.
         </p>
         <p>
-          Two come with Fledge. The <b>Modrinth Mod Browser</b> covers Fabric, Quilt, Forge and NeoForge; the <b>Modrinth Plugin Browser</b>
-          covers Paper, Purpur, Folia and Spigot. Search, review the dependencies, install, and the node checks each file’s SHA-512
+          Four come with Fledge. The <b>Modrinth Mod Browser</b> covers Fabric, Quilt, Forge and NeoForge; the <b>Modrinth Plugin Browser</b>
+          covers Paper, Purpur, Folia and Spigot; <b>Stripe Payments</b> accepts payments directly from your users; <b>Better Discord Notifications</b> turns alerts into colour-coded Discord embeds, for you and your customers. Search, review the dependencies, install, and the node checks each file’s SHA-512
           before it lands.
         </p>
         <div class="cta">
@@ -223,7 +224,9 @@
           <ul class="points">
             <li><b>Plans and a store.</b> Fixed servers or allowances, trials, setup fees, stock, free tiers. Prices are read from your database at checkout; the browser only names a plan.</li>
             <li><b>Subscriptions that protect data.</b> A late payment stops a server after the days you choose and starts it again when the money arrives. Billing never lifts a suspension you made, and never deletes by itself.</li>
+            <li><b>Permissions per customer.</b> One switch gives a single customer the right to create servers, or takes it away, whatever their plan says. Customers who may create get a short guide to their first server.</li>
             <li><b>Limits you can explain.</b> Defaults, plans and per-customer overrides, with where each number comes from. Switch them off, or set them to warn only.</li>
+            <li><b>Tell your Discord, beautifully.</b> Crashes, offline nodes, failed payments and new sign-ups post to Discord, Slack or any webhook. The bundled Better Discord Notifications plugin makes them colour-coded cards with the cause and a link, for you and your customers, and nothing ever pings @everyone by accident.</li>
             <li><b>Built to survive bad days.</b> Signed webhooks stored once and re-checked against the provider, a scheduled comparison that repairs anything missed, retrying email with a delivery log.</li>
           </ul>
           <div class="cta"><a class="btn btn-line" href="operate/selling">Going live, step by step</a></div>
@@ -302,6 +305,8 @@
       <a href="operate/install">Install</a>
       <a href="panel/servers">Panel</a>
       <a href="agent/">Node agent</a>
+      <a href="operate/selling">Billing</a>
+      <a href="panel/permissions">Customers</a>
       <a href="plugins/">Plugins</a>
       <a href="api/">API</a>
       <a href="security/">Security</a>

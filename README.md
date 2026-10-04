@@ -33,7 +33,7 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.7.2.1 (Perch)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.8.1.1 (Aerie)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
@@ -77,26 +77,24 @@ flowchart TB
 | **People and access** | Customer accounts, per-server collaborators (view, console, files, backups, manage), an audit log, and scoped API tokens. |
 | **Safe by default** | Two-factor authentication required for administrators, recovery codes, and outbound-only node agents. |
 | **Fast to drive** | Ctrl K searches pages and servers. Works on phones. Motion respects "reduce motion". |
-| **Plugins and add-ons** | A plugin store with one-click install, permission review and a settings wizard. The bundled **Modrinth Mod Browser** and **Modrinth Plugin Browser** add a Mods or Plugins tab to matching Minecraft servers: search, dependencies, install, update, disable, remove. |
+| **Plugins and add-ons** | A plugin store with one-click install, permission review and a settings wizard. The bundled **Better Discord Notifications** plugin turns Discord messages into colour-coded embeds (for administrators and customers). The bundled **Modrinth Mod Browser** and **Modrinth Plugin Browser** add a Mods or Plugins tab to matching Minecraft servers: search, dependencies, install, update, disable, remove. |
 | **Autopilot** | Schedules with cron and task chains (command, wait, backup, restart), automatic restart after crashes with crash-loop protection, a notification inbox with Discord, Slack, webhook and email delivery. |
 | **Templates v2** | Typed variables, import and export, versions with "update servers", extra ports, clone server. |
 | **Plan-backed self-service** | Let an account plan explicitly unlock fixed-size server creation, with plan-scoped templates and locations, effective limits and subscription lifecycle enforcement. |
 | **Accounts** | Passkeys, signed-in devices, email invitations and password reset, an optional admin network allow-list, audit filters and export. |
 | **Customer sign-up** | Optional self-registration with email confirmation, approval or invite-only modes, bot protection (Turnstile or hCaptcha), rate limits that pause sign-up during a flood, account changes, data download and deletion. |
-| **Self-service servers** | Customers create (and delete) their own servers within their limits, from templates you release. |
+| **Self-service servers** | Customers create (and delete) their own servers within their limits, from templates you release, with a guided first-server flow. Permission can be given per customer or per plan. |
 | **Limits v2** | Layered limits (panel defaults, plans, per-customer overrides) that explain themselves, and that can be switched off or set to warn only. |
 | **Plans and a store** | Sell preset servers or allowances monthly, quarterly, half-yearly or yearly, with trials, setup fees, stock and free tiers. Stripe is included (card data never touches the panel); signed, de-duplicated webhooks, a scheduled comparison with the provider, late-payment handling that stops servers instead of deleting them, refunds, disputes and complimentary plans. |
 | **Email you can edit** | Every email is a template with a live preview, sent through a retrying outbox with a delivery log, receipts, reminders and security notices. |
 | **Your own brand** | Rename the panel, add a logo, pick colours and a font, offer light and dark, restyle the sign-in page, add sidebar links and an announcement. Readable colours are enforced, a 60-second preview rolls itself back, and the last 20 versions are kept. |
 | **History and API** | CPU and memory history (1 hour to 30 days), Prometheus metrics, an OpenAPI description with an in-panel API reference. |
 
-> **New in v0.7.2.1 "Perch":** account plans can grant customers the right to create fixed-size servers from templates you release. Plan entitlements, template and location choices, limits and subscription status are enforced by the API; customers cannot override resource sizes. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.7.2.1), [self-service guide](https://kavaliersdelikt.github.io/fledge/panel/self-service) and [limits guide](https://kavaliersdelikt.github.io/fledge/panel/limits).
+> **New in v0.8.1.1 "Aerie":** a guided first server for customers, **May create servers** as a per-customer permission, and a complete guide to Discord, Slack and webhook notifications, the bundled **Better Discord Notifications** plugin (colour-coded embeds for administrators and customers) and a fix so Discord messages can no longer ping @everyone. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.8.1.1), [Customer permissions](https://kavaliersdelikt.github.io/fledge/panel/permissions) and [Discord notifications](https://kavaliersdelikt.github.io/fledge/panel/discord-notifications) and [Better Discord Notifications](https://kavaliersdelikt.github.io/fledge/plugins/discord-embeds).
 >
 > **v0.7.1.1 "Rookery", the Hosting Update:** let people sign up, create servers and buy them. Plans, a store, subscriptions with dunning and suspension, a bundled Stripe plugin (verified against Stripe's test mode), limits that can be layered, switched off or set to warn, and editable emails with a delivery log. Everything is off by default, so an existing panel behaves exactly as before. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.7.1.1), [Going live](https://kavaliersdelikt.github.io/fledge/operate/selling) and the [Store guide](https://kavaliersdelikt.github.io/fledge/panel/store).
->
-> **v0.6.2.1 "Plumage", the Customizing Update:** make the panel your own from **Settings, Appearance**: name, logo, colours, fonts, light and dark, a restyled sign-in page, sidebar links and announcements, with readability checks, a preview that undoes itself, version history and a safe mode. Nothing changes until you save something. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.2.1) and the [Appearance guide](https://kavaliersdelikt.github.io/fledge/panel/appearance).
->
-> **Earlier: v0.6.1.1 "Roost":** added the plugin system with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas and passkeys (update node agents to 0.6.1.1 or newer for add-ons); v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel. Release notes: [v0.6.1.1](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). a plugin system (sandboxed, signed, one-click) with Modrinth mod and plugin browsers, schedules and crash protection, a notification center, template v2, quotas, passkeys and more. Update the node agents to 0.6.1.1 to use add-ons. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.6.1.1). Earlier: v0.5.2.1 added automatic failover and planned moves, v0.5.1.1 kernel-enforced disk limits and agent updates from the panel.
+
+
 
 ## Quick start
 
