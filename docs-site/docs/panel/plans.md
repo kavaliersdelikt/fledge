@@ -28,7 +28,9 @@ A plan has prices, optional trial, a stock, per-customer maximum, visibility and
 **A server plan's server.** The template, memory, CPU and disk; the locations (none ticked means anywhere; several lets the buyer choose); whether the buyer may name the server
 and choose a location; which of the template's settings the buyer may change (for example the message of the day); and fixed settings every server gets.
 
-**An account plan's allowance.** The same limit editor as for customers. Only what you fill in is added.
+**An account plan's allowance.** The same limit editor as for customers. Only what you fill in is added. **May create servers** is an explicit permission used by the **Account plans** self-service mode; without it, this plan adds its allowance but does not unlock self-created servers. The mode uses the plan's template and location limits, and customers create fixed-size servers using the published template defaults. A customer-level denial can still block the permission.
+
+Account-plan entitlements apply while a subscription is `trialing`, `active` or `past_due` (payment grace). Suspended, canceled and terminated subscriptions no longer grant permissions or allowances. Servers customers created using the grant remain their own and are not deleted when the plan ends.
 
 **Prices.** For each interval you offer (**monthly, every 3 months, every 6 months, yearly**) an amount, an optional **trial** (days) and an optional **one-time setup fee**.
 Prices are in one currency per row; add more currencies in [Settings → Billing](/panel/billing#settings). A price of 0 makes the plan **free**: no payment step, the customer just claims it.

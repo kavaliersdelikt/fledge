@@ -45,11 +45,15 @@ Every customer's effective limits come from three layers. From the bottom:
 
 1. **Defaults for every customer** (this card). Empty means no limit, exactly like before.
 2. **Their plans.** [Account plans](/panel/plans) add to the defaults. Totals add up (default 2 servers + a plan with 5 = 7), per-server maxima and lists use
-   the most generous layer, and a yes from any layer wins over a no. A plan limit still applies when there is no default.
+   the most generous layer, and a yes from any plan can grant a capability. A plan limit still applies when there is no default. For server creation, the
+   **Account plans** self-service mode additionally requires an explicit **May create servers** grant on an account plan; a default alone never qualifies.
 3. **Set by hand** on the customer's page. An explicit value, including "No limit", always wins. This is what the old quotas were; they are read as this layer
    unchanged.
 
 The customer page shows the result with where each number comes from (*Default*, the plan's name, or *Set by your host*), so you never have to guess.
+
+The master **Use limits** switch and **Warn** mode retain their usual behavior. When limits are disabled or set to warn, limit denials are bypassed; the **Account plans**
+creation mode still requires a live account-plan grant. A customer-level **May create servers: No** override takes precedence while limits are enforced.
 
 ![A customer's effective limits](/screenshots/limits-usage.webp){.screenshot}
 
@@ -71,6 +75,8 @@ Errors say what and how much: *This would exceed the limit of 2 servers (2 in us
 have 6 servers and 18 GB; one without it is held to the free tier.
 
 **Selling only fixed servers.** Defaults: 0 servers. Customers cannot create servers themselves; they buy server plans, whose servers are not counted.
+
+**Account-plan server access.** Set self-service to **Account plans**, release a template with fixed resource defaults, and enable **May create servers** on an account plan. Only customers with a `trialing`, `active` or `past_due` subscription to a granting account plan can create. A customer-level denial still blocks creation. Ending or suspending the subscription removes the grant but does not delete servers already created; the remaining limits apply to later actions.
 
 **A trusted friend.** Set "No limit" on their page for servers and memory.
 
