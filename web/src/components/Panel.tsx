@@ -60,11 +60,19 @@ export default function Panel() {
   useEffect(() => {
     if (!uid) return;
     let live = true;
-    request<Features>("/features")
-      .then((f) => live && setFeatures(f))
-      .catch(() => {});
+    const load = () =>
+      request<Features>("/features")
+        .then((f) => live && setFeatures(f))
+        .catch(() => {});
+    void load();
+    // Buttons follow the administrator's settings: look again when the tab is shown and every few minutes.
+    const onShow = () => document.visibilityState === "visible" && void load();
+    document.addEventListener("visibilitychange", onShow);
+    const timer = window.setInterval(onShow, 5 * 60 * 1000);
     return () => {
       live = false;
+      document.removeEventListener("visibilitychange", onShow);
+      window.clearInterval(timer);
     };
   }, [uid]);
   if (loading)
