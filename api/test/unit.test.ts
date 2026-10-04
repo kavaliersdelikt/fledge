@@ -109,7 +109,7 @@ test('crash policy normalisation and validation',()=>{
 });
 test('notification payloads work with Slack, Discord and Mattermost',()=>{
  const ev={kind:'server.crashed',severity:'bad' as const,title:'S crashed',body:'exit 1',server:{id:'1',name:'S'}};
- assert.deepEqual(Object.keys(payloadFor('discord',ev)),['content']);assert.deepEqual(Object.keys(payloadFor('slack',ev)),['text']);
+ assert.deepEqual(Object.keys(payloadFor('discord',ev)),['content','allowed_mentions']);assert.deepEqual((payloadFor('discord',{...ev,title:'@everyone'}) as any).allowed_mentions,{parse:[]});assert.deepEqual(Object.keys(payloadFor('slack',ev)),['text']);
  const g:any=payloadFor('webhook',ev);assert.ok(g.text&&g.content&&g.event.kind==='server.crashed');
  assert.ok((payloadFor('slack',{...ev,body:'x'.repeat(5000)}) as any).text.length<=1900);
  assert.ok((payloadFor('slack',ev) as any).text.startsWith('Fledge: '),'the default prefix is the product name');

@@ -74,6 +74,8 @@ jobs:
         run: npm run test:rookery
       - name: Plans, store, payments (Stripe stand-in), subscriptions, dunning
         run: npm run test:billing
+      - name: Better Discord Notifications (embeds, styles, mention safety)
+        run: npm run test:discord
   plugin-host:
     runs-on: ubuntu-latest
     defaults:

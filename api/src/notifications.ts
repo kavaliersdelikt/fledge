@@ -1,5 +1,6 @@
 import type {FastifyInstance} from 'fastify';
-import {pool,admin,fail,txt,asId,audit,encrypt,decrypt,looksLikeEmail} from './core.js';
+import {pool,admin,fail,txt,asId,audit,encrypt,decrypt,looksLikeEmail,WEB_ORIGIN} from './core.js';
+import {renderDiscord,discordStyles} from './notification-styles.js';
 import {safeRequest,GuardError} from './netguard.js';
 import {sendMail,mailerReady} from './mailer.js';
 import {settings} from './settings.js';
@@ -40,10 +41,11 @@ export type Emit={kind:string;title:string;body?:string;severity?:Severity;serve
 
 export function payloadFor(channelKind:string,ev:{kind:string;severity:Severity;title:string;body:string;server?:{id:string;name:string}|null;nodeId?:string|null;data?:Record<string,unknown>;at?:string},brandName='Fledge'){
  const text=`${brandName}: ${ev.title}${ev.server?` (${ev.server.name})`:''}${ev.body?` — ${ev.body}`:''}`.slice(0,1900);
- if(channelKind==='discord')return {content:text};
+ // Never let a server or customer name ping @everyone, a role or a person on the receiving side.
+ if(channelKind==='discord')return {content:text,allowed_mentions:{parse:[]}};
  if(channelKind==='slack')return {text};
  // `text` and `content` make the generic payload work with Slack, Discord and Mattermost; `event` carries the data.
- return {text,content:text,event:{kind:ev.kind,severity:ev.severity,title:ev.title,body:ev.body,server:ev.server||null,nodeId:ev.nodeId||null,data:ev.data||{},at:ev.at||new Date().toISOString()}};
+ return {text,content:text,allowed_mentions:{parse:[]},event:{kind:ev.kind,severity:ev.severity,title:ev.title,body:ev.body,server:ev.server||null,nodeId:ev.nodeId||null,data:ev.data||{},at:ev.at||new Date().toISOString()}};
 }
 
 async function deliver(ch:any,ev:{kind:string;severity:Severity;title:string;body:string;server?:{id:string;name:string}|null;nodeId?:string|null;data?:Record<string,unknown>}){
@@ -56,7 +58,14 @@ async function deliver(ch:any,ev:{kind:string;severity:Severity;title:string;bod
    await sendMail({to:String(ch.config?.to||''),subject:`[${b.short}] ${ev.title}`,text});
   }else{
    const url=JSON.parse(decrypt(ch.secret)).url as string;
-   const res=await safeRequest(url,{method:'POST',body:JSON.stringify(payloadFor(ch.kind,ev,(await brand()).name)),headers:{'content-type':'application/json'},maxBytes:64*1024,timeoutMs:8000,redirects:0,
+   const b=await brand();
+   let body:Record<string,unknown>=payloadFor(ch.kind,ev,b.name);
+   // A channel set to a rich style asks the formatter plugin to lay the message out; anything going wrong means the plain message.
+   if(ch.kind==='discord'&&ch.config?.style&&ch.config.style!=='plain'){
+    const rich=await renderDiscord({style:ch.config.style,scope:ch.scope==='user'?'user':'panel',brand:b.name,panelUrl:WEB_ORIGIN.replace(/\/$/,''),event:{...ev,at:new Date().toISOString(),body:ev.body||''}}).catch(()=>null);
+    if(rich)body=rich;
+   }
+   const res=await safeRequest(url,{method:'POST',body:JSON.stringify(body),headers:{'content-type':'application/json'},maxBytes:64*1024,timeoutMs:8000,redirects:0,
     ...(ch.scope==='user'?{}:{allowPrivate:true,allowHttp:true}),...(process.env.FLEDGE_TEST_ALLOW_LOCAL_FETCH==='1'?{allowPrivate:true,allowHttp:true}:{})});
    if(res.status<200||res.status>=300)throw new Error(`The endpoint answered ${res.status}`);
   }
@@ -105,7 +114,7 @@ export async function notifyUser(userId:string|null,ev:{kind:string;title:string
 
 const secretOf=(url:string)=>encrypt(JSON.stringify({url}));
 const hostOf=(ch:any)=>{try{return new URL(JSON.parse(decrypt(ch.secret)).url).host;}catch{return null;}};
-const channelShape=(ch:any)=>({id:ch.id,scope:ch.scope,name:ch.name,kind:ch.kind,events:ch.events,serverIds:ch.server_ids,enabled:ch.enabled,
+const channelShape=(ch:any)=>({style:ch.kind==='discord'?(ch.config?.style||'plain'):null,id:ch.id,scope:ch.scope,name:ch.name,kind:ch.kind,events:ch.events,serverIds:ch.server_ids,enabled:ch.enabled,
  to:ch.kind==='email'?ch.config?.to||null:null,urlHost:ch.kind==='email'?null:hostOf(ch),lastStatus:ch.last_status,lastError:ch.last_error,lastSentAt:ch.last_sent_at,createdAt:ch.created_at,mine:undefined as any});
 
 async function accessibleServers(userId:string){
@@ -133,6 +142,8 @@ export function notificationRoutes(app:FastifyInstance){
   return {ok:true,seenId:Number(max)};
  });
 
+ // The message styles a Discord channel can use right now: plain text, plus whatever an enabled formatter plugin offers.
+ app.get('/api/notification-styles',async()=>({discord:await discordStyles()}));
  app.get('/api/notification-channels',async(req)=>{
   const rows=(await pool.query(req.actor!.role==='admin'?"SELECT * FROM notification_channels WHERE scope='panel' OR user_id=$1 ORDER BY created_at":"SELECT * FROM notification_channels WHERE user_id=$1 ORDER BY created_at",[req.actor!.id])).rows;
   return rows.map(ch=>({...channelShape(ch),mine:ch.user_id===req.actor!.id}));
@@ -154,6 +165,14 @@ export function notificationRoutes(app:FastifyInstance){
   }
   const name=b?.name!==undefined?txt(b.name,60):existing?.name;
   let config:any=existing?.config||{},secret:string|null=existing?.secret||null;
+  let style:string=existing?.config?.style||'plain';
+  if(kind==='discord'&&b?.style!==undefined){
+   const known=(await discordStyles()).map(s=>s.id);
+   if(typeof b.style!=='string'||!/^[a-z][a-z0-9-]{0,30}$/.test(b.style))fail(400,'Choose a message style from the list');
+   if(!known.includes(b.style))fail(409,'That message style is not available. Turn on the plugin that provides it (Plugins).');
+   style=b.style;
+  }
+  if(kind!=='discord'&&b?.style!==undefined&&b.style!=='plain')fail(400,'Message styles are only for Discord channels');
   if(kind==='email'){
    const to=b?.to!==undefined?txt(b.to,254).toLowerCase():config.to;
    if(!looksLikeEmail(to))fail(400,'Enter a valid email address');
@@ -168,6 +187,7 @@ export function notificationRoutes(app:FastifyInstance){
    if(!['http:','https:'].includes(u.protocol))fail(400,'Webhook URLs must start with https://');
    secret=secretOf(raw);config={};
   }
+  if(kind==='discord')config={...config,style};
   return {scope,kind,name,events,serverIds,config,secret,enabled:typeof b?.enabled==='boolean'?b.enabled:(existing?.enabled??true)};
  };
  app.post('/api/notification-channels',async(req)=>{
