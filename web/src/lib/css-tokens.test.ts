@@ -50,7 +50,9 @@ test("colours come from tokens", () => {
       if (rootEnd > 0 && n <= src.slice(0, rootEnd).split("\n").length) return false;
       if (/--tw-ring-shadow:\s*0 0 #0000/.test(l)) return false; // Tailwind's "no ring"
       if (/mask-image:.*#000\b/.test(l)) return false; // a mask uses alpha only
-      return /#[0-9a-fA-F]{3,8}\b/.test(l) || /\b(?:rgba?|hsla?)\(/.test(l);
+      // Hue-derived template accents are intentionally dynamic, rather than fixed palette colours.
+      const withoutTokenColors = l.replace(/hsl\(var\(--[a-z0-9-]+\)\s+[\d.]+%\s+[\d.]+%\)/g, "var(--dynamic-color)");
+      return /#[0-9a-fA-F]{3,8}\b/.test(withoutTokenColors) || /\b(?:rgba?|hsla?)\(/.test(withoutTokenColors);
     });
     assert.deepEqual(bad, [], `Use a var(--token) or color-mix() of one instead of a fixed colour:\n${bad.join("\n")}`);
   }
