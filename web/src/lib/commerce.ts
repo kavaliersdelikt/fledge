@@ -1,4 +1,4 @@
-// Types and small helpers shared by the sign-up, store, billing and limits screens (0.7.2.1).
+// Types and small helpers shared by the sign-up, store, billing and limits screens (0.8.1.1).
 import { createContext, useContext } from "react";
 
 export type Cycle = "month" | "quarter" | "semiannual" | "year";
@@ -63,7 +63,7 @@ export type SignupConfig = {
 };
 
 export type SelfOptions = {
-  mode: "off" | "presets" | "plans" | "custom"; canCreate: boolean; planRequired?: boolean; canDelete: boolean; coolingHours: number; allowRename?: boolean; customResources?: boolean;
+  mode: "off" | "presets" | "plans" | "custom"; canCreate: boolean; why?: string; planRequired?: boolean; canDelete: boolean; coolingHours: number; allowRename?: boolean; customResources?: boolean;
   templates: { id: string; name: string; description: string; memoryMb: number; cpuPercent: number; diskMb: number; variables: { key: string; label: string; description?: string; type: string; options?: { value: string; label: string }[]; min?: number; max?: number; required?: boolean }[] }[];
   locations: string[]; ceilings?: { memoryMb: number; cpuPercent: number; diskMb: number }; limits: LimitsView | null;
 };

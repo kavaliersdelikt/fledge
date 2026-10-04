@@ -7,7 +7,7 @@ import { useRef, useState } from "react";
 import DataTable, { type DataColumn } from "./DataTable";
 import { Drawer } from "./feedback";
 import { useFeatures } from "@/lib/commerce";
-import { CreateMyServer, UsageStrip } from "./SelfServer";
+import { CreateMyServer, FirstServer, UsageStrip } from "./SelfServer";
 import { CpuCell, MemoryCell, liveUsage } from "./ServerUsage";
 import {
   Button,
@@ -152,6 +152,8 @@ export default function Servers({ admin }: { admin: boolean }) {
             <DataTable data={list} rowKey={(s) => s.id} rowHref={(s) => `/servers/${s.id}`} columns={columns} />
           ) : all.length ? (
             <Empty title="No matching servers">Try another filter or search term.</Empty>
+          ) : canCreateOwn ? (
+            <FirstServer onStart={() => setParams({ new: "1" })} store={canStore} />
           ) : (
             <Empty
               title="No servers yet"
