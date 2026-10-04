@@ -58,12 +58,13 @@ export function combine(defaults:LimitSet,plans:{name:string;limits:LimitSet}[],
  return {values,sources};
 }
 
-export async function resolveLimits(userId:string,db:Db=pool,lock=false):Promise<Resolved&{enabled:boolean;mode:'enforce'|'warn'}>{
+export async function resolveLimits(userId:string,db:Db=pool,lock=false):Promise<Resolved&{planGrants:LimitFlag[];enabled:boolean;mode:'enforce'|'warn'}>{
  const cfg=(await settings()).limits;
  const quota=(await db.query('SELECT quota FROM users WHERE id=$1'+(lock?' FOR UPDATE':''),[userId])).rows[0]?.quota;
  const plans=(await db.query("SELECT p.name,p.limits FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.user_id=$1 AND p.kind='account' AND s.status IN ('trialing','active','past_due')",[userId])).rows.map((r:any)=>({name:r.name as string,limits:fromStorage(r.limits)}));
  const r=combine(fromStorage(cfg.defaults),plans,cfg.allowOverrides?fromStorage(quota):null);
- return {...r,enabled:cfg.enabled,mode:cfg.mode};
+ const planGrants=LIMIT_FLAGS.filter(flag=>plans.some((plan:any)=>plan.limits[flag]===true));
+ return {...r,planGrants,enabled:cfg.enabled,mode:cfg.mode};
 }
 
 export async function usageOf(ownerId:string,db:Db=pool,excludeServerId?:string):Promise<Usage>{

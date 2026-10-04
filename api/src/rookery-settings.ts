@@ -16,7 +16,8 @@ export type SignupSettings={mode:'off'|'open'|'approval'|'invite';allowedDomains
  requireTerms:boolean;termsUrl:string;privacyUrl:string;termsVersion:string;defaultPlanSlug:string;welcomeEmail:boolean;notifyAdmins:boolean;
  perIpPerHour:number;perEmailPerDay:number;globalPerHour:number;unverifiedDays:number;rejectCommonPasswords:boolean;minPasswordLength:number;
  allowAccountDeletion:boolean;deletionGraceDays:number;allowEmailChange:boolean;allowDataExport:boolean};
-export type SelfServiceSettings={mode:'off'|'presets'|'custom';allowDelete:boolean;deleteCoolingHours:number;backupBeforeDelete:boolean;createsPerHour:number;allowedLocations:string[];requireVerifiedEmail:boolean;allowRename:boolean};
+export type SelfServiceMode='off'|'presets'|'plans'|'custom';
+export type SelfServiceSettings={mode:SelfServiceMode;allowDelete:boolean;deleteCoolingHours:number;backupBeforeDelete:boolean;createsPerHour:number;allowedLocations:string[];requireVerifiedEmail:boolean;allowRename:boolean};
 export type LimitsSettings={enabled:boolean;mode:'enforce'|'warn';adminOverride:'force'|'always';allowOverrides:boolean;warnPercent:number;showUsage:boolean;notifyCustomer:boolean;countPlanServers:boolean;defaults:LimitSet};
 export type BillingSettings={provider:string;currency:string;currencies:string[];
  reminderDays:number[];suspendAfterDays:number;terminateAfterDays:number;autoTerminate:boolean;retentionDays:number;finalBackup:boolean;
@@ -122,7 +123,7 @@ export function validateRookery(section:string,body:any,current:any):any{
   }
   case 'selfService':{
    return {
-    mode:oneOf(body.mode,'Self-service mode',['off','presets','custom'] as const),allowDelete:bool(body.allowDelete,'Customers may delete servers'),
+    mode:oneOf(body.mode,'Self-service mode',['off','presets','plans','custom'] as const),allowDelete:bool(body.allowDelete,'Customers may delete servers'),
     deleteCoolingHours:int(body.deleteCoolingHours,'Deletion cooling-off (hours)',0,720),backupBeforeDelete:bool(body.backupBeforeDelete,'Back up before deleting'),
     createsPerHour:int(body.createsPerHour,'Servers per customer and hour',1,1000),allowedLocations:list(body.allowedLocations,'Locations',100,s=>s),
     requireVerifiedEmail:bool(body.requireVerifiedEmail,'Require a verified email'),allowRename:bool(body.allowRename,'Customers may rename servers'),

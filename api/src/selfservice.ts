@@ -17,14 +17,18 @@ import {createBackup} from './servers.js';
 export const isVerified=(u:{email_verified_at?:any;signup_source?:string})=>!!u.email_verified_at||u.signup_source==='admin'||!u.signup_source;
 const CEIL={memoryMb:262144,cpuPercent:6400,diskMb:4194304};
 
+const selfCreateAllowed=(limits:Awaited<ReturnType<typeof resolveLimits>>)=>!limits.enabled||limits.mode==='warn'||limits.values.selfCreate!==false;
+
 async function whoCanCreate(userId:string){
  const cfg=(await settings()).selfService;
  const u=(await pool.query("SELECT id,email,status,disabled,email_verified_at,signup_source FROM users WHERE id=$1 AND role='customer'",[userId])).rows[0];
  if(!u||u.disabled||u.status!=='active')fail(403,'This account cannot create servers.');
  if(cfg.requireVerifiedEmail&&!isVerified(u))fail(403,'Confirm your email address before creating servers.');
  const r=await resolveLimits(userId);
- const flagOk=!r.enabled||r.mode==='warn'||(r.values as any).selfCreate!==false;
- return {cfg,flagOk,limits:r};
+ const flagOk=selfCreateAllowed(r);
+ const planGrant=r.planGrants.includes('selfCreate');
+ const canCreate=cfg.mode==='custom'?flagOk:cfg.mode==='plans'&&planGrant&&flagOk;
+ return {cfg,flagOk,planGrant,canCreate,limits:r};
 }
 
 /** Locations a customer may use: the panel's list intersected with their plan's list. */
@@ -40,11 +44,15 @@ export function selfServiceRoutes(app:FastifyInstance){
   const all=await settings(),isCustomer=req.actor!.role==='customer';
   const subs=Number((await pool.query('SELECT count(*) n FROM subscriptions WHERE user_id=$1',[req.actor!.id])).rows[0].n);
   const u=(await pool.query('SELECT status FROM users WHERE id=$1',[req.actor!.id])).rows[0];
+  const limits=isCustomer?await resolveLimits(req.actor!.id):null;
+  const canCreate=all.selfService.mode==='custom'
+   ?(!limits||selfCreateAllowed(limits))
+   :all.selfService.mode==='plans'&&!!limits&&limits.planGrants.includes('selfCreate')&&selfCreateAllowed(limits);
   return {
    store:{enabled:all.store.enabled||(isCustomer&&all.selfService.mode!=='off'),sells:all.store.enabled,title:all.store.title},
    // Administrators see Billing once it is in use (a provider chosen, a plan made or the store open); customers once they have something there.
    billing:{subscriptions:subs,visible:req.actor!.role==='admin'?(all.store.enabled||!!all.billing.provider||Number((await pool.query('SELECT count(*) n FROM plans')).rows[0].n)>0):(subs>0||all.store.enabled)},
-   selfService:{mode:all.selfService.mode,canDelete:all.selfService.allowDelete,coolingHours:all.selfService.deleteCoolingHours},
+   selfService:{mode:all.selfService.mode,canCreate,canDelete:all.selfService.allowDelete,coolingHours:all.selfService.deleteCoolingHours},
    limits:{showUsage:all.limits.showUsage||!isCustomer,enabled:all.limits.enabled,mode:all.limits.mode},
    account:{status:u?.status||'active',allowDeletion:all.signup.allowAccountDeletion&&isCustomer,allowEmailChange:all.signup.allowEmailChange,allowExport:all.signup.allowDataExport,minPasswordLength:all.signup.minPasswordLength},
   };
@@ -62,9 +70,9 @@ export function selfServiceRoutes(app:FastifyInstance){
  });
  app.get('/api/me/servers/options',async(req)=>{
   if(req.actor!.role!=='customer')fail(403,'Customers only');
-  const {cfg,flagOk,limits}=await whoCanCreate(req.actor!.id).catch(e=>({cfg:null as any,flagOk:false,limits:null as any,error:e}) as any);
-  const base={mode:cfg?.mode||'off',canCreate:!!cfg&&cfg.mode!=='off'&&flagOk,canDelete:!!cfg&&cfg.allowDelete,coolingHours:cfg?.deleteCoolingHours??0};
-  if(!cfg||cfg.mode==='off')return {...base,templates:[],locations:[],limits:null};
+  const {cfg,canCreate,planGrant,limits}=await whoCanCreate(req.actor!.id);
+  const base={mode:cfg?.mode||'off',canCreate,planRequired:cfg?.mode==='plans'&&!planGrant,canDelete:!!cfg&&cfg.allowDelete,coolingHours:cfg?.deleteCoolingHours??0,allowRename:cfg?.allowRename??false};
+  if(!cfg||cfg.mode==='off'||cfg.mode==='presets')return {...base,templates:[],locations:[],limits:null};
   const locations=usableLocations(cfg.allowedLocations,limits?.values.allowedLocations);
   const known=(await pool.query("SELECT DISTINCT location FROM nodes WHERE deleted_at IS NULL AND status='connected' AND NOT draining ORDER BY location")).rows.map((r:any)=>r.location as string);
   const allowedT=limits?.values.allowedTemplates;
@@ -77,15 +85,22 @@ export function selfServiceRoutes(app:FastifyInstance){
  app.post('/api/me/servers',async(req)=>{
   if(req.actor!.role!=='customer'||req.actor!.tokenScopes)fail(403,'Browser session required');
   const b=req.body as any;
-  const {cfg,flagOk,limits}=await whoCanCreate(req.actor!.id);
-  if(cfg.mode!=='custom')fail(403,'Creating servers yourself is turned off. Choose a plan in the store instead.');
-  if(!flagOk)fail(403,'Your plan does not let you create servers yourself.');
+  const {cfg,flagOk,planGrant,limits}=await whoCanCreate(req.actor!.id);
+  if(cfg.mode==='off'||cfg.mode==='presets')fail(403,'Creating servers yourself is turned off. Choose a server plan in the store instead.');
+  if(cfg.mode==='plans'&&!planGrant)fail(403,'An active account plan that allows server creation is required.');
+  if(cfg.mode==='plans'&&!flagOk)fail(403,'Your effective limits do not allow you to create servers.');
+  if(cfg.mode==='custom'&&!flagOk)fail(403,'Your plan does not let you create servers yourself.');
+  const customResources=cfg.mode==='custom';
+  if(!customResources&&['memoryMb','cpuPercent','diskMb'].some(key=>b?.[key]!==undefined))fail(400,'Server resources are fixed in this self-service mode.');
   if(await bump(`create:${req.actor!.id}`,3600)>cfg.createsPerHour)fail(429,'You are creating servers too quickly. Try again a little later.');
-  const templateId=txt(b?.templateId),name=txt(b?.name,80);
+  const templateId=txt(b?.templateId);
   const t=(await pool.query('SELECT * FROM templates WHERE id=$1 AND customer_visible',[templateId])).rows[0];
   if(!t)fail(404,'That kind of server is not available.');
+  const name=cfg.allowRename?txt(b?.name,80):t.name;
   const bound=(v:any,def:number,max:number,label:string)=>{if(v===undefined||v===null||v==='')return def;const n=Number(v);if(!Number.isInteger(n)||n<1||n>max)fail(400,`${label} is out of range`);return n;};
-  const memoryMb=bound(b?.memoryMb,t.memory_mb,CEIL.memoryMb,'Memory'),cpuPercent=bound(b?.cpuPercent,t.cpu_percent,CEIL.cpuPercent,'CPU'),diskMb=bound(b?.diskMb,t.disk_mb,CEIL.diskMb,'Disk');
+  const memoryMb=customResources?bound(b?.memoryMb,t.memory_mb,CEIL.memoryMb,'Memory'):t.memory_mb;
+  const cpuPercent=customResources?bound(b?.cpuPercent,t.cpu_percent,CEIL.cpuPercent,'CPU'):t.cpu_percent;
+  const diskMb=customResources?bound(b?.diskMb,t.disk_mb,CEIL.diskMb,'Disk'):t.disk_mb;
   if(memoryMb<256)fail(400,'Memory must be at least 256 MB');
   const defs=effectiveDefs(t).filter(d=>d.userEditable);
   const variables:Record<string,string>={};
