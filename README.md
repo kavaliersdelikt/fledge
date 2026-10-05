@@ -6,7 +6,7 @@
 
 **A clear home for the game servers you run.**
 
-Manage customers, servers, templates, and Linux Docker nodes from one self-hosted panel.
+Manage customers, Docker game servers, KVM virtual machines and Linux nodes from one self-hosted panel.
 
 <p>
   <a href="https://github.com/kavaliersdelikt/fledge/releases"><img src="https://img.shields.io/github/v/release/kavaliersdelikt/fledge?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=8B5CF6" alt="Latest GitHub release" /></a>
@@ -33,13 +33,13 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.8.1.1 (Aerie)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.9.1.1 (Mews)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
 ## What is Fledge?
 
-Fledge is a self-hosted control panel for operating game servers across multiple Linux Docker hosts. The web panel and API manage users, templates, server lifecycle, placement, backups, automation, plugins and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port. Plugins run in a sandboxed host service that has no access to the database or to Docker.
+Fledge is a self-hosted control panel for operating game servers on Linux Docker hosts and opt-in Linux KVM/libvirt virtual machines. The web panel and API manage users, templates, server lifecycle, placement, backups, automation, plugins and audit activity. Outbound Go agents connect Linux nodes to the panel; the panel does not need to expose an inbound agent port. Plugins run in a sandboxed host service that has no access to the database or to Docker.
 
 
 ```mermaid
@@ -53,8 +53,8 @@ flowchart TB
     API --> Plugins["Plugin host (sandbox)"]
     Plugins -. "declared hosts only" .-> Catalogs["Modrinth and other catalogs"]
     API -. "outbound connection" .- Agent["Node agent"]
-    Agent --> Node["Linux Docker node"]
-    Node --> Servers["Game servers"]
+    Agent --> Node["Linux Docker/KVM host"]
+    Node --> Servers["Container servers and virtual machines"]
 
     classDef app fill:#172554,stroke:#60A5FA,color:#F8FAFC,stroke-width:1.5px
     classDef data fill:#1E293B,stroke:#64748B,color:#F8FAFC
@@ -74,6 +74,9 @@ flowchart TB
 | **Whole-fleet view** | One overview that lists each offline node or failed server once, with the error and a link to fix it. |
 | **Placement that fits** | Servers go to a node with free capacity. Each node shows its reserved memory split per server. |
 | **Files and backups** | Browser file manager and editor, drag-and-drop upload, temporary SFTP credentials, S3 backups with retention and restore checks. |
+| **Account suspension** | A customer can sign in to an explained pause, manage billing and security, export their data and appeal. Server holds are restored independently. |
+| **Administrator team** | One super administrator, editable permission presets, invitations, role transfer and immediate revocation. |
+| **Help desk** | Optional customer tickets and knowledge base, agent notes, macros, safe attachments, goals, rules, ratings, reports and bot-protected abuse reports. |
 | **People and access** | Customer accounts, per-server collaborators (view, console, files, backups, manage), an audit log, and scoped API tokens. |
 | **Safe by default** | Two-factor authentication required for administrators, recovery codes, and outbound-only node agents. |
 | **Fast to drive** | Ctrl K searches pages and servers. Works on phones. Motion respects "reduce motion". |
@@ -90,7 +93,7 @@ flowchart TB
 | **Your own brand** | Rename the panel, add a logo, pick colours and a font, offer light and dark, restyle the sign-in page, add sidebar links and an announcement. Readable colours are enforced, a 60-second preview rolls itself back, and the last 20 versions are kept. |
 | **History and API** | CPU and memory history (1 hour to 30 days), Prometheus metrics, an OpenAPI description with an in-panel API reference. |
 
-> **New in v0.8.1.1 "Aerie":** a guided first server for customers, **May create servers** as a per-customer permission, and a complete guide to Discord, Slack and webhook notifications, the bundled **Better Discord Notifications** plugin (colour-coded embeds for administrators and customers) and a fix so Discord messages can no longer ping @everyone. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.8.1.1), [Customer permissions](https://kavaliersdelikt.github.io/fledge/panel/permissions) and [Discord notifications](https://kavaliersdelikt.github.io/fledge/panel/discord-notifications) and [Better Discord Notifications](https://kavaliersdelikt.github.io/fledge/plugins/discord-embeds).
+> **New in v0.9.1.1 "Mews":** opt-in Linux KVM/libvirt virtual machines with browser VNC and serial consoles, approved media and hardware profiles, NAT and routed networks, stopped snapshots and offline recovery; explained account suspensions with billing, security and ticket-backed appeals; one super administrator and live team permissions; and an optional built-in help desk with articles, private notes, attachments, business-hour goals, automations and reports. The desk is off by default. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.9.1.1), [Suspension](https://kavaliersdelikt.github.io/fledge/panel/suspension), [Team](https://kavaliersdelikt.github.io/fledge/panel/team) and [Support setup](https://kavaliersdelikt.github.io/fledge/operate/support-setup).
 >
 > **v0.7.1.1 "Rookery", the Hosting Update:** let people sign up, create servers and buy them. Plans, a store, subscriptions with dunning and suspension, a bundled Stripe plugin (verified against Stripe's test mode), limits that can be layered, switched off or set to warn, and editable emails with a delivery log. Everything is off by default, so an existing panel behaves exactly as before. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.7.1.1), [Going live](https://kavaliersdelikt.github.io/fledge/operate/selling) and the [Store guide](https://kavaliersdelikt.github.io/fledge/panel/store).
 
@@ -221,3 +224,13 @@ Please redact credentials, enrollment tokens, and backup URLs before sharing log
 ## Project status
 
 Contributions and issue reports are welcome; please include reproduction steps and redact credentials, enrollment tokens, and backup URLs.
+
+### Virtual machines in Mews
+
+Optional Linux x86-64 KVM/libvirt hosting adds approved Linux cloud images and Linux/Windows ISO installation, browser VNC and serial consoles, host-limited hardware controls, NAT/routed address pools, stopped snapshots and full guest bundles. Existing containers remain the default. Enable only after configuring a capable node, trusted media, hardware profiles and networks. See [VM setup](docs-site/docs/operate/virtual-machines.md), [customer controls](docs-site/docs/panel/virtual-machines.md) and [security](docs-site/docs/security/virtual-machines.md).
+
+### Optional installation usage reporting
+
+Super-administrators can opt in to encrypted version reports through GitHub. A private Actions dashboard counts consenting active installations; GitHub account and intake metadata remain visible. Reporting is off by default, uses no bundled maintainer token, and can be withdrawn in Settings. See the [collector and privacy setup](docs-site/docs/operate/usage-reporting.md).
+
+The project's [encrypted public intake](https://github.com/kavaliersdelikt/fledge-usage-intake) is configured, with its [privacy notice](https://github.com/kavaliersdelikt/fledge-usage-intake/blob/main/PRIVACY.md). The maintainer can view [private dashboard Actions](https://github.com/kavaliersdelikt/fledge-usage-dashboard/actions/workflows/usage-collector.yml) and open the latest `usage-state` artifact's `dashboard.html`. Fresh installs include public reporting configuration; each operator still chooses whether to consent and authorize GitHub.
