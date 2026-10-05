@@ -27,7 +27,7 @@ function upgrade(req:IncomingMessage,socket:Duplex,head:Buffer){const key=req.he
 export function validSample(m:any){return m&&Number.isFinite(m.cpuPercent)&&m.cpuPercent>=0&&m.cpuPercent<=100000&&Number.isSafeInteger(m.memoryBytes)&&m.memoryBytes>=0&&Number.isSafeInteger(m.memoryLimitBytes)&&m.memoryLimitBytes>0;}
 export function validLog(m:any){return typeof m?.data==='string'&&m.data.length<=32768&&m.data.length%4===0&&/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(m.data);}
 const nodes=new Map<string,Peer>();const viewers=new Map<string,Set<Peer>>();const serverNodes=new Map<string,string>();
-async function panelAccess(id:string,session:string){const r=await pool.query(`SELECT s.node_id FROM sessions ss JOIN users u ON ss.user_id=u.id JOIN servers s ON s.id=$2 LEFT JOIN collaborators c ON c.user_id=u.id AND c.server_id=s.id WHERE ss.token_hash=$1 AND ss.expires_at>now() AND NOT u.disabled AND (u.role<>'admin' OR u.totp_secret IS NOT NULL) AND s.deleted_at IS NULL AND (u.role='admin' OR u.id=s.owner_id OR c.permissions && ARRAY['console','manage']::text[])`,[hash(session),id]);return r.rows[0] as {node_id:string}|undefined;}
+async function panelAccess(id:string,session:string){const r=await pool.query(`SELECT s.node_id FROM sessions ss JOIN users u ON ss.user_id=u.id JOIN servers s ON s.id=$2 LEFT JOIN collaborators c ON c.user_id=u.id AND c.server_id=s.id WHERE ss.token_hash=$1 AND ss.expires_at>now() AND NOT u.disabled AND u.status IN ('active','deletion_pending') AND NOT EXISTS(SELECT 1 FROM account_suspensions a WHERE a.user_id=u.id AND a.lifted_at IS NULL) AND (u.role<>'admin' OR (u.totp_secret IS NOT NULL AND (u.is_super OR u.admin_permissions IS NULL OR 'servers.console'=ANY(u.admin_permissions)))) AND s.runtime='container' AND s.deleted_at IS NULL AND (u.role='admin' OR u.id=s.owner_id OR c.permissions && ARRAY['console','manage']::text[])`,[hash(session),id]);return r.rows[0] as {node_id:string}|undefined;}
 async function nodeAccess(id:string,credential:string){return !!(await pool.query('SELECT 1 FROM nodes WHERE id=$1 AND credential_hash=$2 AND deleted_at IS NULL',[id,hash(credential)])).rowCount;}
 export function registerLive(app:FastifyInstance){
  const replica=crypto.randomUUID(),subscriptions=new Map<string,Set<string>>();let cursor='0',polling=false,ready=false,maintenanceQueue=Promise.resolve();
@@ -44,7 +44,7 @@ export function registerLive(app:FastifyInstance){
  const maintenance=setInterval(()=>{void maintain().catch(e=>app.log.error(e,'console leases'));},5000);maintenance.unref();
  const connected=async(node:string)=>!!(await pool.query('SELECT 1 FROM console_nodes WHERE node_id=$1 AND expires_at>now()',[node])).rowCount;
  app.addHook('onClose',async()=>{clearInterval(pump);clearInterval(maintenance);for(const p of nodes.values())p.close();for(const set of viewers.values())for(const p of set)p.close();await pool.query('DELETE FROM console_interests WHERE replica=$1',[replica]);await pool.query('DELETE FROM console_nodes WHERE replica=$1',[replica]);});
- app.server.on('upgrade',(req,socket,head)=>{void (async()=>{try{
+ app.server.on('upgrade',(req,socket,head)=>{if(req.url?.startsWith('/api/vm-console/')||req.url?.startsWith('/api/agent/vm-console/'))return;void (async()=>{try{
  await initialize;
  const path=(req.url||'').split('?')[0],panel=/^\/api\/servers\/([a-f\d-]+)\/live$/.exec(path);let peer:Peer|null=null;
  if(panel&&uuid.test(panel[1])){

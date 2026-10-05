@@ -1,3 +1,4 @@
+import {vmNodeBlocker} from './vm-model.js';
 import type {FastifyInstance} from 'fastify';
 import {pool,admin,fail,asId,audit} from './core.js';
 import {settings} from './settings.js';
@@ -28,11 +29,12 @@ export async function notify(title:string,detail:Record<string,unknown>={}){
  }catch{/* a broken webhook must never block recovery */}
 }
 
-type Need={memory:number;cpu:number;disk:number;ports:{offset:number;protocol:string}[];location:string|null};
-export async function pickNode(c:any,need:Need,opts:{exclude:string[];sameLocationOnly:boolean;preferNode?:string|null}){
+type Need={memory:number;cpu:number;disk:number;ports:{offset:number;protocol:string}[];location:string|null;vm?:any};
+export async function pickNode(c:any,need:Need,opts:{exclude:string[];sameLocationOnly:boolean;preferNode?:string|null;targetNetworkId?:string|null}){
  const nodes=(await c.query("SELECT * FROM nodes WHERE status='connected' AND NOT draining AND deleted_at IS NULL AND NOT (id=ANY($1::uuid[])) AND ($2::uuid IS NULL OR id=$2) AND ($3::text IS NULL OR location=$3) ORDER BY (location IS NOT DISTINCT FROM $4::text) DESC,(memory_mb-headroom_mb) DESC,id FOR UPDATE",[opts.exclude,opts.preferNode||null,opts.sameLocationOnly?need.location:null,need.location])).rows;
  const rejected:string[]=[];
  for(const n of nodes){
+  if(need.vm){const blocker=vmNodeBlocker(n,need.vm.profile,need.vm.network);if(blocker){rejected.push(`${n.name}: ${blocker}`);continue;}}
   const used=(await c.query('SELECT coalesce(sum(memory_mb),0) AS mem,coalesce(sum(cpu_percent),0) AS cpu,coalesce(sum(disk_mb),0) AS disk FROM servers WHERE node_id=$1 AND deleted_at IS NULL',[n.id])).rows[0];
   if(Number(used.mem)+need.memory>n.memory_mb-n.headroom_mb||Number(used.cpu)+need.cpu>n.cpu_percent||Number(used.disk)+need.disk>n.disk_mb){rejected.push(`${n.name}: not enough reserved capacity`);continue;}
   if(Number.isFinite(Number(n.usage?.diskFreeMb))&&Number(n.usage.diskFreeMb)<need.disk+n.headroom_mb){rejected.push(`${n.name}: not enough free disk`);continue;}
@@ -59,11 +61,13 @@ export async function planServer(server:any,cfg:Settings,excludeNodes:string[],u
   else if(cfg.maxBackupAgeHours>0&&b.age>cfg.maxBackupAgeHours*3600)blockers.push(`The newest backup is ${Math.round(b.age/3600)} h old (limit ${cfg.maxBackupAgeHours} h)`);
   else backup={id:b.id,age:b.age};
  }
+ if(server.runtime==='vm'&&!backup)blockers.push('Virtual machine recovery requires a complete backup');
+ if(server.runtime==='vm'&&!cfg.selfFence)blockers.push('Virtual machine recovery requires node self-fencing');
  const tpl=(await pool.query('SELECT internal_ports FROM templates WHERE id=$1',[server.template_id])).rows[0];
  const c=await pool.connect();let target:any;
  try{
   await c.query('BEGIN');
-  const r=await pickNode(c,{memory:server.memory_mb,cpu:server.cpu_percent,disk:server.disk_mb,ports:[...(tpl?.internal_ports||[]),...(server.extra_ports||[])],location:server.location||null},{exclude:excludeNodes,sameLocationOnly:cfg.sameLocationOnly});
+  const r=await pickNode(c,{memory:server.memory_mb,cpu:server.cpu_percent,disk:server.disk_mb,ports:[...(tpl?.internal_ports||[]),...(server.extra_ports||[])],location:server.location||null,vm:server.runtime==='vm'?server.vm_config:undefined},{exclude:excludeNodes,sameLocationOnly:cfg.sameLocationOnly});
   await c.query('ROLLBACK');
   if(r.node)target={id:r.node.id,name:r.node.name,port:r.port};else blockers.push(...r.rejected);
  }finally{c.release();}
@@ -71,14 +75,16 @@ export async function planServer(server:any,cfg:Settings,excludeNodes:string[],u
 }
 
 /** Re-homes a server and queues the jobs that rebuild it. Returns the new event id. */
-async function moveServer(serverId:string,opts:{kind:'failover'|'migration';reason:string;actor:string|null;backup?:{id:string;age:number}|null;fromNode:string;preferNode?:string|null}){
+async function moveServer(serverId:string,opts:{kind:'failover'|'migration';reason:string;actor:string|null;backup?:{id:string;age:number}|null;fromNode:string;preferNode?:string|null;targetNetworkId?:string|null}){
  const cfg=(await settings()).failover;
  const c=await pool.connect();
  try{
   await c.query('BEGIN');
   const s=(await c.query("SELECT s.*,n.location,t.internal_ports FROM servers s JOIN nodes n ON n.id=s.node_id JOIN templates t ON t.id=s.template_id WHERE s.id=$1 AND s.deleted_at IS NULL FOR UPDATE OF s",[serverId])).rows[0];
-  if(!s||s.node_id!==opts.fromNode||s.observed_status==='deleting'){await c.query('ROLLBACK');return null;}
-  const r=await pickNode(c,{memory:s.memory_mb,cpu:s.cpu_percent,disk:s.disk_mb,ports:[...s.internal_ports,...(s.extra_ports||[])],location:s.location},{exclude:[opts.fromNode],sameLocationOnly:cfg.sameLocationOnly,preferNode:opts.preferNode});
+  if(!s||s.suspended||s.node_id!==opts.fromNode||s.observed_status==='deleting'||(s.runtime==='vm'&&(await c.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[s.owner_id])).rowCount)){await c.query('ROLLBACK');return null;}
+  let targetVM=s.runtime==='vm'?structuredClone(s.vm_config):undefined;
+  if(opts.targetNetworkId){if(!targetVM)fail(400,'Network changes require a VM');const network=(await c.query('SELECT * FROM vm_networks WHERE id=$1 AND enabled',[opts.targetNetworkId])).rows[0];if(!network)fail(409,'The approved target network is unavailable');targetVM.network=network;targetVM.networkId=network.id;}
+  const r=await pickNode(c,{memory:s.memory_mb,cpu:s.cpu_percent,disk:s.disk_mb,ports:[...s.internal_ports,...(s.extra_ports||[])],location:s.location,vm:targetVM},{exclude:[opts.fromNode],sameLocationOnly:cfg.sameLocationOnly,preferNode:opts.preferNode});
   if(!r.node){await c.query('ROLLBACK');throw Object.assign(new Error(r.rejected.join('; ')),{blocked:true});}
   // Pending work on the old node no longer applies to this server.
   const cancelled=await c.query("UPDATE jobs SET state='failed',error='Server was moved to another node',finished_at=now(),lease_until=NULL WHERE server_id=$1 AND state IN ('queued','running') RETURNING id",[serverId]);
@@ -86,7 +92,8 @@ async function moveServer(serverId:string,opts:{kind:'failover'|'migration';reas
   await c.query('DELETE FROM allocations WHERE server_id=$1',[serverId]);
   for(const x of [...s.internal_ports,...(s.extra_ports||[])])await c.query('INSERT INTO allocations(node_id,server_id,port,protocol) VALUES($1,$2,$3,$4)',[r.node.id,serverId,r.port+x.offset,x.protocol]);
   await c.query("UPDATE servers SET node_id=$1,port=$2,observed_status='provisioning',usage='{}'::jsonb,updated_at=now() WHERE id=$3",[r.node.id,r.port,serverId]);
-  await c.query("INSERT INTO jobs(node_id,server_id,kind,created_at) VALUES($1,$2,'create',clock_timestamp())",[r.node.id,serverId]);
+  if(s.runtime!=='vm')await c.query("INSERT INTO jobs(node_id,server_id,kind,created_at) VALUES($1,$2,'create',clock_timestamp())",[r.node.id,serverId]);
+  if(s.runtime==='vm'){if(!opts.backup)fail(409,'VM moves require a complete backup');const vm={...targetVM,forwards:targetVM.forwards.map((f:any)=>({...f,hostPort:r.port+f.hostPort-s.port}))};if(opts.targetNetworkId&&opts.targetNetworkId!==s.vm_config.networkId){const address=(await c.query('SELECT host(address) address FROM vm_addresses WHERE network_id=$1 AND server_id IS NULL ORDER BY address FOR UPDATE SKIP LOCKED LIMIT 1',[opts.targetNetworkId])).rows[0];if(!address)fail(409,'The target address pool is exhausted');await c.query('UPDATE vm_addresses SET server_id=NULL WHERE server_id=$1',[s.id]);await c.query('UPDATE vm_addresses SET server_id=$1 WHERE network_id=$2 AND address=$3',[s.id,opts.targetNetworkId,address.address]);vm.address=address.address;if(vm.network.mode!=='nat')vm.forwards=[];}await c.query('UPDATE servers SET vm_config=$2 WHERE id=$1',[s.id,JSON.stringify(vm)]);}
   let jobId:string|null=null;
   if(opts.backup)jobId=(await c.query("INSERT INTO jobs(node_id,server_id,kind,payload,created_at) VALUES($1,$2,'restore',$3,clock_timestamp()) RETURNING id",[r.node.id,serverId,JSON.stringify({backupId:opts.backup.id,failover:true})])).rows[0].id;
   else jobId=(await c.query("SELECT id FROM jobs WHERE server_id=$1 AND kind='create' ORDER BY created_at DESC LIMIT 1",[serverId])).rows[0].id;
@@ -125,6 +132,9 @@ async function startFailover(server:any,cfg:Settings,reason:string,actor:string|
  }
 }
 
+async function vmMigrationFailed(serverId:string,eventId:string){
+ if((await pool.query("SELECT 1 FROM servers WHERE id=$1 AND runtime='vm'",[serverId])).rowCount)await emit({kind:'vm.migration_failed',title:'Virtual machine migration or recovery failed',serverId,severity:'bad',data:{eventId},dedupe:{key:'move-failed:'+eventId,minutes:1440}});
+}
 /** Settles events whose jobs have finished. */
 async function advanceEvents(){
  // A node that is back makes its servers' blocked recoveries moot.
@@ -140,12 +150,14 @@ async function advanceEvents(){
    }
    if(e.job_state==='succeeded'){
     await pool.query("UPDATE failover_events SET state='completed',finished_at=now(),updated_at=now() WHERE id=$1",[e.id]);
+    if((await pool.query("SELECT 1 FROM servers WHERE id=$1 AND runtime='vm'",[e.server_id])).rowCount)await emit({kind:'vm.migrated',title:'Virtual machine recovery completed',serverId:e.server_id,data:{eventId:e.id},dedupe:{key:'move:'+e.id,minutes:1440}});
     // A planned move leaves a live copy behind; remove it only now that the new one works.
     if(e.kind==='migration'&&e.from_node)await pool.query("INSERT INTO jobs(node_id,kind,payload) VALUES($1,'evict',$2)",[e.from_node,JSON.stringify({serverId:e.server_id})]);
     await notify(e.kind==='migration'?`${e.server_name} was moved`:`${e.server_name} is back online`,{server:e.server_name,kind:e.kind});
    }else if(e.job_state==='failed'||(e.job_id&&!e.job_state)){
     const msg=e.job_error||'The recovery job failed';
     await pool.query("UPDATE failover_events SET state='failed',error=$2,finished_at=now(),updated_at=now() WHERE id=$1",[e.id,msg]);
+    await vmMigrationFailed(e.server_id,e.id);
     await pool.query("UPDATE servers SET observed_status='failed' WHERE id=$1 AND deleted_at IS NULL",[e.server_id]);
     await notify(`Recovery of ${e.server_name} failed`,{server:e.server_name,error:msg});
     await emit({kind:'failover.blocked',title:`Recovery of ${e.server_name} failed`,body:msg,serverId:e.server_id,severity:'bad'});
@@ -153,20 +165,23 @@ async function advanceEvents(){
   }else if(e.state==='backing-up'){
    if(e.job_state==='failed'){
     await pool.query("UPDATE failover_events SET state='failed',error=$2,finished_at=now(),updated_at=now() WHERE id=$1",[e.id,e.job_error||'The final backup failed']);
+    await vmMigrationFailed(e.server_id,e.id);
     // The server was stopped for the move; bring it back where it was.
-    await pool.query("INSERT INTO jobs(node_id,server_id,kind) SELECT node_id,id,'start' FROM servers WHERE id=$1 AND desired_status='running' AND deleted_at IS NULL",[e.server_id]);
+    await pool.query("INSERT INTO jobs(node_id,server_id,kind) SELECT node_id,id,'start' FROM servers WHERE id=$1 AND desired_status='running' AND deleted_at IS NULL AND NOT suspended AND NOT EXISTS(SELECT 1 FROM account_suspensions a WHERE a.user_id=servers.owner_id AND a.lifted_at IS NULL)",[e.server_id]);
     await notify(`Migration of ${e.server_name} failed`,{server:e.server_name,error:e.job_error});
    }else if(e.job_state==='succeeded'){
     const b=(await pool.query("SELECT id,EXTRACT(EPOCH FROM now()-created_at)::int AS age FROM backups WHERE job_id=$1 AND state='succeeded'",[e.job_id])).rows[0];
-    if(!b){await pool.query("UPDATE failover_events SET state='failed',error='Final backup is missing',finished_at=now(),updated_at=now() WHERE id=$1",[e.id]);continue;}
+    if(!b){await pool.query("UPDATE failover_events SET state='failed',error='Final backup is missing',finished_at=now(),updated_at=now() WHERE id=$1",[e.id]);await vmMigrationFailed(e.server_id,e.id);continue;}
     await pool.query("DELETE FROM failover_events WHERE id=$1",[e.id]);
     try{
-     const r=await moveServer(e.server_id,{kind:'migration',reason:e.reason,actor:e.actor_id,backup:{id:b.id,age:b.age},fromNode:e.from_node,preferNode:e.to_node});
-     if(r)await notify(`${r.serverName} is moving to ${r.toName}`,{server:r.serverName});
+     const r=await moveServer(e.server_id,{kind:'migration',reason:e.reason,actor:e.actor_id,backup:{id:b.id,age:b.age},fromNode:e.from_node,preferNode:e.to_node,targetNetworkId:e.target_network_id});
+     if(!r)throw Error('The source changed or was placed on hold during migration');
+     await notify(`${r.serverName} is moving to ${r.toName}`,{server:r.serverName});
     }catch(err:any){
-     await pool.query("INSERT INTO failover_events(server_id,kind,state,reason,from_node,to_node,error,finished_at) VALUES($1,'migration','failed',$2,$3,$4,$5,now())",[e.server_id,e.reason,e.from_node,e.to_node,err.message]);
+     const failed=await pool.query("INSERT INTO failover_events(server_id,kind,state,reason,from_node,to_node,error,finished_at) VALUES($1,'migration','failed',$2,$3,$4,$5,now()) RETURNING id",[e.server_id,e.reason,e.from_node,e.to_node,err.message]);
+     await vmMigrationFailed(e.server_id,failed.rows[0].id);
      // Bring the stopped server back where it was.
-     await pool.query("INSERT INTO jobs(node_id,server_id,kind) SELECT node_id,id,'start' FROM servers WHERE id=$1 AND desired_status='running' AND deleted_at IS NULL",[e.server_id]);
+     await pool.query("INSERT INTO jobs(node_id,server_id,kind) SELECT node_id,id,'start' FROM servers WHERE id=$1 AND desired_status='running' AND deleted_at IS NULL AND NOT suspended AND NOT EXISTS(SELECT 1 FROM account_suspensions a WHERE a.user_id=servers.owner_id AND a.lifted_at IS NULL)",[e.server_id]);
     }
    }
   }
@@ -214,7 +229,7 @@ async function detectAndRecover(cfg:Settings,resumed:Date){
  const active=Number((await pool.query("SELECT count(*)::int AS n FROM failover_events WHERE state IN ('backing-up','restoring')")).rows[0].n);
  let room=cfg.maxConcurrent-active;
  const servers=(await pool.query(`SELECT s.*,n.location,n.name AS node_name FROM servers s JOIN nodes n ON n.id=s.node_id
-  WHERE s.deleted_at IS NULL AND s.failover_enabled AND s.observed_status<>'deleting' AND n.deleted_at IS NULL AND n.status='disconnected' AND n.last_seen_at IS NOT NULL
+  WHERE s.deleted_at IS NULL AND NOT s.suspended AND s.failover_enabled AND s.observed_status<>'deleting' AND n.deleted_at IS NULL AND n.status='disconnected' AND n.last_seen_at IS NOT NULL
   AND GREATEST(n.last_seen_at,$3::timestamptz)<now()-($1::int*interval '1 minute')
   AND NOT EXISTS (SELECT 1 FROM failover_events e WHERE e.server_id=s.id AND e.state IN ('backing-up','restoring'))
   AND NOT EXISTS (SELECT 1 FROM failover_events e WHERE e.server_id=s.id AND e.state='completed' AND e.finished_at>now()-($2::int*interval '1 minute'))
@@ -251,21 +266,28 @@ async function protectBackups(cfg:Settings){
 }
 
 /** Planned move: stop, final backup, then rebuild on another node. */
-async function startMigration(server:any,actor:string,toNode:string|null){
+export async function startMigration(server:any,actor:string,toNode:string|null,targetNetworkId:string|null=null){
  if(!(await backupEnabled()))fail(409,'Migration moves data through a backup, so object storage must be on');
  if(server.node_status!=='connected')fail(409,'The server’s node is offline. Use failover instead.');
  if(toNode){const t=(await pool.query("SELECT status,draining FROM nodes WHERE id=$1 AND deleted_at IS NULL",[toNode])).rows[0];if(!t||t.status!=='connected'||t.draining||toNode===server.node_id)fail(409,'The chosen node is not available');}
  const c=await pool.connect();
  try{
   await c.query('BEGIN');
+  const locked=(await c.query('SELECT * FROM servers WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[server.id])).rows[0];if(!locked||locked.node_id!==server.node_id||locked.suspended||(locked.runtime==='vm'&&(await c.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[locked.owner_id])).rowCount))fail(409,'The server is held or changed');
+  if(locked.runtime==='vm'){
+   if((await c.query("SELECT 1 FROM jobs WHERE server_id=$1 AND state IN ('queued','running')",[server.id])).rowCount)fail(409,'Wait for the current VM operation');
+   const template=(await c.query('SELECT internal_ports FROM templates WHERE id=$1',[locked.template_id])).rows[0],node=(await c.query('SELECT location FROM nodes WHERE id=$1',[locked.node_id])).rows[0];let vm=locked.vm_config;
+   if(targetNetworkId){const network=(await c.query('SELECT * FROM vm_networks WHERE id=$1 AND enabled',[targetNetworkId])).rows[0];if(!network)fail(400,'Choose an enabled target network');if(targetNetworkId!==vm.networkId&&!(await c.query('SELECT 1 FROM vm_addresses WHERE network_id=$1 AND server_id IS NULL LIMIT 1',[targetNetworkId])).rowCount)fail(409,'Target address pool exhausted');vm={...vm,network,networkId:network.id};}
+   const placement=await pickNode(c,{memory:locked.memory_mb,cpu:locked.cpu_percent,disk:locked.disk_mb,ports:[...template.internal_ports,...(locked.extra_ports||[])],location:node.location,vm},{exclude:[locked.node_id],sameLocationOnly:(await settings()).failover.sameLocationOnly,preferNode:toNode});if(!placement.node)fail(409,placement.rejected.join('; '));
+  }
   const open=await c.query("SELECT 1 FROM failover_events WHERE server_id=$1 AND state IN ('backing-up','restoring')",[server.id]);
   if(open.rowCount)fail(409,'This server is already being moved');
   await c.query("DELETE FROM failover_events WHERE server_id=$1 AND state='blocked'",[server.id]);
-  if(server.desired_status==='running')await c.query("INSERT INTO jobs(node_id,server_id,kind,created_at) VALUES($1,$2,'stop',clock_timestamp())",[server.node_id,server.id]);
+  if(server.desired_status==='running'||server.observed_status==='running')await c.query("INSERT INTO jobs(node_id,server_id,kind,created_at) VALUES($1,$2,'stop',clock_timestamp())",[server.node_id,server.id]);
   const b=(await c.query('INSERT INTO backups(server_id,object_key) VALUES($1,$2) RETURNING id',[server.id,`servers/${server.id}/backups/${crypto.randomUUID()}.tar.gz`])).rows[0];
   const j=(await c.query("INSERT INTO jobs(node_id,server_id,kind,payload,created_at) VALUES($1,$2,'backup',$3,clock_timestamp()) RETURNING id",[server.node_id,server.id,JSON.stringify({backupId:b.id,migration:true})])).rows[0];
   await c.query('UPDATE backups SET job_id=$1 WHERE id=$2',[j.id,b.id]);
-  const ev=(await c.query("INSERT INTO failover_events(server_id,kind,state,reason,from_node,to_node,job_id,actor_id) VALUES($1,'migration','backing-up','Planned migration',$2,$3,$4,$5) RETURNING id",[server.id,server.node_id,toNode,j.id,actor])).rows[0];
+  const ev=(await c.query("INSERT INTO failover_events(server_id,kind,state,reason,from_node,to_node,job_id,actor_id,target_network_id) VALUES($1,'migration','backing-up','Planned migration',$2,$3,$4,$5,$6) RETURNING id",[server.id,server.node_id,toNode,j.id,actor,targetNetworkId])).rows[0];
   await c.query('COMMIT');
   await audit(actor,'server.migrate.start','server',server.id,{toNode});
   return ev.id as string;
@@ -350,7 +372,7 @@ export function failoverRoutes(app:FastifyInstance){
   admin(req);const id=asId((req.params as any).id),b=req.body as any;
   const s=(await pool.query("SELECT s.*,n.status AS node_status FROM servers s JOIN nodes n ON n.id=s.node_id WHERE s.id=$1 AND s.deleted_at IS NULL",[id])).rows[0];
   if(!s)fail(404,'Server not found');
-  const eventId=await startMigration(s,req.actor!.id,b?.nodeId?asId(b.nodeId):null);
+  if(b?.vmNetworkId&&!b.confirmNetworkChange)fail(400,'Confirm the guest network configuration will need changing');const eventId=await startMigration(s,req.actor!.id,b?.nodeId?asId(b.nodeId):null,b?.vmNetworkId?asId(b.vmNetworkId):null);
   return {eventId};
  });
  // Move every server off a node and stop placing new ones there.

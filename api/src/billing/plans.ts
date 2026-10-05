@@ -1,3 +1,4 @@
+import {vmNodeBlocker} from '../vm-model.js';
 import type {FastifyInstance} from 'fastify';
 import {pool,admin,fail,txt,asId,audit} from '../core.js';
 import {settings,imageAllowed} from '../settings.js';
@@ -14,14 +15,14 @@ const SLUG=/^[a-z0-9][a-z0-9-]{1,47}$/;
 const CEIL={memoryMb:262144,cpuPercent:6400,diskMb:4194304};
 export const slugify=(s:string)=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,48);
 
-export type PresetInput={templateId:string;memoryMb:number;cpuPercent:number;diskMb:number;locations:string[];allowLocationChoice:boolean;allowNameChoice:boolean;variables:Record<string,string>;editableVariables:string[]};
+export type PresetInput={runtime:'container'|'vm';templateId:string;memoryMb:number;cpuPercent:number;diskMb:number;locations:string[];allowLocationChoice:boolean;allowNameChoice:boolean;variables:Record<string,string>;editableVariables:string[]};
 
 async function validatePreset(raw:any):Promise<PresetInput>{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))fail(400,'A server plan needs a preset');
  const templateId=txt(raw.templateId,64);
- const t=(await pool.query('SELECT id,image,env,memory_mb,cpu_percent,disk_mb,editable_variables,variables FROM templates WHERE id=$1',[templateId])).rows[0];
+ const t=(await pool.query('SELECT id,runtime,vm_config,image,env,memory_mb,cpu_percent,disk_mb,editable_variables,variables FROM templates WHERE id=$1',[templateId])).rows[0];
  if(!t)fail(400,'That template does not exist');
- if(!(await imageAllowed(t.image)))fail(400,'That template’s image is not on the allowed list (Settings, Nodes)');
+ if(t.runtime!=='vm'&&!(await imageAllowed(t.image)))fail(400,'That template’s image is not on the allowed list (Settings, Nodes)');
  const num=(v:any,def:number,max:number,label:string)=>{if(v===undefined||v===null||v==='')return def;const n=Number(v);if(!Number.isInteger(n)||n<1||n>max)fail(400,`${label} must be a whole number from 1 to ${max}`);return n;};
  const memoryMb=num(raw.memoryMb,t.memory_mb,CEIL.memoryMb,'Memory'),cpuPercent=num(raw.cpuPercent,t.cpu_percent,CEIL.cpuPercent,'CPU'),diskMb=num(raw.diskMb,t.disk_mb,CEIL.diskMb,'Disk');
  if(memoryMb<256)fail(400,'Memory must be at least 256 MB');
@@ -38,7 +39,8 @@ async function validatePreset(raw:any):Promise<PresetInput>{
  // Settings the buyer may choose themselves; they must be ones the template lets a person edit.
  const defs=effectiveDefs(t).filter((d:any)=>d.userEditable);
  const editable=Array.isArray(raw.editableVariables)?[...new Set((raw.editableVariables as unknown[]).map(String))].filter(k=>defs.some((d:any)=>d.key===k)):[];
- return {templateId,memoryMb,cpuPercent,diskMb,locations,allowLocationChoice:raw.allowLocationChoice!==false,allowNameChoice:raw.allowNameChoice!==false,variables,editableVariables:editable};
+ if(t.runtime==='vm'){const profile=(await pool.query('SELECT config FROM vm_profiles WHERE id=$1 AND enabled',[t.vm_config.profileId])).rows[0]?.config;if(!profile||cpuPercent%100||cpuPercent>profile.vcpus*100||memoryMb>profile.memoryMb||diskMb<profile.diskMb||diskMb>profile.storageMb)fail(400,'Plan resources must fit the VM hardware profile');}
+ return {runtime:t.runtime||'container',templateId,memoryMb,cpuPercent,diskMb,locations,allowLocationChoice:raw.allowLocationChoice!==false,allowNameChoice:raw.allowNameChoice!==false,variables,editableVariables:editable};
 }
 
 const text=(v:any,name:string,max:number,required=false)=>{
@@ -49,6 +51,7 @@ const text=(v:any,name:string,max:number,required=false)=>{
 
 export async function validatePlan(b:any,existing?:any){
  if(!b||typeof b!=='object'||Array.isArray(b))fail(400,'Expected an object');
+ const supportTier=b.supportTier??existing?.support_tier??'standard';if(!['standard','priority'].includes(supportTier))fail(400,'Support tier must be standard or priority');
  const name=text(b.name??existing?.name,'Name',80,true);
  const kind=existing?existing.kind:(['server','account'].includes(b.kind)?b.kind:fail(400,'kind must be server or account'));
  if(existing&&b.kind&&b.kind!==existing.kind)fail(400,'The kind of a plan cannot be changed; create a new plan instead');
@@ -63,7 +66,7 @@ export async function validatePlan(b:any,existing?:any){
  const options={highlight:!!o.highlight,badge:text(o.badge,'Badge',24),free:!!o.free,note:text(o.note,'Note',300)};
  const preset=kind==='server'?await validatePreset(b.preset??existing?.preset):{};
  const limits=kind==='account'?toStorage(validateLimitSet(b.limits??fromStorage(existing?.limits),'limits')):{};
- return {name,kind,slug,description:text(b.description??existing?.description,'Description',600),visibility,features,stock,perCustomerMax,trialOnce:b.trialOnce===undefined?(existing?.trial_once??true):!!b.trialOnce,retention,options,preset,limits,active:b.active===undefined?(existing?.active??true):!!b.active,sortOrder:Number.isInteger(b.sortOrder)?b.sortOrder:(existing?.sort_order??0)};
+ return {supportTier,name,kind,slug,description:text(b.description??existing?.description,'Description',600),visibility,features,stock,perCustomerMax,trialOnce:b.trialOnce===undefined?(existing?.trial_once??true):!!b.trialOnce,retention,options,preset,limits,active:b.active===undefined?(existing?.active??true):!!b.active,sortOrder:Number.isInteger(b.sortOrder)?b.sortOrder:(existing?.sort_order??0)};
 }
 
 type PriceIn={cycle:Interval;amount:number;currency:string;trialDays:number;setupFee:number};
@@ -107,7 +110,7 @@ export async function savePrices(planId:string,prices:PriceIn[]){
 }
 
 export function planShape(p:any,prices:any[],counts?:{active:number;pending:number}){
- return {id:p.id,slug:p.slug,name:p.name,description:p.description,kind:p.kind,visibility:p.visibility,active:p.active,sortOrder:p.sort_order,features:p.features,preset:p.preset,limits:fromStorage(p.limits),options:p.options,
+ return {supportTier:p.support_tier||'standard',id:p.id,slug:p.slug,name:p.name,description:p.description,kind:p.kind,visibility:p.visibility,active:p.active,sortOrder:p.sort_order,features:p.features,preset:p.preset,limits:fromStorage(p.limits),options:p.options,
   stock:p.stock,perCustomerMax:p.per_customer_max,trialOnce:p.trial_once,retentionDays:p.retention_days,archivedAt:p.archived_at,createdAt:p.created_at,updatedAt:p.updated_at,
   prices:prices.filter(x=>x.active).map(x=>({id:x.id,cycle:x.cycle,amount:Number(x.amount),currency:x.currency,trialDays:x.trial_days,setupFee:Number(x.setup_fee)})),
   ...(counts?{subscribers:counts.active,pendingOrders:counts.pending,remaining:p.stock===null?null:Math.max(0,p.stock-counts.active-counts.pending)}:{})};
@@ -129,11 +132,13 @@ export async function availability(plan:any){
  if(plan.kind==='server'){
   const p=plan.preset||{};
   const locs=Array.isArray(p.locations)&&p.locations.length?p.locations:null;
-  const n=(await pool.query(`SELECT count(*)::int n FROM (SELECT n.id FROM nodes n LEFT JOIN servers s ON s.node_id=n.id AND s.deleted_at IS NULL
+  const n=(await pool.query(`SELECT * FROM (SELECT n.* FROM nodes n LEFT JOIN servers s ON s.node_id=n.id AND s.deleted_at IS NULL
     WHERE n.status='connected' AND NOT n.draining AND n.deleted_at IS NULL AND ($1::text[] IS NULL OR n.location=ANY($1))
     GROUP BY n.id HAVING coalesce(sum(s.memory_mb),0)+$2<=max(n.memory_mb)-max(n.headroom_mb) AND coalesce(sum(s.cpu_percent),0)+$3<=max(n.cpu_percent) AND coalesce(sum(s.disk_mb),0)+$4<=max(n.disk_mb)) x`,
-   [locs,p.memoryMb||0,p.cpuPercent||0,p.diskMb||0])).rows[0].n;
-  capacity=n>0;
+   [locs,p.memoryMb||0,p.cpuPercent||0,p.diskMb||0])).rows;
+  capacity=n.length>0;
+  const template=(await pool.query('SELECT runtime,vm_config FROM templates WHERE id=$1',[p.templateId])).rows[0];
+  if(template?.runtime==='vm'){const cfg=template.vm_config,profile=(await pool.query('SELECT config FROM vm_profiles WHERE id=$1 AND enabled',[cfg.profileId])).rows[0]?.config,network=(await pool.query('SELECT * FROM vm_networks WHERE id=$1 AND enabled',[cfg.networkId])).rows[0];const free=(await pool.query('SELECT 1 FROM vm_addresses WHERE network_id=$1 AND server_id IS NULL LIMIT 1',[cfg.networkId])).rowCount;capacity=!!profile&&!!network&&!!free&&n.some(node=>!vmNodeBlocker(node,profile,network));}
  }
  return {remaining,capacity,soldOut:remaining===0||!capacity};
 }
@@ -160,6 +165,7 @@ export function planRoutes(app:FastifyInstance){
    row=(await pool.query(`INSERT INTO plans(slug,name,description,kind,visibility,active,sort_order,features,preset,limits,options,stock,per_customer_max,trial_once,retention_days)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,[v.slug,v.name,v.description,v.kind,v.visibility,v.active,v.sortOrder,JSON.stringify(v.features),JSON.stringify(v.preset),JSON.stringify(v.limits),JSON.stringify(v.options),v.stock,v.perCustomerMax,v.trialOnce,v.retention])).rows[0];
   }catch(e:any){if(e?.code==='23505')fail(409,'A plan with that address name already exists');throw e;}
+  await pool.query('UPDATE plans SET support_tier=$2 WHERE id=$1',[row.id,v.supportTier]);
   if(prices.length)await savePrices(row.id,prices);
   await audit(req.actor!.id,'plan.create','plan',row.id,{name:v.name,kind:v.kind});
   return shapeOne(row.id);
@@ -171,6 +177,7 @@ export function planRoutes(app:FastifyInstance){
    await pool.query(`UPDATE plans SET slug=$2,name=$3,description=$4,visibility=$5,active=$6,sort_order=$7,features=$8,preset=$9,limits=$10,options=$11,stock=$12,per_customer_max=$13,trial_once=$14,retention_days=$15,updated_at=now() WHERE id=$1`,
     [id,v.slug,v.name,v.description,v.visibility,v.active,v.sortOrder,JSON.stringify(v.features),JSON.stringify(v.preset),JSON.stringify(v.limits),JSON.stringify(v.options),v.stock,v.perCustomerMax,v.trialOnce,v.retention]);
   }catch(e:any){if(e?.code==='23505')fail(409,'A plan with that address name already exists');throw e;}
+  await pool.query('UPDATE plans SET support_tier=$2 WHERE id=$1',[id,v.supportTier]);
   if(b.prices!==undefined)await savePrices(id,validatePrices(b.prices,(await settings()).billing.currencies));
   await audit(req.actor!.id,'plan.update','plan',id,{name:v.name});
   return shapeOne(id);
@@ -190,6 +197,7 @@ export function planRoutes(app:FastifyInstance){
   const row=(await pool.query(`INSERT INTO plans(slug,name,description,kind,visibility,active,sort_order,features,preset,limits,options,stock,per_customer_max,trial_once,retention_days)
    SELECT $2,name||' (copy)',description,kind,'hidden',false,sort_order+1,features,preset,limits,options,stock,per_customer_max,trial_once,retention_days FROM plans WHERE id=$1 RETURNING id`,[id,slug])).rows[0];
   await pool.query('INSERT INTO plan_prices(plan_id,cycle,amount,currency,trial_days,setup_fee) SELECT $2,cycle,amount,currency,trial_days,setup_fee FROM plan_prices WHERE plan_id=$1 AND active',[id,row.id]);
+  await pool.query('UPDATE plans SET support_tier=$2 WHERE id=$1',[row.id,p.support_tier]);
   await audit(req.actor!.id,'plan.duplicate','plan',row.id,{from:id});
   return shapeOne(row.id);
  });
@@ -219,7 +227,7 @@ export async function catalog(userId:string|null,opts:{freeOnly?:boolean}={}){
  const plans=(await pool.query("SELECT * FROM plans WHERE active AND archived_at IS NULL AND visibility='public' ORDER BY sort_order,created_at")).rows;
  const prices=(await pool.query('SELECT * FROM plan_prices WHERE active AND plan_id=ANY($1::uuid[])',[plans.map((p:any)=>p.id)])).rows;
  const mine=userId?(await pool.query("SELECT plan_id,count(*)::int n FROM subscriptions WHERE user_id=$1 AND status NOT IN ('canceled','terminated') GROUP BY plan_id",[userId])).rows:[];
- const templateRows=(await pool.query('SELECT id,name,variables,editable_variables FROM templates')).rows;
+ const templateRows=(await pool.query('SELECT id,name,runtime,variables,editable_variables FROM templates')).rows;
  const templates=new Map<string,string>(templateRows.map((t:any)=>[t.id,t.name]));
  const varDefs=(templateId:string,keys:string[])=>{const t=templateRows.find((x:any)=>x.id===templateId);if(!t)return [];return effectiveDefs(t).filter((d:any)=>d.userEditable&&!d.secret&&keys.includes(d.key)).map((d:any)=>({key:d.key,label:d.label,description:d.description,type:d.type,options:d.options,min:d.min,max:d.max,required:d.required}));};
  const out=[];
@@ -233,8 +241,8 @@ export async function catalog(userId:string|null,opts:{freeOnly?:boolean}={}){
   for(const x of pr)if(x.cycle==='month')monthly.set(x.currency,Number(x.amount));
   const owned=mine.find((m:any)=>m.plan_id===p.id)?.n||0;
   const preset=p.preset||{};
-  out.push({id:p.id,slug:p.slug,name:p.name,description:p.description,kind:p.kind,features:p.features,highlight:!!p.options?.highlight,badge:p.options?.badge||'',note:p.options?.note||'',free:!!p.options?.free||pr.every((x:any)=>Number(x.amount)===0),
-   spec:p.kind==='server'?{template:templates.get(preset.templateId)||preset.templateId,memoryMb:preset.memoryMb,cpuPercent:preset.cpuPercent,diskMb:preset.diskMb,locations:preset.locations||[],allowLocationChoice:preset.allowLocationChoice!==false&&(preset.locations||[]).length!==1,allowNameChoice:preset.allowNameChoice!==false,
+  out.push({id:p.id,slug:p.slug,name:p.name,description:p.description,kind:p.kind,supportTier:p.support_tier||'standard',features:p.features,highlight:!!p.options?.highlight,badge:p.options?.badge||'',note:p.options?.note||'',free:!!p.options?.free||pr.every((x:any)=>Number(x.amount)===0),
+   spec:p.kind==='server'?{runtime:templateRows.find(t=>t.id===preset.templateId)?.runtime||'container',template:templates.get(preset.templateId)||preset.templateId,memoryMb:preset.memoryMb,cpuPercent:preset.cpuPercent,diskMb:preset.diskMb,locations:preset.locations||[],allowLocationChoice:preset.allowLocationChoice!==false&&(preset.locations||[]).length!==1,allowNameChoice:preset.allowNameChoice!==false,
     variables:varDefs(preset.templateId,preset.editableVariables||[])}:null,
    prices:pr.map((x:any)=>({id:x.id,cycle:x.cycle,amount:Number(x.amount),currency:x.currency,text:formatMoney(x.amount,x.currency),perMonthText:x.cycle==='month'?null:formatMoney(perMonth(Number(x.amount),x.cycle),x.currency),trialDays:x.trial_days,setupFee:Number(x.setup_fee),setupText:Number(x.setup_fee)?formatMoney(x.setup_fee,x.currency):null,
     savings:cfg.store.showSavings?savingsPercent(monthly.get(x.currency)??null,Number(x.amount),x.cycle):0})),

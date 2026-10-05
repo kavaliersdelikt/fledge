@@ -16,7 +16,7 @@ export function cloneRoutes(app:FastifyInstance){
   const b=req.body as any,sourceId=asId((req.params as any).id);
   const name=txt(b?.name,80),includeData=b?.includeData!==false;
   const src=(await pool.query("SELECT s.*,n.location,t.internal_ports,t.image FROM servers s JOIN nodes n ON n.id=s.node_id JOIN templates t ON t.id=s.template_id WHERE s.id=$1 AND s.deleted_at IS NULL",[sourceId])).rows[0];
-  if(!src)fail(404,'Server not found');
+  if(!src)fail(404,'Server not found');if(src.runtime==='vm')fail(409,'Create a new VM from an approved template; machine identity cannot be cloned');
   active(src);
   const ownerId=b?.ownerId?asId(b.ownerId):src.owner_id;
   const owner=(await pool.query("SELECT id FROM users WHERE id=$1 AND role='customer' AND NOT disabled",[ownerId])).rows[0];

@@ -18,7 +18,7 @@ export const ADDITIVE:LimitNumber[]=['servers','runningServers','memoryMb','cpuP
 /** Fields where the most generous layer wins. */
 export const MAXIMA:LimitNumber[]=['maxServerMemoryMb','maxServerCpuPercent','maxServerDiskMb','backupsPerServer','collaboratorsPerServer','schedulesPerServer'];
 export const LABELS:Record<string,string>={servers:'servers',runningServers:'running servers',memoryMb:'memory (MB)',cpuPercent:'CPU (%)',diskMb:'disk (MB)',maxServerMemoryMb:'memory per server (MB)',maxServerCpuPercent:'CPU per server (%)',maxServerDiskMb:'disk per server (MB)',
- backups:'backups',backupsPerServer:'backups per server',backupStorageMb:'backup storage (MB)',extraPorts:'extra ports',collaboratorsPerServer:'collaborators per server',schedulesPerServer:'schedules per server'};
+ backups:'backups',backupsPerServer:'backups per server',backupStorageMb:'backup storage (MB)',extraPorts:'extra ports',collaboratorsPerServer:'collaborators per server',schedulesPerServer:'schedules per server',ticketsPerDay:'tickets per day'};
 
 const has=(o:any,k:string)=>Object.prototype.hasOwnProperty.call(o,k);
 

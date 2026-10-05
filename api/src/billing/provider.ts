@@ -50,7 +50,7 @@ const call=async<T>(method:string,args:unknown[],ms=20000):Promise<T>=>{
 export const provider={
  health:()=>call<{ok:boolean;message?:string;livemode?:boolean;account?:string}>('healthCheck',[],15000),
  createCheckout:(i:CheckoutInput)=>call<{url:string;sessionId:string;customerId?:string|null;livemode?:boolean}>('createCheckout',[i]),
- createPortal:(customerId:string,returnUrl:string)=>call<{url:string}>('createPortal',[customerId,returnUrl]),
+ createPortal:(customerId:string,returnUrl:string,restricted=false)=>call<{url:string;restricted?:boolean}>('createPortal',[customerId,returnUrl,...(restricted?[{restricted:true}]:[])]),
  reconcile:(refs:{subscriptionId?:string;sessionId?:string;invoiceId?:string})=>call<{subscription?:SubSnapshot|null;session?:SessionSnapshot|null;invoice?:InvoiceSnapshot|null}>('reconcile',[refs]),
  /** Verifies the signature and turns the request into events. `ok:false` means the request is not from the provider. */
  webhook:(req:{body:string;headers:Record<string,string>})=>call<{ok:boolean;error?:string;events:WebhookEvent[]}>('webhook',[req]),

@@ -10,7 +10,7 @@ import {resolveLimits} from './limits.js';
 
 type Extra={container:number;offset:number;protocol:'tcp'|'udp';label?:string};
 const MAX_EXTRA=20;
-const isManager=(req:any,s:any)=>req.actor?.role==='admin'||s.owner_id===req.actor?.id||(s.permissions||[]).includes('manage');
+const isManager=(req:any,s:any)=>req.actor?.role==='admin'||s.owner_id===req.actor?.id||(s.permissions||[]).includes('manage')||(s.runtime==='vm'&&(s.permissions||[]).includes('vm.network'));
 
 async function overview(req:any,s:any){
  const t=(await pool.query('SELECT internal_ports FROM templates WHERE id=$1',[s.template_id])).rows[0];
@@ -44,7 +44,7 @@ export function portRoutes(app:FastifyInstance){
    await c.query('BEGIN');
    const row=(await c.query('SELECT * FROM servers WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[s.id])).rows[0];
    if(!row)fail(404,'Server not found');
-   if(row.suspended)fail(409,'Server is suspended');
+   if(row.suspended)fail(409,'Server is suspended');if(row.runtime==='vm'){if(row.observed_status!=='stopped'||(await c.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[row.owner_id])).rowCount)fail(409,'Stop an unheld VM before editing ports');if((await c.query("SELECT 1 FROM jobs WHERE server_id=$1 AND state IN ('queued','running')",[row.id])).rowCount)fail(409,'Wait for the current operation');}
    const t=(await c.query('SELECT internal_ports FROM templates WHERE id=$1',[row.template_id])).rows[0];
    const extras:Extra[]=row.extra_ports||[];
    if(extras.length>=MAX_EXTRA)fail(409,`A server can have at most ${MAX_EXTRA} extra ports`);
@@ -60,7 +60,7 @@ export function portRoutes(app:FastifyInstance){
    if(!offset)fail(409,'No free port is left next to this server’s base port on its node');
    const entry:Extra={container,offset,protocol,...(label?{label}:{})};
    const upd=(await c.query('UPDATE servers SET extra_ports=$2::jsonb,updated_at=now() WHERE id=$1 RETURNING *',[row.id,JSON.stringify([...extras,entry])])).rows[0];
-   await queueRecreate(c,row);
+   if(row.runtime!=='vm')await queueRecreate(c,row);
    await c.query('COMMIT');
    await audit(req.actor!.id,'server.port.add','server',row.id,{container,protocol,hostPort:row.port+offset});
    return {...(await overview(req,{...s,...upd,permissions:s.permissions})),added:{...entry,hostPort:row.port+offset},restartRequired:true};
@@ -75,12 +75,12 @@ export function portRoutes(app:FastifyInstance){
    await c.query('BEGIN');
    const row=(await c.query('SELECT * FROM servers WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',[s.id])).rows[0];
    if(!row)fail(404,'Server not found');
-   if(row.suspended)fail(409,'Server is suspended');
-   const extras:Extra[]=row.extra_ports||[],gone=extras.find(p=>p.offset===offset);
+   if(row.suspended)fail(409,'Server is suspended');if(row.runtime==='vm'){if(row.observed_status!=='stopped'||(await c.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[row.owner_id])).rowCount)fail(409,'Stop an unheld VM before editing ports');if((await c.query("SELECT 1 FROM jobs WHERE server_id=$1 AND state IN ('queued','running')",[row.id])).rowCount)fail(409,'Wait for the current operation');}
+   const extras:Extra[]=row.extra_ports||[],gone=extras.find(p=>p.offset===offset);if(row.runtime==='vm'&&row.vm_config.forwards.some((f:any)=>f.hostPort===row.port+offset))fail(409,'Remove the forwarding rule first');
    if(!gone)fail(404,'That extra port does not exist (ports from the template cannot be removed)');
    await c.query('DELETE FROM allocations WHERE server_id=$1 AND port=$2 AND protocol=$3',[row.id,row.port+offset,gone!.protocol]);
    const upd=(await c.query('UPDATE servers SET extra_ports=$2::jsonb,updated_at=now() WHERE id=$1 RETURNING *',[row.id,JSON.stringify(extras.filter(p=>p.offset!==offset))])).rows[0];
-   await queueRecreate(c,row);
+   if(row.runtime!=='vm')await queueRecreate(c,row);
    await c.query('COMMIT');
    await audit(req.actor!.id,'server.port.remove','server',row.id,{container:gone!.container,protocol:gone!.protocol});
    return {...(await overview(req,{...s,...upd,permissions:s.permissions})),restartRequired:true};

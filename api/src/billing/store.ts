@@ -1,3 +1,4 @@
+import {keysBody} from '../vm-model.js';
 import type {FastifyInstance} from 'fastify';
 import {pool,fail,txt,asId,audit,WEB_ORIGIN,looksLikeEmail} from '../core.js';
 import {settings} from '../settings.js';
@@ -129,6 +130,8 @@ export function storeRoutes(app:FastifyInstance){
     for(const [k,v] of Object.entries(b.variables as Record<string,unknown>)){const d=defs.find((x:any)=>x.key===k);if(!d)fail(400,'That setting cannot be changed for this plan.');details.variables[k]=checkValue(d as any,v);}
    }
   }
+  if(plan.kind==='server')details.vm={sshKeys:keysBody(b?.vm?.sshKeys)};
+  if(plan.kind==='server'){const t=(await pool.query('SELECT runtime,vm_config FROM templates WHERE id=$1',[plan.preset.templateId])).rows[0];if(t?.runtime==='vm'){const media=(await pool.query('SELECT kind FROM vm_media WHERE id=$1 AND enabled',[t.vm_config.mediaId])).rows[0];if(!media)fail(409,'VM media is unavailable');if(media.kind==='cloud'&&!details.vm.sshKeys.length)fail(400,'Provide an SSH key for this Linux cloud image');}}
   // Trials once per customer per plan.
   let trialDays=price.trial_days;
   if(trialDays>0&&plan.trial_once&&Number((await pool.query('SELECT count(*) n FROM subscriptions WHERE user_id=$1 AND plan_id=$2',[req.actor!.id,planId])).rows[0].n)>0)trialDays=0;
@@ -228,7 +231,7 @@ export function storeRoutes(app:FastifyInstance){
     suspendAt:s.past_due_since?new Date(new Date(s.past_due_since).getTime()+bl.suspendAfterDays*86400000):null,
     retentionUntil:s.retention_until,fulfilment:s.fulfilment,fulfilmentError:s.fulfilment==='failed'?'We are still setting this up.':null,hold:(s.holds||[]).length>0,
     server:srv?{id:srv.id,name:srv.name,status:srv.observed_status,suspendedReason:srv.suspended_reason}:null,createdAt:s.created_at,
-    can:{cancel:bl.allowCustomerCancel&&['trialing','active','past_due'].includes(s.status)&&!s.cancel_at_period_end&&s.provider!=='manual'||false,resume:bl.allowResume&&!!s.cancel_at_period_end&&['trialing','active','past_due'].includes(s.status),change:bl.allowPlanChange&&['trialing','active'].includes(s.status)&&s.provider!=='manual',pay:['past_due','suspended'].includes(s.status)&&s.provider!=='manual'}});
+    can:{cancel:bl.allowCustomerCancel&&['trialing','active','past_due'].includes(s.status)&&!s.cancel_at_period_end&&s.provider!=='manual'||false,resume:bl.allowResume&&!!s.cancel_at_period_end&&['trialing','active','past_due'].includes(s.status),change:!req.actor!.suspended&&bl.allowPlanChange&&['trialing','active'].includes(s.status)&&s.provider!=='manual',pay:['past_due','suspended'].includes(s.status)&&s.provider!=='manual'}});
   }
   const invoices=(await pool.query('SELECT i.id,i.number,i.status,i.amount_due,i.amount_paid,i.amount_refunded,i.currency,i.created_at,i.paid_at,i.hosted_url,i.pdf_url,i.period_start,i.period_end,p.name AS plan FROM invoices i LEFT JOIN subscriptions s ON s.id=i.subscription_id LEFT JOIN plans p ON p.id=s.plan_id WHERE i.user_id=$1 ORDER BY i.created_at DESC LIMIT 100',[req.actor!.id])).rows
    .map((i:any)=>({id:i.id,number:i.number,status:i.status,plan:i.plan,amountText:formatMoney(i.amount_due,i.currency),paidText:formatMoney(i.amount_paid,i.currency),refundedText:Number(i.amount_refunded)?formatMoney(i.amount_refunded,i.currency):null,createdAt:i.created_at,paidAt:i.paid_at,url:i.hosted_url,pdf:i.pdf_url}));
@@ -242,7 +245,8 @@ export function storeRoutes(app:FastifyInstance){
   const state=await providerState();
   const cust=(await pool.query('SELECT provider_customer_id FROM billing_customers WHERE user_id=$1 AND provider=$2 AND livemode=$3',[req.actor!.id,p!.id,state.livemode===true])).rows[0];
   if(!cust)fail(404,'You have no payment details on file yet.');
-  const r=await provider.createPortal(cust.provider_customer_id,`${origin()}/billing`);
+  const r=await provider.createPortal(cust.provider_customer_id,`${origin()}/billing`,!!req.actor!.suspended);
+  if(req.actor!.suspended&&!r?.restricted)fail(503,'This provider does not offer a restricted payment portal. Pay an open invoice instead.');
   if(!r?.url||!/^https:\/\//.test(r.url))fail(502,'The billing portal is not available right now.');
   await audit(req.actor!.id,'billing.portal','user',req.actor!.id);
   return {url:r.url};

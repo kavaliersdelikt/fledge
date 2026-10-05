@@ -1,3 +1,4 @@
+import {supportSettings} from './support-policy.js';
 import type {FastifyInstance} from 'fastify';
 import {pool,fail,txt,asId,audit,enqueue,queueRecreate,serverAccess} from './core.js';
 import {settings} from './settings.js';
@@ -79,9 +80,10 @@ export function selfServiceRoutes(app:FastifyInstance){
    store:{enabled:all.store.enabled||(isCustomer&&all.selfService.mode!=='off'),sells:all.store.enabled,title:all.store.title},
    // Administrators see Billing once it is in use (a provider chosen, a plan made or the store open); customers once they have something there.
    billing:{subscriptions:subs,visible:req.actor!.role==='admin'?(all.store.enabled||!!all.billing.provider||Number((await pool.query('SELECT count(*) n FROM plans')).rows[0].n)>0):(subs>0||all.store.enabled)},
-   selfService:{mode:all.selfService.mode,canCreate,canDelete:all.selfService.allowDelete,coolingHours:all.selfService.deleteCoolingHours},
+   selfService:{mode:all.selfService.mode,canCreate:!req.actor!.suspended&&canCreate,canDelete:all.selfService.allowDelete,coolingHours:all.selfService.deleteCoolingHours},
    limits:{showUsage:all.limits.showUsage||!isCustomer,enabled:all.limits.enabled,mode:all.limits.mode},
-   account:{status:u?.status||'active',allowDeletion:all.signup.allowAccountDeletion&&isCustomer,allowEmailChange:all.signup.allowEmailChange,allowExport:all.signup.allowDataExport,minPasswordLength:all.signup.minPasswordLength},
+   support:{enabled:(await supportSettings()).enabled},isSuper:!!req.actor!.isSuper,permissions:req.actor!.permissions||[],
+   account:{status:req.actor!.suspended?'suspended':u?.status||'active',allowDeletion:isCustomer&&(req.actor!.suspended?(await pool.query('SELECT allow_account_deletion FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[req.actor!.id])).rows[0]?.allow_account_deletion:all.signup.allowAccountDeletion),allowEmailChange:all.signup.allowEmailChange,allowExport:req.actor!.suspended||all.signup.allowDataExport,minPasswordLength:all.signup.minPasswordLength},
   };
  });
  // Which templates customers may use, and what they read about them. Administrators only.
@@ -103,9 +105,9 @@ export function selfServiceRoutes(app:FastifyInstance){
   const locations=usableLocations(cfg.allowedLocations,limits.values.allowedLocations);
   const known=(await pool.query("SELECT DISTINCT location FROM nodes WHERE deleted_at IS NULL AND status='connected' AND NOT draining ORDER BY location")).rows.map((r:any)=>r.location as string);
   const allowedT=limits.values.allowedTemplates;
-  const templates=(await pool.query("SELECT id,name,customer_description,memory_mb,cpu_percent,disk_mb,editable_variables,variables FROM templates WHERE customer_visible ORDER BY official DESC,name")).rows
+  const templates=(await pool.query("SELECT id,name,runtime,customer_description,memory_mb,cpu_percent,disk_mb,editable_variables,variables FROM templates WHERE customer_visible ORDER BY official DESC,name")).rows
    .filter((t:any)=>!Array.isArray(allowedT)||allowedT.includes(t.id))
-   .map((t:any)=>({id:t.id,name:t.name,description:t.customer_description||'',memoryMb:t.memory_mb,cpuPercent:t.cpu_percent,diskMb:t.disk_mb,variables:effectiveDefs(t).filter(d=>d.userEditable&&!d.secret).map(d=>({key:d.key,label:d.label,description:d.description,type:d.type,options:d.options,min:d.min,max:d.max,required:d.required}))}));
+   .map((t:any)=>({id:t.id,name:t.name,runtime:t.runtime,description:t.customer_description||'',memoryMb:t.memory_mb,cpuPercent:t.cpu_percent,diskMb:t.disk_mb,variables:effectiveDefs(t).filter(d=>d.userEditable&&!d.secret).map(d=>({key:d.key,label:d.label,description:d.description,type:d.type,options:d.options,min:d.min,max:d.max,required:d.required}))}));
   return {...base,templates,locations:(locations||known).filter(l=>known.includes(l)),customResources:cfg.mode==='custom',ceilings:CEIL,limits:await limitsView(req.actor!.id)};
  });
 
@@ -139,7 +141,7 @@ export function selfServiceRoutes(app:FastifyInstance){
   const locs=usableLocations(cfg.allowedLocations,limits.values.allowedLocations);
   const location=b?.location?txt(b.location,80):null;
   if(location&&locs&&!locs.includes(location))fail(400,'That location is not available to you.');
-  const r=await provisionServer({ownerId:req.actor!.id,templateId,name,location,locations:locs,memoryMb,cpuPercent,diskMb,variables,actorId:req.actor!.id,actorIsAdmin:false,createdVia:'self',friendlyErrors:true});
+  const r=await provisionServer({ownerId:req.actor!.id,templateId,name,vm:b?.vm,location,locations:locs,memoryMb,cpuPercent,diskMb,variables,actorId:req.actor!.id,actorIsAdmin:false,createdVia:'self',friendlyErrors:true});
   return r.shape;
  });
 

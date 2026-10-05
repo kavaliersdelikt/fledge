@@ -1,3 +1,4 @@
+import {liftAccount,suspendAccount} from '../suspension.js';
 import {pool,audit,fail,enqueue,WEB_ORIGIN} from '../core.js';
 import {settings} from '../settings.js';
 import {sendTemplate,sendToAdmins} from '../email.js';
@@ -49,7 +50,8 @@ export async function moveTo(subId:string,to:Status,meta:Meta,patch:Record<strin
   const sql:string[]=[];
   if(to!==before.status){
    if(to==='past_due'&&!before.past_due_since)sql.push('past_due_since=now()');
-   if(to==='active'||to==='trialing'){sql.push('past_due_since=NULL','suspended_at=NULL',"dunning='{}'::jsonb");if(before.status==='canceled')sql.push('ended_at=NULL','retention_until=NULL','canceled_at=NULL');}
+   if(to==='active'||to==='trialing'){
+sql.push('past_due_since=NULL','suspended_at=NULL',"dunning='{}'::jsonb");if(before.status==='canceled')sql.push('ended_at=NULL','retention_until=NULL','canceled_at=NULL');}
    if(to==='suspended')sql.push('suspended_at=now()');
    if(to==='canceled'){
     const days=(await c.query('SELECT p.retention_days FROM plans p WHERE p.id=$1',[before.plan_id])).rows[0]?.retention_days;
@@ -67,6 +69,7 @@ export async function moveTo(subId:string,to:Status,meta:Meta,patch:Record<strin
   await c.query('COMMIT');
  }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
  const after=await loadSub(subId);
+ if(to==='active'||to==='trialing')await liftAccount(after.user_id,null,'Outstanding payment settled',true,true);
  if(before.status!==to)await afterTransition(after,before.status as Status,to,meta).catch(e=>console.error('Billing follow-up failed:',(e as Error)?.message));
  return {changed:before.status!==to,sub:after};
 }
@@ -100,10 +103,14 @@ export async function releaseServer(sub:SubRow):Promise<boolean>{
  if(holdsOf(sub).length)return false;
  const s=await serverOf(sub.id);
  if(!s)return false;
- const r=await pool.query("UPDATE servers SET suspended=false,suspended_reason=NULL,desired_status='running',pending_delete_at=NULL WHERE id=$1 AND suspended_reason='billing' RETURNING id",[s.id]);
- if(!r.rowCount)return false;
- if(s.node_status==='connected')await enqueue(s.node_id,s.id,'start');
- return true;
+ // Account lift and billing release take the same lock, so the last hold can safely restart.
+ const c=await pool.connect();let released=false;
+ try{await c.query('BEGIN');await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',['suspension:'+s.owner_id]);
+ const account=(await c.query('SELECT id FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[s.owner_id])).rows[0];
+ if(account){const changed=await c.query("UPDATE servers SET suspended_reason='account' WHERE id=$1 AND suspended_reason='billing' RETURNING id",[s.id]);if(changed.rowCount)await c.query('UPDATE account_suspensions SET stopped_server_ids=ARRAY(SELECT DISTINCT unnest(stopped_server_ids||ARRAY[$2::uuid])) WHERE id=$1',[account.id,s.id]);}
+ else {const r=await c.query("UPDATE servers SET suspended=false,suspended_reason=NULL,desired_status='running',pending_delete_at=NULL WHERE id=$1 AND suspended_reason='billing' RETURNING id",[s.id]);released=!!r.rowCount;if(released&&s.node_status==='connected')await c.query("INSERT INTO jobs(node_id,server_id,kind) VALUES($1,$2,'start')",[s.node_id,s.id]);}
+ await c.query('COMMIT');return released;
+ }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
 }
 /** Schedules the server for deletion shortly, after one last backup when backups exist. */
 export async function terminateServer(sub:SubRow){
@@ -145,6 +152,7 @@ async function afterTransition(sub:SubRow,from:Status,to:Status,meta:Meta){
   return;
  }
  if(to==='suspended'){
+  if(cfg.suspendAccountOnLatePayment&&!(await pool.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[sub.user_id])).rowCount)await suspendAccount(sub.user_id,null,{reason:'billing',source:'billing',message:'An overdue invoice needs your attention. Please review your invoices to restore your account.',liftOnPayment:true});
   await holdServer(sub.id);
   const srv=await serverOf(sub.id);
   await mailSub(sub,'server_suspended_billing',{serverName:srv?.name||sub.plan_name},`susp:${fmtDate(sub.suspended_at)}`);
@@ -171,20 +179,21 @@ export async function fulfil(subId:string):Promise<void>{
 async function fulfilLocked(subId:string):Promise<void>{
  const sub=await loadSub(subId);
  if(!sub)return;
- if(sub.plan_kind!=='server'){await patch(subId,{fulfilment:'done'});return;}
  if(sub.fulfilment==='done')return;
+ if((await pool.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL',[sub.user_id])).rowCount){await patch(subId,{fulfilment:'pending',next_fulfilment_at:new Date(Date.now()+60000)});return;}
+ if(sub.plan_kind!=='server'){await patch(subId,{fulfilment:'done'});return;}
  const existing=await serverOf(sub.id);
  if(existing){await patch(subId,{fulfilment:'done',fulfilment_error:null});return;}
  const preset=sub.preset||{},details=sub.server_details||{};
  try{
   const locs=Array.isArray(preset.locations)&&preset.locations.length?preset.locations as string[]:null;
   const chosen=details.location&&(!locs||locs.includes(details.location))?String(details.location):null;
-  const r=await provisionServer({ownerId:sub.user_id,templateId:preset.templateId,name:String(details.name||sub.plan_name).slice(0,80),location:chosen,locations:chosen?null:locs,
+  const r=await provisionServer({ownerId:sub.user_id,templateId:preset.templateId,vm:details.vm,name:String(details.name||sub.plan_name).slice(0,80),location:chosen,locations:chosen?null:locs,
    memoryMb:preset.memoryMb,cpuPercent:preset.cpuPercent,diskMb:preset.diskMb,variables:{...(preset.variables||{}),...(details.variables||{})},
    actorId:null,actorIsAdmin:true,createdVia:'store',subscriptionId:sub.id,planBacked:true,friendlyErrors:true});
   await patch(subId,{fulfilment:'done',fulfilment_error:null,fulfilment_attempts:Number(sub.fulfilment_attempts)+1,next_fulfilment_at:null});
   await audit(null,'billing.fulfilled','subscription',sub.id,{serverId:r.server.id});
-  await mailSub(sub,'server_ready',{serverName:r.server.name,serverUrl:`${origin()}/servers/${r.server.id}`},'ready');
+  if(r.server.runtime!=='vm')await mailSub(sub,'server_ready',{serverName:r.server.name,serverUrl:`${origin()}/servers/${r.server.id}`},'ready');
  }catch(e:any){
   const attempts=Number(sub.fulfilment_attempts)+1;
   const message=String(e?.message||'unknown error').slice(0,300);
@@ -237,6 +246,7 @@ export async function applyInvoice(inv:InvoiceSnapshot,sub:SubRow|null){
    hosted_url=COALESCE(EXCLUDED.hosted_url,invoices.hosted_url),pdf_url=COALESCE(EXCLUDED.pdf_url,invoices.pdf_url),paid_at=COALESCE(EXCLUDED.paid_at,invoices.paid_at),
    subscription_id=COALESCE(invoices.subscription_id,EXCLUDED.subscription_id),user_id=COALESCE(invoices.user_id,EXCLUDED.user_id)`,
   [sub?.id||null,userId,sub?.provider||'stripe',inv.id,inv.number||null,inv.status,inv.amountDue,inv.amountPaid,inv.amountRefunded||0,inv.currency.toLowerCase(),iso(inv.periodStart),iso(inv.periodEnd),inv.hostedUrl||null,inv.pdfUrl||null,inv.description||null,!!inv.livemode,iso(inv.paidAt)]);
+ if(sub&&inv.status==='paid')await liftAccount(sub.user_id,null,'Outstanding payment settled',true,true);
  if(sub&&inv.status==='paid'&&inv.amountPaid>0&&!(prev&&prev.status==='paid')){
   await mailSub(sub,'payment_receipt',{amount:formatMoney(inv.amountPaid,inv.currency),invoiceUrl:inv.hostedUrl||`${origin()}/billing`,periodEnd:fmtDate(inv.periodEnd||sub.current_period_end)},`inv:${inv.id}`);
  }
@@ -475,3 +485,11 @@ export async function reconcileSweep(){
 }
 
 void notifyUser;void addMonths;void fail;
+
+/** A VM becomes ready only after the node confirms successful provisioning. */
+export async function confirmVMProvisioning(serverId:string){
+ const server=(await pool.query("SELECT name,subscription_id FROM servers WHERE id=$1 AND runtime='vm' AND deleted_at IS NULL AND NOT suspended AND observed_status='running'",[serverId])).rows[0];
+ if(!server?.subscription_id)return;
+ const sub=await loadSub(server.subscription_id);if(!sub)return;
+ await mailSub(sub,'server_ready',{serverName:server.name,serverUrl:`${origin()}/servers/${serverId}`},'ready');
+}

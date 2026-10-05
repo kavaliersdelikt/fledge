@@ -1,3 +1,4 @@
+import {vmTemplate} from './vm-model.js';
 import type {FastifyInstance} from 'fastify';
 import {pool,admin,scope,fail,txt,positive,asId,audit,queueRecreate,serverAccess} from './core.js';
 import {imageAllowed} from './settings.js';
@@ -80,6 +81,10 @@ export function checkValue(def:VariableDef,raw:unknown):string{
 // --- Template bodies -----------------------------------------------------------------------
 async function parseBody(b:any,existing?:any){
  if(!b||typeof b!=='object')fail(400,'Expected an object');
+ const runtime=b.runtime??existing?.runtime??'container';
+ if(!['container','vm'].includes(runtime))fail(400,'Invalid runtime');
+ if(existing && runtime!==existing.runtime)fail(409,'Template runtime cannot be changed');
+ if(runtime==='vm'){const vm=await vmTemplate(b.vm??existing?.vm_config);const profile=(await pool.query('SELECT config FROM vm_profiles WHERE id=$1',[vm.profileId])).rows[0].config;return {name:txt(b.name??existing?.name,80),description:txt(b.description??existing?.description??'Virtual machine',500),image:'fledge/vm',startup:null,stop:null,ports:[],env:{},editable:[],variables:[],quick:[],addons:null,memory:profile.memoryMb,cpu:profile.vcpus*100,disk:profile.storageMb,runtime,vm};}
  const pick=<T>(name:string,fallback:T):T=>b[name]!==undefined?b[name]:fallback;
  const ports=pick('internalPorts',existing?.internal_ports);
  if(!Array.isArray(ports)||ports.length<1||ports.length>10||ports.some((p:any)=>!Number.isInteger(p.container)||p.container<1||p.container>65535||!Number.isInteger(p.offset)||p.offset<0||p.offset>100||!['tcp','udp'].includes(p.protocol)))fail(400,'Invalid internalPorts');
@@ -102,13 +107,13 @@ async function parseBody(b:any,existing?:any){
  }
  const stop=pick('stopCommand',existing?.stop_command??null);
  const startup=pick('startup',existing?.startup??null);
- return {name:txt(pick('name',existing?.name),80),description:typeof b.description==='string'?b.description.slice(0,500):(existing?.description??null),image,startup:startup?txt(startup,4096):null,stop:stop?txt(stop,256):null,ports,env,editable,variables,quick,addons,
+ return {runtime,vm:{},name:txt(pick('name',existing?.name),80),description:typeof b.description==='string'?b.description.slice(0,500):(existing?.description??null),image,startup:startup?txt(startup,4096):null,stop:stop?txt(stop,256):null,ports,env,editable,variables,quick,addons,
   memory:positive(pick('memoryMb',existing?.memory_mb??2048)),cpu:positive(pick('cpuPercent',existing?.cpu_percent??100)),disk:positive(pick('diskMb',existing?.disk_mb??10240))};
 }
 // Key order is not meaningful in JSON columns, so compare canonical forms.
 const canon=(v:any):string=>JSON.stringify(v,(_k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,x[k]])):x);
-const snapshot=(t:any)=>({image:t.image,startup:t.startup,stopCommand:t.stop_command,internalPorts:t.internal_ports,env:t.env});
-const shape=(t:any,isAdmin:boolean)=>({id:t.id,name:t.name,description:t.description,image:t.image,startup:isAdmin?t.startup:null,internalPorts:t.internal_ports,env:isAdmin?t.env:Object.fromEntries(Object.keys(t.env).map(k=>[k,'[configured]'])),memoryMb:t.memory_mb,cpuPercent:t.cpu_percent,diskMb:t.disk_mb,
+const snapshot=(t:any)=>({runtime:t.runtime,vm:t.vm_config,image:t.image,startup:t.startup,stopCommand:t.stop_command,internalPorts:t.internal_ports,env:t.env});
+const shape=(t:any,isAdmin:boolean)=>({id:t.id,runtime:t.runtime,vm:t.vm_config,name:t.name,description:t.description,image:t.image,startup:isAdmin?t.startup:null,internalPorts:t.internal_ports,env:isAdmin?t.env:Object.fromEntries(Object.keys(t.env).map(k=>[k,'[configured]'])),memoryMb:t.memory_mb,cpuPercent:t.cpu_percent,diskMb:t.disk_mb,
  editableVariables:t.editable_variables,variables:effectiveDefs(t).map(d=>isAdmin?d:{...d}),stopCommand:t.stop_command,official:t.official,customerVisible:!!t.customer_visible,customerDescription:t.customer_description||'',version:t.version,addons:t.addons,quickCommands:t.quick_commands,updatedAt:t.updated_at});
 
 export function templateRoutes(app:FastifyInstance){
@@ -122,8 +127,8 @@ export function templateRoutes(app:FastifyInstance){
   const b=req.body as any,id=txt(b?.id,64);
   if(!/^[a-z0-9][a-z0-9-]*$/.test(id))fail(400,'Template ID must be lowercase alphanumeric/hyphen');
   const p=await parseBody(b);
-  const r=(await pool.query('INSERT INTO templates(id,name,description,image,startup,stop_command,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,variables,quick_commands,addons) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-   [id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons)])).rows[0];
+  const r=(await pool.query('INSERT INTO templates(id,name,description,image,startup,stop_command,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,variables,quick_commands,addons,runtime,vm_config) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',
+   [id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons),p.runtime,JSON.stringify(p.vm)])).rows[0];
   await pool.query('INSERT INTO template_versions(template_id,version,snapshot,created_by) VALUES($1,1,$2,$3)',[id,JSON.stringify(snapshot(r)),req.actor!.id]);
   await audit(req.actor!.id,'template.create','template',id);
   return shape(r,true);
@@ -136,10 +141,10 @@ export function templateRoutes(app:FastifyInstance){
    const cur=(await c.query('SELECT * FROM templates WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!cur)fail(404,'Template not found');
    const p=await parseBody(req.body,cur);
-   const changed=canon(snapshot({...cur,image:p.image,startup:p.startup,stop_command:p.stop,internal_ports:p.ports,env:p.env}))!==canon(snapshot(cur));
+   const changed=canon(snapshot({...cur,image:p.image,startup:p.startup,stop_command:p.stop,internal_ports:p.ports,env:p.env,runtime:p.runtime,vm_config:p.vm}))!==canon(snapshot(cur));
    const version=changed?cur.version+1:cur.version;
-   const r=(await c.query('UPDATE templates SET name=$2,description=$3,image=$4,startup=$5,stop_command=$6,internal_ports=$7,env=$8,memory_mb=$9,cpu_percent=$10,disk_mb=$11,editable_variables=$12,variables=$13,quick_commands=$14,addons=$15,version=$16,updated_at=now() WHERE id=$1 RETURNING *',
-    [id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons),version])).rows[0];
+   const r=(await c.query('UPDATE templates SET name=$2,description=$3,image=$4,startup=$5,stop_command=$6,internal_ports=$7,env=$8,memory_mb=$9,cpu_percent=$10,disk_mb=$11,editable_variables=$12,variables=$13,quick_commands=$14,addons=$15,version=$16,runtime=$17,vm_config=$18,updated_at=now() WHERE id=$1 RETURNING *',
+    [id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons),version,p.runtime,JSON.stringify(p.vm)])).rows[0];
    if(changed)await c.query('INSERT INTO template_versions(template_id,version,snapshot,created_by) VALUES($1,$2,$3,$4)',[id,version,JSON.stringify(snapshot(r)),req.actor!.id]);
    await c.query('COMMIT');
    await audit(req.actor!.id,'template.update','template',id,{version,runtimeChanged:changed});
@@ -176,7 +181,7 @@ export function templateRoutes(app:FastifyInstance){
   const existing=(await pool.query('SELECT * FROM templates WHERE id=$1',[id])).rows[0];
   if(existing&&b.overwrite!==true)fail(409,`A template with the ID “${id}” already exists. Choose another ID or allow overwriting.`);
   if(existing&&existing.official&&b.overwrite!==true)fail(409,'Preinstalled templates can only be overwritten explicitly');
-  const p=await parseBody(body);
+  const p=await parseBody(body,existing);
   const warnings:string[]=[];
   if(doc.fledgeVersion&&doc.fledgeVersion!==panelVersion())warnings.push(`Exported from Fledge ${String(doc.fledgeVersion).slice(0,20)}; this panel is ${panelVersion()}.`);
   const c=await pool.connect();
@@ -184,12 +189,12 @@ export function templateRoutes(app:FastifyInstance){
    await c.query('BEGIN');
    let row;
    if(existing){
-    const changed=canon(snapshot({...existing,image:p.image,startup:p.startup,stop_command:p.stop,internal_ports:p.ports,env:p.env}))!==canon(snapshot(existing));
+    const changed=canon(snapshot({...existing,image:p.image,startup:p.startup,stop_command:p.stop,internal_ports:p.ports,env:p.env,runtime:p.runtime,vm_config:p.vm}))!==canon(snapshot(existing));
     const version=changed?existing.version+1:existing.version;
-    row=(await c.query('UPDATE templates SET name=$2,description=$3,image=$4,startup=$5,stop_command=$6,internal_ports=$7,env=$8,memory_mb=$9,cpu_percent=$10,disk_mb=$11,editable_variables=$12,variables=$13,quick_commands=$14,addons=$15,version=$16,updated_at=now() WHERE id=$1 RETURNING *',[id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons),version])).rows[0];
+    row=(await c.query('UPDATE templates SET name=$2,description=$3,image=$4,startup=$5,stop_command=$6,internal_ports=$7,env=$8,memory_mb=$9,cpu_percent=$10,disk_mb=$11,editable_variables=$12,variables=$13,quick_commands=$14,addons=$15,version=$16,runtime=$17,vm_config=$18,updated_at=now() WHERE id=$1 RETURNING *',[id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons),version,p.runtime,JSON.stringify(p.vm)])).rows[0];
     if(changed)await c.query('INSERT INTO template_versions(template_id,version,snapshot,created_by) VALUES($1,$2,$3,$4)',[id,version,JSON.stringify(snapshot(row)),req.actor!.id]);
    }else{
-    row=(await c.query('INSERT INTO templates(id,name,description,image,startup,stop_command,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,variables,quick_commands,addons) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',[id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons)])).rows[0];
+    row=(await c.query('INSERT INTO templates(id,name,description,image,startup,stop_command,internal_ports,env,memory_mb,cpu_percent,disk_mb,editable_variables,variables,quick_commands,addons,runtime,vm_config) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',[id,p.name,p.description,p.image,p.startup,p.stop,JSON.stringify(p.ports),JSON.stringify(p.env),p.memory,p.cpu,p.disk,p.editable,JSON.stringify(p.variables),JSON.stringify(p.quick),p.addons===null?null:JSON.stringify(p.addons),p.runtime,JSON.stringify(p.vm)])).rows[0];
     await c.query('INSERT INTO template_versions(template_id,version,snapshot,created_by) VALUES($1,1,$2,$3)',[id,JSON.stringify(snapshot(row)),req.actor!.id]);
    }
    await c.query('COMMIT');
@@ -215,7 +220,7 @@ export function templateRoutes(app:FastifyInstance){
     if(canon(old.internalPorts)!==canon(now.internalPorts))changes.push('ports');
    }
    const portsChanged=changes.includes('ports');
-   return {id:s.id,name:s.name,ownerEmail:s.owner_email,fromVersion:s.template_version,toVersion:t.version,changes:changes.length?changes:['no runtime change'],canApply:!portsChanged&&s.node_status==='connected',blocker:portsChanged?'The port layout changed; recreate this server to use it':s.node_status!=='connected'?'The node is offline':null};
+   return {id:s.id,name:s.name,ownerEmail:s.owner_email,fromVersion:s.template_version,toVersion:t.version,changes:changes.length?changes:['no runtime change'],canApply:t.runtime!=='vm'&&!portsChanged&&s.node_status==='connected',blocker:t.runtime==='vm'?'VM templates apply to new machines; change an existing VM through its own controls':portsChanged?'The port layout changed; recreate this server to use it':s.node_status!=='connected'?'The node is offline':null};
   });
   return {template:{id:t.id,name:t.name,version:t.version},servers:out};
  };
