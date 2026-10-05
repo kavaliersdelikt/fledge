@@ -14,18 +14,19 @@ export const API = 'http://localhost:4300';
 export const ADMIN = { email: 'maya@fledge.demo', password: 'demo-password-2026' };
 
 export async function bootDemo(extra = {}) {
+  const webPort=extra.webPort || 3100,webUrl=`http://localhost:${webPort}`;
   const stack = await bootStack({
-    db: 'fledge_docs_demo', apiPort: 4300, hostPort: 4593, hostMap: extra.hostMap || '',
+    db: extra.db || 'fledge_docs_demo', apiPort: extra.apiPort || 4300, hostPort: extra.hostPort || 4593, hostMap: extra.hostMap || '',
     apiEnv: {
-      WEB_ORIGIN: WEB, SWEEP_INTERVAL_MS: '3000', SLOW_SWEEP_MS: '10000', RATE_LIMIT_AUTH_WRITE: '5000',
+      WEB_ORIGIN: webUrl, SWEEP_INTERVAL_MS: '3000', SLOW_SWEEP_MS: '10000', RATE_LIMIT_AUTH_WRITE: '5000',
       // Object storage is configured (and never contacted) so the backup features are shown as they look when it is on.
-      S3_BUCKET: 'fledge-demo', S3_ACCESS_KEY: 'demo', S3_SECRET_KEY: 'demo-secret-key', S3_ENDPOINT: 'http://127.0.0.1:9',
+      S3_BUCKET: 'fledge-demo', S3_ACCESS_KEY: 'demo', S3_SECRET_KEY: 'demo-secret-key', S3_ENDPOINT: 'http://127.0.0.1:9', ...extra.apiEnv,
     },
   });
-  const web = spawn(process.execPath, [join(repo, 'web', 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-p', '3100', '-H', '127.0.0.1'], { cwd: join(repo, 'web'), stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(WEB)).ok) break; } catch { /* starting */ } await sleep(500); }
+  const web = spawn(process.execPath, [join(repo, 'web', 'node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-p', String(webPort), '-H', '127.0.0.1'], { cwd: join(repo, 'web'), stdio: 'ignore' });
+  for (let i = 0; i < 60; i++) { try { if ((await fetch(webUrl)).ok) break; } catch { /* starting */ } await sleep(500); }
   const stop = async () => { web.kill(); await stack.stop(); };
-  return { stack, stop, c: client(API) };
+  return { stack, stop, webUrl, c: client(stack.base) };
 }
 
 const MB = 1048576;

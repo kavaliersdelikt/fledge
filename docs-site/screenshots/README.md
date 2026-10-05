@@ -47,3 +47,21 @@ When the UI changes noticeably, re-run the whole set and commit the new files.
 their subscription (a trial, a yearly plan, a late payment, a cancellation), and two people waiting to be approved. `shots.rookery.mjs` takes the screenshots of sign-up, the store, billing, limits and email templates from it. Take just those with
 `ONLY=store,store-buy,billing-customer,self-service-create,billing-overview,billing-plans,billing-plan-editor,billing-subscription,billing-health,settings-signup,settings-self-service,settings-limits,settings-store,email-templates,customers-pending,limits-usage,stripe-plugin,signup-form npm run screenshots`.
 `keep.rookery.mjs` keeps the same demo running for looking around by hand.
+
+## Mews screenshots and browser checks
+
+Run `TEST_DATABASE_URL=postgres://user:pass@localhost:5432/postgres npm run screenshots:mews` from `docs-site`. The runner builds the panel with its isolated API URL, then uses ports 3107 (panel), 4307 (API) and 4597 (plugin host), and the disposable `fledge_mews_docs_demo` database. It does not use an existing installation.
+
+`mews-demo.mjs` seeds fictional team members, suspensions, tickets, articles and a mail sink. `run.mews.mjs` captures the shipped dark, light and mobile screens, and verifies suspension editing/lifting, customer and agent ticket replies, private-note isolation, solving, rating, reopening and automation editing. The public abuse check uses Cloudflare's published test keys through the real verification endpoint; it needs internet access and checks rejection without a bot response. These keys exist only in the disposable demo.
+
+Successful runs write WebP documentation images and PNG inspection copies. Remove the PNG copies after visual review. Rebuild `web` with your normal `NEXT_PUBLIC_API_URL` after the screenshot run, because Next.js embeds that address in the build.
+
+## Real VM screenshots
+
+After completing implementation and the browser audit, regenerate the full existing set, then Mews and VM images. VM console images require an actual disposable guest: never draw a desktop or substitute simulated console output.
+
+`vm-demo.mjs` imports the agent's real `vm.json` into the disposable documentation database. It reports software emulation truthfully, so this fixture is not KVM verification. Set `VM_MANIFEST` to that local manifest and `VM_RELAY_CONFIG` to a private, ignored JSON file accessible by your isolated relay harness. Run `npm run screenshots:mews`; it also takes Overview, desktop, serial, disks, network, installation, recovery, mobile, light-theme and administrator catalogue images. `capture.vm.mjs` requires a connected real guest framebuffer and verifies reconnect/fullscreen.
+
+A disposable Docker harness can set `VM_RELAY_CONTAINER` and `VM_RELAY_SCRIPT` to start its bounded Linux relay script after the fixture writes fresh node credentials. Otherwise start the actual outbound relay yourself after seeding. Keep credentials out of screenshots, source control and public artifacts. Delete only the task's temporary manifests, relay files and inspection PNGs after review; retain the WebP images.
+
+Run `npm run screenshots:vm` with the same real-guest environment variables to regenerate only the VM set; it builds the panel against its disposable fixture API before capture.

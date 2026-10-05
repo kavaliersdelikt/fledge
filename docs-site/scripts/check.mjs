@@ -3,8 +3,7 @@
 //
 //   node scripts/check.mjs
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,10 +35,7 @@ for (const file of files) {
         try { JSON.parse(body); } catch (e) { problems.push(`${rel}:${line} invalid JSON: ${e.message}`); }
       }
       if ((lang === 'sh' || lang === 'bash') && hasShell && !/[<…]|\.\.\./.test(body)) {
-        const dir = mkdtempSync(join(tmpdir(), 'docs-sh-'));
-        const f = join(dir, 'block.sh');
-        writeFileSync(f, body);
-        try { execFileSync('bash', ['-n', f], { stdio: 'pipe' }); } catch (e) { problems.push(`${rel}:${line} shell syntax: ${String(e.stderr).trim().split('\n')[0]}`); }
+        try { execFileSync('bash', ['-n'], { input: body, stdio: 'pipe' }); } catch (e) { problems.push(`${rel}:${line} shell syntax: ${String(e.stderr).trim().split('\n')[0]}`); }
       }
     }
   }

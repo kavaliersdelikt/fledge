@@ -23,7 +23,7 @@ async function asCustomer(ctx, fn) {
 }
 
 const settingsCard = async (ctx, id, name) => {
-  await go(ctx, '/settings', 'Customers, store and email');
+  await go(ctx, '/settings'+id, 'Customers, store and email');
   const card = ctx.page.locator(id);
   await card.waitFor();
   await card.scrollIntoViewIfNeeded();
@@ -48,7 +48,7 @@ export const rookeryShots = {
   async 'billing-customer'(ctx) { await asCustomer(ctx, async (c) => { await go(c, '/billing', 'Community'); await c.save('billing-customer'); }); },
   async 'self-service-create'(ctx) {
     await asCustomer(ctx, async (c) => {
-      await go(c, '/servers?new=1', 'Kind of server');
+      await go(c, '/servers?new=1', 'Create your server');
       await c.page.locator('.drawer input[maxlength="80"]').fill('Our survival world').catch(() => {});
       await c.sleep(600);
       await c.save('self-service-create', c.page.locator('.drawer'));
@@ -80,7 +80,7 @@ export const rookeryShots = {
   async 'settings-limits'(ctx) { await settingsCard(ctx, '#limits', 'settings-limits'); },
   async 'settings-store'(ctx) { await settingsCard(ctx, '#store', 'settings-store'); },
   async 'email-templates'(ctx) {
-    await go(ctx, '/settings', 'Customers, store and email');
+    await go(ctx, '/settings#email-templates', 'Customers, store and email');
     const card = ctx.page.locator('#email-templates');
     await card.getByRole('button', { name: /Payment received/ }).click();
     await ctx.page.waitForSelector('iframe.mail__preview');

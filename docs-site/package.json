@@ -1,6 +1,6 @@
 {
   "name": "fledge-docs",
-  "version": "0.8.1.1",
+  "version": "0.9.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,10 +9,13 @@
     "examples": "node ../api/node_modules/tsx/dist/cli.mjs scripts/check-examples.ts",
     "check": "node scripts/check.mjs",
     "dev": "npm run generate && vitepress dev docs",
-    "build": "npm run generate && vitepress build docs && node scripts/landing.mjs build",
+    "build": "npm run generate && vitepress build docs && node scripts/landing.mjs build && npm run check:built",
     "preview": "vitepress preview docs",
     "screenshots": "node screenshots/run.mjs",
-    "landing": "node scripts/landing.mjs"
+    "landing": "node scripts/landing.mjs",
+    "screenshots:mews": "node screenshots/run.mews.mjs",
+    "screenshots:vm": "node screenshots/run.vm.mjs",
+    "check:built": "node scripts/check-built.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0",

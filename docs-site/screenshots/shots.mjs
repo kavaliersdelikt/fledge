@@ -17,9 +17,9 @@ const baseShots = {
   async nodes(ctx) { await go(ctx, '/nodes', 'frankfurt-01'); await ctx.save('nodes'); },
   async customers(ctx) { await go(ctx, '/customers', 'alex@orbit-games.example'); await ctx.save('customers'); },
   async activity(ctx) { await go(ctx, '/activity', 'Activity'); await ctx.save('activity'); },
-  async 'account-security'(ctx) { await go(ctx, '/settings', 'Passkeys'); await ctx.save('account-security'); },
+  async 'account-security'(ctx) { await go(ctx, '/settings#account', 'Passkeys'); await ctx.save('account-security'); },
   async settings(ctx) {
-    await go(ctx, '/settings', 'Object storage');
+    await go(ctx, '/settings#storage', 'Object storage');
     await card(ctx.page, 'Object storage').scrollIntoViewIfNeeded();
     await ctx.sleep(500);
     await ctx.save('settings');

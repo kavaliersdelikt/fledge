@@ -6,8 +6,9 @@ Built with [VitePress](https://vitepress.dev) and published to GitHub Pages by `
 cd docs-site
 npm ci
 npm run dev        # generate the references, then serve at http://localhost:5173/fledge/
-npm run build      # generate and build into docs/.vitepress/dist
+npm run build      # generate, build and check local links/assets in docs/.vitepress/dist
 npm run check      # code blocks, screenshots, API coverage
+npm run check:built # check links and anchors in an existing production build
 npm run examples   # run the tutorial plugin in the real plugin sandbox
 npm run landing    # serve the landing page alone at http://localhost:4173/
 ```
