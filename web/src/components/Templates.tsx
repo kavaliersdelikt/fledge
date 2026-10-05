@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { json, request, type TemplateFull, type TemplateOutdated } from "@/lib/api";
 import { fmtCpu, fmtMb } from "@/lib/format";
 import { convertPterodactylEgg } from "@/lib/pterodactyl";
@@ -147,7 +148,7 @@ export default function Templates() {
       value: () => "",
       render: (t) => (
         <div className="row-actions">
-          <Button size="sm" variant="ghost" className="row-hover" onClick={() => setEditor({ existing: t, seed: t, warnings: [] })}>
+          <Button size="sm" variant="ghost" className="row-hover" onClick={() => {if(t.runtime==='vm'){window.location.assign('/virtualization?template='+encodeURIComponent(t.id));return;}setEditor({ existing: t, seed: t, warnings: [] })}}>
             <Pencil /> Edit
           </Button>
           <DropdownMenu>
@@ -155,7 +156,7 @@ export default function Templates() {
               <MoreHorizontal />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="menu">
-              <DropdownMenuItem onClick={() => setEditor({ existing: null, seed: { ...t, id: `${t.id}-copy`, name: `${t.name} (copy)` }, warnings: [] })}>
+              <DropdownMenuItem disabled={t.runtime==='vm'} onClick={() => setEditor({ existing: null, seed: { ...t, id: `${t.id}-copy`, name: `${t.name} (copy)` }, warnings: [] })}>
                 <Copy /> Duplicate
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setOutdated({ id: t.id, name: t.name })}>
@@ -193,7 +194,7 @@ export default function Templates() {
               <FileInput /> Import egg
             </Button>
             <Button variant="primary" onClick={() => setEditor({ existing: null, seed: blank, warnings: [] })}>
-              <Plus /> New template
+              <Plus /> New container template
             </Button>
           </>
         }
@@ -225,6 +226,7 @@ export default function Templates() {
         </State>
       </Card>
 
+      <Link href="/virtualization">Manage VM templates</Link>
       <TemplateEditor
         open={!!editor}
         existing={editor?.existing ?? null}

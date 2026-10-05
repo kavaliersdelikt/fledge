@@ -1,4 +1,4 @@
-// Types and small helpers shared by the sign-up, store, billing and limits screens (0.8.1.1).
+// Types and small helpers shared by the sign-up, store, billing and limits screens (0.9.1.1).
 import { createContext, useContext } from "react";
 
 export type Cycle = "month" | "quarter" | "semiannual" | "year";
@@ -8,6 +8,7 @@ export const cycleShort: Record<Cycle, string> = { month: "month", quarter: "3 m
 
 /** What the panel offers this person (GET /api/features). */
 export type Features = {
+  support?:{enabled:boolean}; isSuper?:boolean; permissions?:string[];
   store: { enabled: boolean; sells: boolean; title: string };
   billing: { subscriptions: number; visible: boolean };
   selfService: { mode: "off" | "presets" | "plans" | "custom"; canCreate: boolean; canDelete: boolean; coolingHours: number };
@@ -26,8 +27,8 @@ export const useFeatures = () => useContext(FeaturesContext);
 
 export type PlanPrice = { id: string; cycle: Cycle; amount: number; currency: string; text: string; perMonthText: string | null; trialDays: number; setupFee: number; setupText: string | null; savings: number };
 export type StorePlan = {
-  id: string; slug: string; name: string; description: string; kind: "server" | "account"; features: string[]; highlight: boolean; badge: string; note: string; free: boolean;
-  spec: null | { template: string; memoryMb: number; cpuPercent: number; diskMb: number; locations: string[]; allowLocationChoice: boolean; allowNameChoice: boolean; variables: { key: string; label: string; description?: string; type: string; options?: { value: string; label: string }[]; min?: number; max?: number; required?: boolean }[] };
+  supportTier?:string; id: string; slug: string; name: string; description: string; kind: "server" | "account"; features: string[]; highlight: boolean; badge: string; note: string; free: boolean;
+  spec: null | { runtime?:'container'|'vm'; template: string; memoryMb: number; cpuPercent: number; diskMb: number; locations: string[]; allowLocationChoice: boolean; allowNameChoice: boolean; variables: { key: string; label: string; description?: string; type: string; options?: { value: string; label: string }[]; min?: number; max?: number; required?: boolean }[] };
   prices: PlanPrice[]; stock: number | null; soldOut: boolean; owned: number; canBuyMore: boolean;
 };
 export type StoreView = {
@@ -64,7 +65,7 @@ export type SignupConfig = {
 
 export type SelfOptions = {
   mode: "off" | "presets" | "plans" | "custom"; canCreate: boolean; why?: string; planRequired?: boolean; canDelete: boolean; coolingHours: number; allowRename?: boolean; customResources?: boolean;
-  templates: { id: string; name: string; description: string; memoryMb: number; cpuPercent: number; diskMb: number; variables: { key: string; label: string; description?: string; type: string; options?: { value: string; label: string }[]; min?: number; max?: number; required?: boolean }[] }[];
+  templates: { id: string; name: string; runtime?:'container'|'vm'; description: string; memoryMb: number; cpuPercent: number; diskMb: number; variables: { key: string; label: string; description?: string; type: string; options?: { value: string; label: string }[]; min?: number; max?: number; required?: boolean }[] }[];
   locations: string[]; ceilings?: { memoryMb: number; cpuPercent: number; diskMb: number }; limits: LimitsView | null;
 };
 

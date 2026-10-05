@@ -35,6 +35,7 @@ export function Modal({
   description,
   children,
   wide = false,
+  className = "",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,10 +43,11 @@ export function Modal({
   description?: string;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`modal${wide ? " modal--wide" : ""}`}>
+      <DialogContent className={`modal${wide ? " modal--wide" : ""} ${className}`}>
         <div className="modal__head">
           <DialogTitle className="modal__title">{title}</DialogTitle>
           {description ? (

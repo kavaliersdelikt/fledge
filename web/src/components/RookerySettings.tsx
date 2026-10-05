@@ -377,6 +377,7 @@ function BillingCard({ value, reload }: { value: Raw; reload: () => void }) {
             <Num label="Retention reminder after (days)" value={v.retentionDays} min={0} max={3650} onChange={(retentionDays) => set({ retentionDays })} hint="Cancelled servers wait for you; after this time you are reminded to remove them." />
           )}
           <Toggle label="Take a last backup before deleting" checked={v.finalBackup} onChange={(finalBackup) => set({ finalBackup })} />
+          <Toggle label="Suspend the whole account for late payment" hint="Off by default. Uses the same overdue-payment deadline as server suspension." checked={!!v.suspendAccountOnLatePayment} onChange={(suspendAccountOnLatePayment) => set({suspendAccountOnLatePayment})} />
           <Toggle label="A dispute stops the server" hint="While a customer disputes a payment with their bank." checked={v.suspendOnDispute} onChange={(suspendOnDispute) => set({ suspendOnDispute })} />
         </fieldset>
         <fieldset className="form-section" style={{ border: 0, padding: 0, margin: 0 }}>
@@ -631,7 +632,10 @@ export default function RookerySettings() {
   const { data, error, loading, reload } = useLoad<All>("/settings");
   const [tab, setTab] = useState<HostingTab>("signup");
   useEffect(() => {
-    if (window.location.hash) setTab(hostingTabForHash(window.location.hash));
+    const syncHash = () => { if (window.location.hash) setTab(hostingTabForHash(window.location.hash)); };
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
   }, []);
   if (loading) return <Skeleton rows={3} />;
   if (error || !data) return <ErrorNotice message={error || "Settings could not be loaded."} />;

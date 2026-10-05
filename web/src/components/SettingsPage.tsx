@@ -8,6 +8,7 @@ import { CopyButton, Modal, Secret } from "./feedback";
 import { Button, Card, Confirm, Field, Form, PageHeader, Row, Select, State, Status, useLoad } from "./shared";
 import { Plus } from "lucide-react";
 import AdminSettings from "./AdminSettings";
+import UsageReporting from "./UsageReporting";
 import { AppearanceLink } from "./AppearancePage";
 import { PasskeysCard, SessionsCard } from "./AccountSecurity";
 import { AccountOptionsCard, UsageCard } from "./AccountCards";
@@ -19,7 +20,7 @@ import { Tabs, TabsContent, TabsIndicator, TabsList, TabsTrigger } from "./ui/ta
 type AdminSettingsTab = "hosting" | "account" | "panel" | "appearance" | "tokens";
 
 const settingsTabForHash = (hash: string): AdminSettingsTab => {
-  if (["#storage", "#nodes", "#failover", "#email", "#security", "#updates"].includes(hash)) return "panel";
+  if (["#storage", "#nodes", "#failover", "#email", "#security", "#updates", "#usage"].includes(hash)) return "panel";
   if (hash === "#appearance") return "appearance";
   if (hash === "#tokens") return "tokens";
   if (["#account", "#devices", "#notifications", "#recovery"].includes(hash)) return "account";
@@ -49,7 +50,11 @@ export default function SettingsPage({ user }: { user: User }) {
   const [adminTab, setAdminTab] = useState<AdminSettingsTab>("hosting");
 
   useEffect(() => {
-    if (admin && window.location.hash) setAdminTab(settingsTabForHash(window.location.hash));
+    if (!admin) return;
+    const syncHash = () => { if (window.location.hash) setAdminTab(settingsTabForHash(window.location.hash)); };
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
   }, [admin]);
 
   const tokenColumns: DataColumn<Row>[] = [
@@ -148,6 +153,7 @@ export default function SettingsPage({ user }: { user: User }) {
           <TabsContent value="panel" keepMounted>
             <Section title="Panel" description="Settings here take effect immediately and are stored in the panel’s database — no .env editing or restarts.">
               <AdminSettings />
+              {user.isSuper&&<UsageReporting />}
             </Section>
           </TabsContent>
           <TabsContent value="appearance" keepMounted>

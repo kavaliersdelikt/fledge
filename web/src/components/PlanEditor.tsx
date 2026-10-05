@@ -11,7 +11,7 @@ import { useToast } from "./toast";
 
 type Price = { cycle: Cycle; amount: number; currency: string; trialDays: number; setupFee: number };
 type Plan = {
-  id: string; slug: string; name: string; description: string; kind: "server" | "account"; visibility: "public" | "hidden" | "private"; active: boolean; features: string[];
+  supportTier?:string; id: string; slug: string; name: string; description: string; kind: "server" | "account"; visibility: "public" | "hidden" | "private"; active: boolean; features: string[];
   preset: { templateId?: string; memoryMb?: number; cpuPercent?: number; diskMb?: number; locations?: string[]; allowLocationChoice?: boolean; allowNameChoice?: boolean; variables?: Record<string, string>; editableVariables?: string[] };
   limits: LimitSet; options: { highlight?: boolean; badge?: string; free?: boolean; note?: string }; stock: number | null; perCustomerMax: number; trialOnce: boolean; retentionDays: number | null;
   archivedAt: string | null; prices: (Price & { id?: string })[]; subscribers?: number; pendingOrders?: number; remaining?: number | null;
@@ -318,6 +318,7 @@ function PlanForm({ initial, onClose, onSaved, currencies, defaultCurrency }: { 
 
         <div className="form-section">
           <h3>Prices</h3>
+          <label className="field"><span className="field__label">Support tier</span><select className="input select" value={p.supportTier||"standard"} onChange={e=>set({supportTier:e.target.value})}><option value="standard">Standard</option><option value="priority">Priority</option></select></label>
           <PriceEditor prices={p.prices} onChange={(prices) => set({ prices })} currencies={currencies} currency={currency} setCurrency={setCurrency} />
         </div>
 

@@ -1,4 +1,5 @@
 "use client";
+import UsageReporting from "./UsageReporting";
 import { request } from "@/lib/api";
 import { ArrowRight, CheckCircle2, ExternalLink, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -41,7 +42,7 @@ const phaseCopy: Record<string, string> = {
   restarting: "Waiting for the panel to come back",
 };
 
-export default function UpdateCenter() {
+export default function UpdateCenter({isSuper=false}:{isSuper?:boolean}) {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,6 +130,7 @@ export default function UpdateCenter() {
         }
       />
       <ErrorNotice message={error} />
+      {isSuper&&<UsageReporting promptOnly/>}
       {loading ? (
         <Skeleton rows={4} />
       ) : info ? (

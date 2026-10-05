@@ -48,6 +48,7 @@ function PlanCardView({ plan, cycle, onBuy, canBuy, free }: { plan: StorePlan; c
           </>
         )}
       </div>
+      {plan.supportTier==="priority"&&<span className="tag">Priority support</span>}
       {plan.spec ? (
         <dl className="plan-card__spec">
           <div>
@@ -88,6 +89,7 @@ function PlanCardView({ plan, cycle, onBuy, canBuy, free }: { plan: StorePlan; c
 function BuyDialog({ plan, cycle, view, onClose }: { plan: StorePlan; cycle: Cycle; view: StoreView; onClose: () => void }) {
   const toast = useToast();
   const router = useRouter();
+  const [sshKeys,setSSHKeys]=useState('');
   const [chosen, setChosen] = useState<Cycle>(cycle);
   const price = priceFor(plan, chosen);
   const [name, setName] = useState(plan.name);
@@ -105,6 +107,7 @@ function BuyDialog({ plan, cycle, view, onClose }: { plan: StorePlan; cycle: Cyc
     setError("");
     try {
       const body: Record<string, unknown> = { planId: plan.id, cycle: price.cycle, acceptTerms: terms };
+      if(plan.spec?.runtime==='vm')body.vm={sshKeys:sshKeys.split('\n').map(k=>k.trim()).filter(Boolean)};
       if (plan.spec?.allowNameChoice) body.name = name;
       if (location) body.location = location;
       const changed = Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== ""));
@@ -158,6 +161,7 @@ function BuyDialog({ plan, cycle, view, onClose }: { plan: StorePlan; cycle: Cyc
             </select>
           </label>
         ) : null}
+        {plan.spec?.runtime==='vm'&&<label className="field"><span>SSH provisioning keys</span><textarea className="input mono" rows={4} value={sshKeys} onChange={e=>setSSHKeys(e.target.value)} placeholder="ssh-ed25519 ..."/><small>Linux cloud images require a public key. ISO installs use the console.</small></label>}
         {plan.spec?.variables.map((v) => (
           <label className="field" key={v.key}>
             <span className="field__label">{v.label}</span>

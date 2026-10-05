@@ -1,10 +1,17 @@
 "use client";
+import Virtualization from "./Virtualization";
 import { ApiError, json, request, type User } from "@/lib/api";
 import { FeaturesContext, noFeatures, type Features } from "@/lib/commerce";
 import { MarkImage, useBrand } from "@/lib/brand";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import KnowledgeEditor,{PublicHelp} from './KnowledgeEditor';
+import StepUpPrompt from './StepUpPrompt';
+import SuspendedShell from './SuspendedShell';
+import Team from './Team';
+import Support,{NewTicket,Article} from './Support';
+import {SupportSettings,SupportReports,AbuseForm} from './SupportSettings';
 import ActivityPage from "./ActivityPage";
 import ApiDocs from "./ApiDocs";
 import AppearancePage from "./AppearancePage";
@@ -62,19 +69,21 @@ export default function Panel() {
     let live = true;
     const load = () =>
       request<Features>("/features")
-        .then((f) => live && setFeatures(f))
+        .then((f) => {if(live){setFeatures(f);setUser(u=>u?{...u,status:f.account.status,isSuper:f.isSuper,permissions:f.permissions}:u);}})
         .catch(() => {});
     void load();
     // Buttons follow the administrator's settings: look again when the tab is shown and every few minutes.
     const onShow = () => document.visibilityState === "visible" && void load();
     document.addEventListener("visibilitychange", onShow);
-    const timer = window.setInterval(onShow, 5 * 60 * 1000);
+    const timer = window.setInterval(onShow, 60 * 1000);
     return () => {
       live = false;
       document.removeEventListener("visibilitychange", onShow);
       window.clearInterval(timer);
     };
   }, [uid]);
+  if(pathname==='/help')return <ToastProvider><PublicHelp/></ToastProvider>;
+  if(pathname==='/abuse')return <ToastProvider><ConfirmationProvider><StepUpPrompt/><AbuseForm/></ConfirmationProvider></ToastProvider>;
   if (loading)
     return (
       <div className="splash" role="status" aria-label="Loading">
@@ -106,10 +115,12 @@ export default function Panel() {
         }}
       />
     );
+  if(features.account.status==='suspended'||user.status==='suspended')return <FeaturesContext.Provider value={features}><ToastProvider><ConfirmationProvider><StepUpPrompt/><SuspendedShell user={user} onLogout={async()=>{await json('POST','/auth/logout');setUser(null);router.push('/');}}/></ConfirmationProvider></ToastProvider></FeaturesContext.Provider>;
   const admin = user.role === "admin",
     seg = pathname.split("/").filter(Boolean);
-  const forbidden =
-    ["nodes", "templates", "plugins", "customers", "activity", "updates", "resilience", "api-docs"].includes(seg[0]) && !admin;
+  const requiredGrant=({virtualization:'nodes.view',nodes:'nodes.view',templates:'templates.manage',plugins:'plugins.manage',customers:'customers.view',activity:'audit.view',updates:'settings.view',resilience:'failover.manage','api-docs':'audit.view',support:seg[1]==='settings'?'support.manage':seg[1]==='reports'?'support.reports':seg[1]==='knowledge'?'support.articles':'support.view',team:'team.manage'} as Record<string,string>)[seg[0]];
+  const forbidden = admin&&requiredGrant&&!(user.isSuper||user.permissions?.includes(requiredGrant)) ||
+    ["virtualization", "nodes", "templates", "plugins", "customers", "activity", "updates", "resilience", "api-docs"].includes(seg[0]) && !admin;
   let page;
   if (forbidden)
     page = (
@@ -140,6 +151,13 @@ export default function Panel() {
     ) : (
       <Empty title="Administrator access required">Only panel administrators can change the appearance.</Empty>
     );
+  else if(seg[0]==='team')page=<Team user={user}/>;
+  else if(seg[0]==='support'&&seg[1]==='knowledge')page=<KnowledgeEditor/>;
+  else if(seg[0]==='support'&&seg[1]==='new')page=<NewTicket/>;
+  else if(seg[0]==='support'&&seg[1]==='settings')page=<SupportSettings/>;
+  else if(seg[0]==='support'&&seg[1]==='reports')page=<SupportReports/>;
+  else if(seg[0]==='support'&&seg[1]==='articles'&&seg[2])page=<Article slug={seg[2]}/>;
+  else if(seg[0]==='support')page=<Support user={user} id={seg[1]}/>;
   else if (seg.length > 1) page = null;
   else
     switch (seg[0]) {
@@ -149,6 +167,9 @@ export default function Panel() {
         break;
       case "servers":
         page = <Servers admin={admin} />;
+        break;
+      case "virtualization":
+        page = <Virtualization />;
         break;
       case "nodes":
         page = <Nodes />;
@@ -172,7 +193,7 @@ export default function Panel() {
         page = <Resilience />;
         break;
       case "updates":
-        page = <UpdateCenter />;
+        page = <UpdateCenter isSuper={user.isSuper} />;
         break;
       case "settings":
         page = <SettingsPage user={user} />;
@@ -187,7 +208,7 @@ export default function Panel() {
   return (
     <FeaturesContext.Provider value={features}>
     <ToastProvider>
-    <ConfirmationProvider>
+    <ConfirmationProvider><StepUpPrompt/>
       <Workspace
         user={user}
         onLogout={async () => {

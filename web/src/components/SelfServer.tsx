@@ -108,6 +108,7 @@ export function CreateMyServer({ open, onOpenChange, onCreated }: { open: boolea
     [err, setErr] = useState("");
   const kinds = data?.templates ?? [];
   const single = kinds.length === 1;
+  const [sshKeys,setSSHKeys]=useState('');
   const t = kinds.find((x) => x.id === picked) ?? (single ? kinds[0] : undefined);
   const first = single ? 1 : 0;
   const at = t ? Math.max(step, first) : 0;
@@ -158,6 +159,7 @@ export function CreateMyServer({ open, onOpenChange, onCreated }: { open: boolea
       const changed = Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== ""));
       const r = (await json("POST", "/me/servers", {
         templateId: t.id,
+        vm:t.runtime==='vm'?{sshKeys:sshKeys.split('\n').map(k=>k.trim()).filter(Boolean)}:undefined,
         name: needName ? name.trim() : undefined,
         ...(custom ? { memoryMb: size.mem, cpuPercent: size.cpu, diskMb: size.disk } : {}),
         location: location || undefined,
@@ -289,6 +291,7 @@ export function CreateMyServer({ open, onOpenChange, onCreated }: { open: boolea
                     </div>
                   </div>
                 ) : null}
+                {t.runtime==='vm'&&<label className="field"><span>SSH provisioning keys</span><textarea className="input mono" value={sshKeys} onChange={e=>setSSHKeys(e.target.value)} rows={4} placeholder="ssh-ed25519 ..."/><small>Required for Linux cloud images. ISO installation uses the console.</small></label>}
                 {t.variables.length ? (
                   <fieldset className="mk-options">
                     <legend>Options</legend>

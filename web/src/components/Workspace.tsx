@@ -75,12 +75,15 @@ type Destination = {
 };
 
 export const destinations: Destination[] = [
+  {id:"support",title:"Help centre",url:"/support",icon:LifeBuoy,group:"Administration",adminOnly:false},
+  {id:"team",title:"Team",url:"/team",icon:Users,group:"Administration",adminOnly:true},
   { id: "overview", title: "Overview", url: "/", icon: LayoutGrid, group: "", adminOnly: true },
   { id: "servers", title: "Servers", url: "/servers", icon: Server, group: "", adminOnly: false },
   { id: "store", title: "Store", url: "/store", icon: ShoppingBag, group: "", adminOnly: false, feature: "store" },
   { id: "billing", title: "Billing", url: "/billing", icon: Receipt, group: "", adminOnly: false, feature: "billing" },
   { id: "nodes", title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
   { id: "resilience", title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
+  { id: "virtualization", title: "Virtual machines", url: "/virtualization", icon: HardDrive, group: "Infrastructure", adminOnly: true },
   { id: "templates", title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
   { id: "plugins", title: "Plugins", url: "/plugins", icon: Puzzle, group: "Infrastructure", adminOnly: true },
   { id: "customers", title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
@@ -164,10 +167,13 @@ export default function Workspace({
     () =>
       destinations
         .filter((d) => !d.adminOnly || admin)
+        .filter(d=>d.id!=="support"||features.support?.enabled||admin&&(user.isSuper||user.permissions?.includes("support.view")))
+        .filter(d=>d.id!=="team"||user.isSuper)
+        .filter(d=>!admin||user.isSuper||!user.permissions||!({overview:"servers.view",servers:"servers.view",virtualization:"nodes.view",nodes:"nodes.view",resilience:"failover.manage",templates:"templates.manage",plugins:"plugins.manage",customers:"customers.view","billing-admin":"billing.view",activity:"audit.view",api:"audit.view",updates:"settings.view",support:"support.view"} as Record<string,string>)[d.id]||user.permissions.includes(({overview:"servers.view",servers:"servers.view",virtualization:"nodes.view",nodes:"nodes.view",resilience:"failover.manage",templates:"templates.manage",plugins:"plugins.manage",customers:"customers.view","billing-admin":"billing.view",activity:"audit.view",api:"audit.view",updates:"settings.view",support:"support.view"} as Record<string,string>)[d.id]))
         // Administrators manage billing from the Administration group; customers see their own pages once they exist.
         .filter((d) => (admin ? d.feature === undefined && (d.id !== "billing-admin" || features.billing.visible) : !d.feature || (d.feature === "store" ? features.store.enabled : features.billing.visible)))
-        .map((d) => ({ ...d, title: labels[d.id === "billing-admin" ? "billing" : d.id] || (d.id === "store" ? features.store.title : d.title), group: admin ? d.group : ("" as const) })),
-    [admin, labels, features],
+        .map((d) => ({ ...d, title: d.id==="support"&&admin?"Help desk":labels[d.id === "billing-admin" ? "billing" : d.id] || (d.id === "store" ? features.store.title : d.title), group: admin ? d.group : ("" as const) })),
+    [admin, labels, features, user.isSuper, user.permissions],
   );
   const current = allowed.find((d) => isActive(pathname, d.url));
   useDocumentTitle(current?.title);

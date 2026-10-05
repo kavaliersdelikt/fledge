@@ -193,6 +193,7 @@ function CreateServer({
   const templates = useLoad<Template[]>(open ? "/templates" : null);
   const customers = useLoad<Row[]>(open ? "/customers?limit=100" : null);
   const nodes = useLoad<Node[]>(open ? "/nodes" : null);
+  const [runtime,setRuntime]=useState('container');
   const [resources, setResources] = useState({ memoryGb: 2, cores: 1, diskGb: 10 });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -229,6 +230,7 @@ function CreateServer({
       name: v.name,
       ownerId: v.ownerId,
       templateId: v.templateId,
+      vm:{sshKeys:(v.sshKeys||'').split('\n').map(k=>k.trim()).filter(Boolean)},
       location: v.location || undefined,
       nodeId: v.nodeId || undefined,
       memoryMb: Math.round(Number(v.memoryGb) * 1024),
@@ -303,11 +305,12 @@ function CreateServer({
                 defaultValue=""
                 onChange={(e) => {
                   const t = items(templates.data).find((x) => x.id === e.target.value);
+                  if(t)setRuntime(t.runtime||'container');
                   if (t) setResources({ memoryGb: t.memoryMb / 1024, cores: t.cpuPercent / 100, diskGb: t.diskMb / 1024 });
                 }}
               >
                 <option value="" disabled>
-                  Choose a game
+                  Choose a template
                 </option>
                 {items(templates.data).map((t) => (
                   <option key={t.id} value={t.id}>
@@ -339,10 +342,11 @@ function CreateServer({
               <Notice tone="warn">No node is online and accepting servers right now.</Notice>
             ) : null}
           </div>
+          {runtime==='vm'&&<label className="field"><span>SSH provisioning keys</span><textarea className="input mono" name="sshKeys" rows={3} placeholder="ssh-ed25519 ..."/><small>Linux cloud images require a public key. ISO installations use the console.</small></label>}
           <div className="form-group">
             <div className="form-grid">
               <UnitField label="Memory" name="memoryGb" unit="GB" step={0.5} value={resources.memoryGb} onChange={(n) => setResources((r) => ({ ...r, memoryGb: n }))} />
-              <UnitField label="CPU" name="cores" unit="cores" step={0.25} value={resources.cores} onChange={(n) => setResources((r) => ({ ...r, cores: n }))} />
+              <UnitField label="CPU" name="cores" unit={runtime==='vm'?'vCPUs':'cores'} step={runtime==='vm'?1:0.25} value={resources.cores} onChange={(n) => setResources((r) => ({ ...r, cores: n }))} />
               <UnitField label="Disk" name="diskGb" unit="GB" step={1} value={resources.diskGb} onChange={(n) => setResources((r) => ({ ...r, diskGb: n }))} />
               <label className="field">
                 <span className="field__label">Port</span>

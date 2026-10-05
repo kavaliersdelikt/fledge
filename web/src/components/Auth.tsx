@@ -67,7 +67,7 @@ const dropParamsFromUrl = (...names: string[]) => {
 };
 
 /** Cloudflare Turnstile or hCaptcha, loaded only on the sign-up form. */
-function Captcha({ config, onToken }: { config: { provider: "turnstile" | "hcaptcha"; siteKey: string }; onToken: (t: string) => void }) {
+export function Captcha({ config, onToken }: { config: { provider: "turnstile" | "hcaptcha"; siteKey: string }; onToken: (t: string) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const latest = useRef(onToken);
   latest.current = onToken;

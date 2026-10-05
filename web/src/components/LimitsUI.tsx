@@ -9,6 +9,7 @@ export type LimitSet = Record<string, number | boolean | string[] | null | undef
 type Unit = "count" | "gb" | "cores";
 type Field = { key: string; label: string; unit: Unit; hint?: string };
 export const NUMBER_FIELDS: { title: string; fields: Field[] }[] = [
+  { title: "Support", fields: [{ key: "ticketsPerDay", label: "New tickets per day", unit: "count" }] },
   {
     title: "Totals across all servers",
     fields: [
@@ -40,6 +41,7 @@ export const NUMBER_FIELDS: { title: string; fields: Field[] }[] = [
   },
 ];
 export const FLAG_FIELDS: { key: string; label: string; hint: string }[] = [
+  { key: "mayOpenTickets", label: "May open support tickets", hint: "Suspension appeals remain available independently." },
   { key: "selfCreate", label: "May create servers", hint: "Lets them create servers themselves, from the kinds you released. Set on a customer it works in every mode except Nothing; in a plan it works in Account plans mode. Free choice (Settings, Customers) lets everyone unless this says No." },
   { key: "selfDelete", label: "May delete their own servers", hint: "Needs deleting to be allowed in Settings, Customers." },
   { key: "sftp", label: "May use SFTP", hint: "File access with an SFTP client." },

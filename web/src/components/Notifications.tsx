@@ -263,8 +263,9 @@ function ChannelEditor({
       if (!next.delete(id)) next.add(id);
       return { ...p, [key]: next };
     });
-  const groups: { id: "server" | "panel"; title: string; items: NotificationEvent[] }[] = [
+  const groups: { id: "server" | "panel" | "account"; title: string; items: NotificationEvent[] }[] = [
     { id: "server" as const, title: "Server events", items: events.filter((e) => e.scope === "server") },
+    { id: "account" as const, title: "Account and support events", items: events.filter((e) => e.scope === "account") },
     { id: "panel" as const, title: "Panel events", items: events.filter((e) => e.scope === "panel") },
   ].filter((g) => g.items.length);
   const hasServerEvents = events.some((e) => e.scope === "server" && d.events.has(e.id));
@@ -305,6 +306,7 @@ function ChannelEditor({
     <Modal
       open
       wide
+      className="notification-dialog"
       onOpenChange={(o) => !o && onClose()}
       title={editing ? "Edit channel" : "Add a channel"}
       description="Choose where messages go and which events trigger them."
