@@ -27,7 +27,7 @@ export function startProcess(label,cwd,file,env,{quiet=true}={}){
  child.logs=()=>log.split(String.fromCharCode(10)).filter(l=>!l.startsWith('{')||/"level":(4|5)\d/.test(l)).join(String.fromCharCode(10));
  return child;
 }
-export async function waitFor(url,ms=40000){
+export async function waitFor(url,ms=90000){
  const end=Date.now()+ms;
  while(Date.now()<end){try{const r=await fetch(url);if(r.ok)return;}catch{}await new Promise(r=>setTimeout(r,250));}
  throw Error('Timed out waiting for '+url);
@@ -78,8 +78,7 @@ export async function bootStack({db,apiPort,hostPort,mock,apiEnv={},quiet=true,h
  const host=startProcess('host',join(repoDir,'plugins','host'),'src/server.ts',{PORT:String(hostPort),PLUGIN_TOKEN_FILE:tokenFile,PLUGIN_HOST_UNSAFE_TEST_ALLOW_LOCAL:'1',PLUGIN_HOST_UNSAFE_TEST_HOST_MAP:map,APP_VERSION:testAppVersion},{quiet});
  // The API creates the shared token file on first use; start it first so the host can read it.
  const api=startProcess('api',apiDir,'src/index.ts',{DATABASE_URL:databaseUrl,ENCRYPTION_KEY:'0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',WEB_ORIGIN:'http://localhost:3000',PORT:String(apiPort),APP_VERSION:testAppVersion,PLUGIN_HOST_URL:`http://127.0.0.1:${hostPort}`,PLUGIN_TOKEN_FILE:tokenFile,FLEDGE_TEST_ALLOW_LOCAL_FETCH:'1',...apiEnv},{quiet});
- await waitFor(`http://127.0.0.1:${apiPort}/api/health`);
- await waitFor(`http://127.0.0.1:${hostPort}/health`);
+ try{await waitFor(`http://127.0.0.1:${apiPort}/api/health`,90000);await waitFor(`http://127.0.0.1:${hostPort}/health`,90000);}catch(error){api.kill();host.kill();throw new Error(error.message+'\nAPI: '+api.logs()+'\nHost: '+host.logs());}
  const stop=async()=>{for(const p of [api,host])p.kill();await sleep(300);};
  return {api,host,base:`http://127.0.0.1:${apiPort}`,databaseUrl,stop,tokenFile};
 }

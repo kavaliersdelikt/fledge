@@ -14,7 +14,7 @@ const smtp=new SMTPServer({authOptional:true,allowInsecureAuth:true,disabledComm
 await new Promise(r=>smtp.listen(0,'127.0.0.1',r));
 const smtpPort=smtp.server.address().port;
 
-const stack=await bootStack({db:'fledge_accounts_smoke',apiPort:4178,hostPort:4526,mock:null,apiEnv:{SLOW_SWEEP_MS:'1500',RATE_LIMIT_AUTH_WRITE:'5000'}});
+const stack=await bootStack({db:'fledge_accounts_smoke',apiPort:4178,hostPort:4526,mock:null,apiEnv:{SWEEP_INTERVAL_MS:'500',SLOW_SWEEP_MS:'1500',RATE_LIMIT_AUTH_WRITE:'5000'}});
 const admin=client(stack.base);const {call,ok,status,check}=admin;
 let failed=null;
 const rid=()=>randomBytes(3).toString('hex');

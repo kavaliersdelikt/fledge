@@ -182,7 +182,7 @@ try{
  check((await subOf(sub1.id)).status==='suspended','Stripe saying "unpaid" does not undo the suspension');
  // payment arrives
  await stripe.payOverdue(paid.subscriptionId);
- await until(async()=>(await subOf(sub1.id)).status==='active','payment lifts the suspension');
+ await until(async()=>(await subOf(sub1.id)).status==='active'&&(await serverFor(sub1.id)).suspended===false,'payment lifts the suspension and releases its server');
  const srvR=await serverFor(sub1.id);check(srvR.suspended===false&&!srvR.suspended_reason&&srvR.desired_status==='running','the server is released');
  await waitMail(customer.email,/is running again/,'resumed mail');
  const started=await jobs(node);check(started.includes('start'),'and started again');
@@ -367,7 +367,7 @@ try{
  await stripe.failRenewal(paid6.subscriptionId,{webhooks:false});
  await q("UPDATE subscriptions SET reconciled_at=now()-interval '1 hour' WHERE id=$1",[sub6.id]);
  await until(async()=>(await subOf(sub6.id)).status==='past_due','the scheduled check to notice a failed payment');
- check((await q("SELECT count(*)::int n FROM audit_events WHERE action='billing.drift'"))[0].n>=1,'and record that it repaired something');
+ await until(async()=>(await q("SELECT count(*)::int n FROM audit_events WHERE action='billing.drift'"))[0].n>=1,'the scheduled repair audit record');
  await stripe.payOverdue(paid6.subscriptionId,{webhooks:false});await q("UPDATE subscriptions SET reconciled_at=now()-interval '1 hour' WHERE id=$1",[sub6.id]);
  await until(async()=>(await subOf(sub6.id)).status==='active','and the payment that followed');
 

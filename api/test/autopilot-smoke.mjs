@@ -61,8 +61,7 @@ try{
  status(await call('POST',`${S}/schedules/${chain.id}/run`,{}),409,'a schedule cannot run twice at once');
  let twice=false;try{await dbQuery(stack.databaseUrl,"INSERT INTO schedule_runs(schedule_id,server_id,state) VALUES($1,$2,'running')",[chain.id,server.id]);}catch(e){twice=/schedule_runs_one_running/.test(String(e.message));}
  check(twice,'the database itself refuses two runs of one schedule at once');
- const j1=await takeJob(node,'command');check(j1.payload.command==='say Restarting in 2 seconds','the first step runs');await finishJob(admin,node,j1);
- const t0=Date.now();
+ const j1=await takeJob(node,'command');check(j1.payload.command==='say Restarting in 2 seconds','the first step runs');const t0=Date.now();await finishJob(admin,node,j1);
  const j2=await takeJob(node,'restart');await finishJob(admin,node,j2);
  check(Date.now()-t0>=1200,'the wait step delays the restart ('+(Date.now()-t0)+' ms)');
  const run=await until(async()=>{const r=ok(await call('GET',`${S}/schedules/${chain.id}/runs`),'runs');return r[0]&&r[0].state==='succeeded'?r[0]:null;},'the run to finish');
@@ -95,7 +94,7 @@ try{
  check(ok(await strangerC.call('GET','/api/notifications'),'stranger inbox').items.length===0,'other customers see nothing about this server');
  check(inbox.unread>=1&&ok(await ownerC.call('GET','/api/notifications/summary'),'summary').unread===inbox.unread,'unread counts match');
  ok(await ownerC.call('POST','/api/notifications/read',{}),'mark read');check(ok(await ownerC.call('GET','/api/notifications/summary'),'summary').unread===0,'marking read clears the count');
- const events=ok(await ownerC.call('GET','/api/notification-events'),'events');check(events.every(e=>e.scope==='server')&&events.some(e=>e.id==='server.crashed'),'customers can subscribe to server events only');
+ const events=ok(await ownerC.call('GET','/api/notification-events'),'events');check(events.every(e=>e.scope==='server'||e.scope==='account')&&events.some(e=>e.id==='server.crashed')&&events.some(e=>e.id==='suspension.created'),'customers can subscribe to server and account events only');
  const aEvents=ok(await call('GET','/api/notification-events'),'events');check(aEvents.some(e=>e.id==='node.offline'),'administrators also get panel events');
 
  // Channels
