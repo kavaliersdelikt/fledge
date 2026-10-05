@@ -204,6 +204,10 @@ cd agent && go vet ./... && go test ./...
 The full list of suites, how to run the integration tests against a throw-away PostgreSQL, and how the docs are built are in the
 [development guide](https://kavaliersdelikt.github.io/fledge/dev/tests).
 
+### Virtual machines in Mews
+
+Optional Linux x86-64 KVM/libvirt hosting adds approved Linux cloud images and Linux/Windows ISO installation, browser VNC and serial consoles, host-limited hardware controls, NAT/routed address pools, stopped snapshots and full guest bundles. Existing containers remain the default. Enable only after configuring a capable node, trusted media, hardware profiles and networks. See [VM setup](docs-site/docs/operate/virtual-machines.md), [customer controls](docs-site/docs/panel/virtual-machines.md) and [security](docs-site/docs/security/virtual-machines.md).
+
 ## Community
 
 <div align="center">
@@ -227,12 +231,3 @@ Please redact credentials, enrollment tokens, and backup URLs before sharing log
 
 Contributions and issue reports are welcome; please include reproduction steps and redact credentials, enrollment tokens, and backup URLs.
 
-### Virtual machines in Mews
-
-Optional Linux x86-64 KVM/libvirt hosting adds approved Linux cloud images and Linux/Windows ISO installation, browser VNC and serial consoles, host-limited hardware controls, NAT/routed address pools, stopped snapshots and full guest bundles. Existing containers remain the default. Enable only after configuring a capable node, trusted media, hardware profiles and networks. See [VM setup](docs-site/docs/operate/virtual-machines.md), [customer controls](docs-site/docs/panel/virtual-machines.md) and [security](docs-site/docs/security/virtual-machines.md).
-
-### Optional installation usage reporting
-
-Super-administrators can opt in to encrypted version reports through GitHub. A private Actions dashboard counts consenting active installations; GitHub account and intake metadata remain visible. Reporting is off by default, uses no bundled maintainer token, and can be withdrawn in Settings. See the [collector and privacy setup](docs-site/docs/operate/usage-reporting.md).
-
-The project's [encrypted public intake](https://github.com/kavaliersdelikt/fledge-usage-intake) is configured, with its [privacy notice](https://github.com/kavaliersdelikt/fledge-usage-intake/blob/main/PRIVACY.md). The maintainer can view [private dashboard Actions](https://github.com/kavaliersdelikt/fledge-usage-dashboard/actions/workflows/usage-collector.yml) and open the latest `usage-state` artifact's `dashboard.html`. Fresh installs include public reporting configuration; each operator still chooses whether to consent and authorize GitHub.
