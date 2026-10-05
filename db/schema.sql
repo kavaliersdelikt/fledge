@@ -376,7 +376,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences jsonb NOT NULL DEFAULT '{
 -- Accounts that sign themselves up go through verification (and optionally approval) first.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check;
-ALTER TABLE users ADD CONSTRAINT users_status_check CHECK(status IN ('active','pending_verification','pending_approval','deletion_pending'));
+ALTER TABLE users ADD CONSTRAINT users_status_check CHECK(status IN ('active','pending_verification','pending_approval','deletion_pending','suspended'));
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_source text NOT NULL DEFAULT 'admin';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version text;
@@ -512,3 +512,186 @@ CREATE INDEX IF NOT EXISTS email_outbox_recent ON email_outbox(id DESC);
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reconciled_at timestamptz;
 ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS provider_status text;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_url text;
+
+-- Mews: administrator grants and explained account holds.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_super boolean NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_permissions text[];
+UPDATE users SET is_super=true WHERE id=(SELECT id FROM users WHERE role='admin' AND NOT disabled AND status='active' ORDER BY created_at,id LIMIT 1) AND NOT EXISTS(SELECT 1 FROM users WHERE is_super);
+CREATE UNIQUE INDEX IF NOT EXISTS users_one_super ON users(is_super) WHERE is_super;
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='users_super_admin') THEN
+  ALTER TABLE users ADD CONSTRAINT users_super_admin CHECK(NOT is_super OR (role='admin' AND NOT disabled AND status='active'));
+ END IF;
+END $$;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS stepped_up_at timestamptz;
+CREATE TABLE IF NOT EXISTS account_suspensions(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id), reference text NOT NULL UNIQUE,
+ reason text NOT NULL CHECK(reason IN ('billing','terms','security','review','requested','other')),
+ source text NOT NULL DEFAULT 'admin' CHECK(source IN ('admin','billing','system','api')),
+ message text NOT NULL CHECK(length(message) BETWEEN 1 AND 2000), internal_note text NOT NULL DEFAULT '' CHECK(length(internal_note)<=2000),
+ stop_servers boolean NOT NULL DEFAULT true, stopped_server_ids uuid[] NOT NULL DEFAULT '{}',
+ allow_backup_download boolean NOT NULL DEFAULT false, allow_account_deletion boolean NOT NULL DEFAULT true,
+ lift_on_payment boolean NOT NULL DEFAULT false, notify boolean NOT NULL DEFAULT true, until timestamptz,
+ created_by uuid REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now(), lifted_at timestamptz,
+ lifted_by uuid REFERENCES users(id), lift_note text, retention_notified_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS account_suspensions_open ON account_suspensions(user_id) WHERE lifted_at IS NULL;
+CREATE TABLE IF NOT EXISTS account_suspension_events(
+ id bigserial PRIMARY KEY, suspension_id uuid NOT NULL REFERENCES account_suspensions(id), kind text NOT NULL,
+ actor uuid REFERENCES users(id), data jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS team_transfers(
+ token_hash text PRIMARY KEY, sender_id uuid NOT NULL REFERENCES users(id), receiver_id uuid NOT NULL REFERENCES users(id),
+ expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+-- Help desk data. Customer projections never select private fields or notes.
+CREATE TABLE IF NOT EXISTS support_groups(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS support_group_members(group_id uuid REFERENCES support_groups(id) ON DELETE CASCADE,user_id uuid REFERENCES users(id) ON DELETE CASCADE,PRIMARY KEY(group_id,user_id));
+CREATE TABLE IF NOT EXISTS support_tiers(id text PRIMARY KEY,name text NOT NULL,first_reply_minutes integer NOT NULL CHECK(first_reply_minutes>0),solve_minutes integer NOT NULL CHECK(solve_minutes>0),warn_percent integer NOT NULL DEFAULT 80 CHECK(warn_percent BETWEEN 1 AND 100));
+INSERT INTO support_tiers VALUES('standard','Standard',240,2880,80),('priority','Priority',60,1440,80),('urgent','Urgent',30,480,80) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS support_hours(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),timezone text NOT NULL DEFAULT 'UTC',weekly jsonb NOT NULL DEFAULT '{"1":[[540,1020]],"2":[[540,1020]],"3":[[540,1020]],"4":[[540,1020]],"5":[[540,1020]]}',holidays jsonb NOT NULL DEFAULT '[]');
+INSERT INTO support_hours(id) VALUES(1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS support_categories(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL UNIQUE,group_id uuid REFERENCES support_groups(id),default_priority text NOT NULL DEFAULT 'normal',tier_id text REFERENCES support_tiers(id),public boolean NOT NULL DEFAULT true,sort integer NOT NULL DEFAULT 0);
+INSERT INTO support_groups(name) VALUES('General'),('Abuse') ON CONFLICT DO NOTHING;
+INSERT INTO support_categories(name,tier_id,public,sort) VALUES('Server help','standard',true,0),('Billing','standard',true,1),('Other','standard',true,2),('Suspension appeal','urgent',false,3),('Abuse','urgent',false,4) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS support_tickets(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),number serial UNIQUE,requester_user_id uuid REFERENCES users(id) ON DELETE SET NULL,requester_email text NOT NULL,
+ source text NOT NULL CHECK(source IN ('panel','email','abuse_form','api','suspension')),subject text NOT NULL CHECK(length(subject) BETWEEN 1 AND 200),
+ category_id uuid REFERENCES support_categories(id),priority text NOT NULL DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
+ status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','pending','hold','solved','closed')),
+ assignee_id uuid REFERENCES users(id),group_id uuid REFERENCES support_groups(id),server_id uuid REFERENCES servers(id),subscription_id uuid REFERENCES subscriptions(id),suspension_id uuid REFERENCES account_suspensions(id),
+ tier_id text REFERENCES support_tiers(id),first_reply_due_at timestamptz,solve_due_at timestamptz,first_reply_at timestamptz,solved_at timestamptz,closed_at timestamptz,reopen_until timestamptz,
+ rating smallint CHECK(rating BETWEEN 1 AND 5),rating_comment text,
+ tags text[] NOT NULL DEFAULT '{}',linked_ticket_ids uuid[] NOT NULL DEFAULT '{}',diagnostics jsonb NOT NULL DEFAULT '{}',
+ last_customer_activity_at timestamptz,last_agent_activity_at timestamptz,paused_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),warning_sent_at timestamptz,breach_sent_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS support_tickets_customer ON support_tickets(requester_user_id,updated_at DESC);
+CREATE INDEX IF NOT EXISTS support_tickets_queue ON support_tickets(status,first_reply_due_at);
+CREATE UNIQUE INDEX IF NOT EXISTS support_suspension_ticket ON support_tickets(suspension_id) WHERE suspension_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS support_messages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),ticket_id uuid NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,author_user_id uuid REFERENCES users(id),author_kind text NOT NULL CHECK(author_kind IN ('customer','agent','system','external')),kind text NOT NULL DEFAULT 'reply' CHECK(kind IN ('reply','note','event')),body text NOT NULL CHECK(length(body)<=20000),via text NOT NULL DEFAULT 'panel',created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS support_messages_thread ON support_messages(ticket_id,created_at);
+CREATE INDEX IF NOT EXISTS support_messages_search ON support_messages USING gin(to_tsvector('simple',body));
+CREATE TABLE IF NOT EXISTS support_attachments(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),ticket_id uuid NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,message_id uuid REFERENCES support_messages(id) ON DELETE CASCADE,sha256 text NOT NULL,mime text NOT NULL,name text NOT NULL,size integer NOT NULL CHECK(size BETWEEN 1 AND 5242880),bytes bytea NOT NULL);
+CREATE TABLE IF NOT EXISTS support_drafts(user_id uuid REFERENCES users(id) ON DELETE CASCADE,ticket_id text NOT NULL DEFAULT 'new',body jsonb NOT NULL DEFAULT '{}',updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(user_id,ticket_id));
+CREATE TABLE IF NOT EXISTS support_macros(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL,shortcut text NOT NULL,body text NOT NULL,scope text NOT NULL DEFAULT 'team' CHECK(scope IN ('team','personal')),owner_id uuid REFERENCES users(id));
+CREATE TABLE IF NOT EXISTS support_rules(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL,enabled boolean NOT NULL DEFAULT true,position integer NOT NULL DEFAULT 0,trigger text NOT NULL,conditions jsonb NOT NULL DEFAULT '{}',actions jsonb NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS support_articles(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),slug text NOT NULL UNIQUE,title text NOT NULL,body text NOT NULL,category text NOT NULL DEFAULT 'General',visibility text NOT NULL DEFAULT 'draft' CHECK(visibility IN ('customers','public','draft')),helpful_yes integer NOT NULL DEFAULT 0,helpful_no integer NOT NULL DEFAULT 0,updated_by uuid REFERENCES users(id),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS support_articles_search ON support_articles USING gin(to_tsvector('simple',title||' '||body));
+CREATE TABLE IF NOT EXISTS support_article_search(query text PRIMARY KEY,count integer NOT NULL DEFAULT 1,no_results integer NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS support_article_votes(article_id uuid REFERENCES support_articles(id) ON DELETE CASCADE,user_id uuid REFERENCES users(id),helpful boolean NOT NULL,PRIMARY KEY(article_id,user_id));
+CREATE TABLE IF NOT EXISTS support_events(id bigserial PRIMARY KEY,ticket_id uuid REFERENCES support_tickets(id) ON DELETE CASCADE,kind text NOT NULL,actor uuid REFERENCES users(id),data jsonb NOT NULL DEFAULT '{}',created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS support_presence(ticket_id uuid REFERENCES support_tickets(id) ON DELETE CASCADE,user_id uuid REFERENCES users(id) ON DELETE CASCADE,seen_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(ticket_id,user_id));
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS support_tier text NOT NULL DEFAULT 'standard' CHECK(support_tier IN ('standard','priority'));
+ALTER TABLE support_attachments ADD COLUMN IF NOT EXISTS uploaded_by uuid REFERENCES users(id);
+
+ALTER TABLE support_attachments ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
+CREATE TABLE IF NOT EXISTS support_inbound_messages(id text PRIMARY KEY,ticket_id uuid NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,created_at timestamptz NOT NULL DEFAULT now());
+
+CREATE TABLE IF NOT EXISTS support_ticket_reads (ticket_id uuid NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,read_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(ticket_id,user_id));
+
+-- Mews virtualization is opt-in; existing workloads keep their container runtime.
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS runtime text NOT NULL DEFAULT 'container' CHECK(runtime IN ('container','vm'));
+ALTER TABLE templates ADD COLUMN IF NOT EXISTS vm_config jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS runtime text NOT NULL DEFAULT 'container' CHECK(runtime IN ('container','vm'));
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS vm_config jsonb NOT NULL DEFAULT '{}';
+CREATE TABLE IF NOT EXISTS vm_media (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, kind text NOT NULL CHECK(kind IN ('cloud','iso','drivers')),
+ url text NOT NULL, sha256 text NOT NULL, size_bytes bigint NOT NULL CHECK(size_bytes>0), enabled boolean NOT NULL DEFAULT false,
+ os text NOT NULL DEFAULT 'linux' CHECK(os IN ('linux','windows')), created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS vm_profiles (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, config jsonb NOT NULL, enabled boolean NOT NULL DEFAULT false,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS vm_networks (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL, libvirt_name text NOT NULL,
+ mode text NOT NULL CHECK(mode IN ('nat','routed')), node_ids uuid[] NOT NULL DEFAULT '{}',
+ gateway inet NOT NULL, prefix integer NOT NULL, dns inet[] NOT NULL DEFAULT '{}', enabled boolean NOT NULL DEFAULT false,
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS vm_addresses (
+ network_id uuid NOT NULL REFERENCES vm_networks(id) ON DELETE CASCADE, address inet NOT NULL,
+ server_id uuid REFERENCES servers(id) ON DELETE SET NULL, PRIMARY KEY(network_id,address), UNIQUE(server_id)
+);
+CREATE TABLE IF NOT EXISTS vm_snapshots (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ name text NOT NULL, state text NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','ready','failed','deleting')),
+ size_mb bigint NOT NULL, job_id uuid REFERENCES jobs(id), created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS vm_console_tickets (
+ token_hash text PRIMARY KEY, server_id uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE, session_hash text NOT NULL,
+ mode text NOT NULL CHECK(mode IN ('vnc','serial')), expires_at timestamptz NOT NULL, used_at timestamptz
+);
+
+
+-- Durable external delivery and atomic event claims, shared by API replicas.
+CREATE TABLE IF NOT EXISTS notification_emissions (
+ identity text PRIMARY KEY, expires_at timestamptz NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ channel_id uuid NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE,
+ payload jsonb NOT NULL, attempts integer NOT NULL DEFAULT 0,
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','sent','failed')),
+ available_at timestamptz NOT NULL DEFAULT now(), created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notification_deliveries_pending ON notification_deliveries(available_at) WHERE state='pending';
+
+-- Attribute legacy shared panel channels to the bootstrap administrator so
+-- queued delivery can recheck a real principal after permission changes.
+UPDATE notification_channels SET user_id=(SELECT id FROM users WHERE role='admin' AND is_super ORDER BY created_at LIMIT 1) WHERE scope='panel' AND user_id IS NULL;
+
+-- Reporting is disabled until a super-administrator explicitly consents and connects GitHub.
+CREATE TABLE IF NOT EXISTS usage_reporting (
+ singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+ consent boolean NOT NULL DEFAULT false,
+ consent_at timestamptz,
+ policy_hash text,
+ installation_id text,
+ secret text,
+ last_activity_at timestamptz,
+ last_report_day date,
+ last_report_version text,
+ next_attempt_at timestamptz NOT NULL DEFAULT now(),
+ last_error text,
+ withdrawal_pending boolean NOT NULL DEFAULT false,
+ withdrawal_until timestamptz,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO usage_reporting(singleton) VALUES(true) ON CONFLICT DO NOTHING;
+
+ALTER TABLE vm_console_tickets ADD COLUMN IF NOT EXISTS agent_connected boolean NOT NULL DEFAULT false;
+-- NOTIFY is delivered after COMMIT, so active binary relays revoke immediately.
+CREATE OR REPLACE FUNCTION revoke_vm_console_authorization() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE prior jsonb := to_jsonb(OLD); current jsonb := to_jsonb(NEW); payload jsonb;
+BEGIN
+ IF TG_TABLE_NAME='users' THEN
+  IF prior->'disabled' IS NOT DISTINCT FROM current->'disabled' AND prior->'status' IS NOT DISTINCT FROM current->'status' AND prior->'admin_permissions' IS NOT DISTINCT FROM current->'admin_permissions' AND prior->'is_super' IS NOT DISTINCT FROM current->'is_super' AND prior->'totp_secret' IS NOT DISTINCT FROM current->'totp_secret' AND prior->'password_hash' IS NOT DISTINCT FROM current->'password_hash' THEN RETURN NULL; END IF;
+  payload=jsonb_build_object('userId',current->>'id');
+ ELSIF TG_TABLE_NAME='collaborators' THEN payload=jsonb_build_object('userId',coalesce(current->>'user_id',prior->>'user_id'),'serverId',coalesce(current->>'server_id',prior->>'server_id'));
+ ELSIF TG_TABLE_NAME='account_suspensions' THEN payload=jsonb_build_object('userId',coalesce(current->>'user_id',prior->>'user_id'));
+ ELSIF TG_TABLE_NAME='servers' THEN
+  IF prior->'suspended' IS NOT DISTINCT FROM current->'suspended' AND prior->'node_id' IS NOT DISTINCT FROM current->'node_id' AND prior->'deleted_at' IS NOT DISTINCT FROM current->'deleted_at' AND prior->'observed_status' IS NOT DISTINCT FROM current->'observed_status' THEN RETURN NULL; END IF;
+  payload=jsonb_build_object('serverId',current->>'id');
+ ELSIF TG_TABLE_NAME='sessions' THEN payload=jsonb_build_object('sessionHash',coalesce(current->>'token_hash',prior->>'token_hash'));
+ ELSIF TG_TABLE_NAME='nodes' THEN payload=jsonb_build_object('nodeId',current->>'id');
+ ELSE RETURN NULL; END IF;
+ PERFORM pg_notify('fledge_vm_revoke',payload::text); RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS vm_revoke_user ON users;
+CREATE TRIGGER vm_revoke_user AFTER UPDATE OF disabled,status,admin_permissions,is_super,totp_secret,password_hash ON users FOR EACH ROW EXECUTE FUNCTION revoke_vm_console_authorization();
+DROP TRIGGER IF EXISTS vm_revoke_collaborator ON collaborators;
+CREATE TRIGGER vm_revoke_collaborator AFTER UPDATE OR DELETE ON collaborators FOR EACH ROW EXECUTE FUNCTION revoke_vm_console_authorization();
+DROP TRIGGER IF EXISTS vm_revoke_hold ON account_suspensions;
+CREATE TRIGGER vm_revoke_hold AFTER INSERT OR UPDATE ON account_suspensions FOR EACH ROW EXECUTE FUNCTION revoke_vm_console_authorization();
+DROP TRIGGER IF EXISTS vm_revoke_server ON servers;
+CREATE TRIGGER vm_revoke_server AFTER UPDATE OF suspended,node_id,deleted_at,observed_status ON servers FOR EACH ROW EXECUTE FUNCTION revoke_vm_console_authorization();
+DROP TRIGGER IF EXISTS vm_revoke_session ON sessions;
+CREATE TRIGGER vm_revoke_session AFTER DELETE OR UPDATE OF expires_at ON sessions FOR EACH ROW EXECUTE FUNCTION revoke_vm_console_authorization();
+DROP TRIGGER IF EXISTS vm_revoke_node ON nodes;
+CREATE TRIGGER vm_revoke_node AFTER UPDATE OF credential_hash,deleted_at ON nodes FOR EACH ROW EXECUTE FUNCTION revoke_vm_console_authorization();
+
+ALTER TABLE failover_events ADD COLUMN IF NOT EXISTS target_network_id uuid REFERENCES vm_networks(id);
