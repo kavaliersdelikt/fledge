@@ -48,6 +48,9 @@ for(const [grants,allowed] of [[[],false],[['view'],true],[['console'],true],[['
  if(!grants.includes('manage'))status(await call('PATCH',`/api/servers/${server.id}/settings`,{variables:{MOTD:'Unauthorized'}}),404,'manage not implied by detail');
  cookie=adminCookie;
 }
+// A stale or externally seeded VM-only grant must never reveal container jobs.
+const vmGrantDb=new pg.Client({connectionString:process.env.DATABASE_URL});await vmGrantDb.connect();try{await vmGrantDb.query("UPDATE collaborators SET permissions=ARRAY['vm.configure']::text[] WHERE server_id=$1 AND user_id=$2",[server.id,other.id]);}finally{await vmGrantDb.end();}
+cookie='';ok(await call('POST','/api/auth/login',{email:other.email,password:other.temporaryPassword}),'VM-only container collaborator login');const hiddenVmJobs=ok(await call('GET',`/api/jobs?serverId=${server.id}`),'VM-only container jobs');if(hiddenVmJobs.length)throw Error('VM-only grant exposed container jobs');count++;cookie=adminCookie;
 if(process.env.S3_BUCKET&&process.env.S3_ACCESS_KEY&&process.env.S3_SECRET_KEY){
  // Synthetic completed backup: no S3 request is made; test only source authorization.
  const testdb=new pg.Client({connectionString:process.env.DATABASE_URL});await testdb.connect();let backupId;try{backupId=(await testdb.query("INSERT INTO backups(server_id,object_key,state) VALUES($1,$2,'succeeded') RETURNING id",[second.id,'smoke/'+randomBytes(16).toString('hex')])).rows[0].id;}finally{await testdb.end();}
