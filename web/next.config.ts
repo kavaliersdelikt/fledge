@@ -23,6 +23,12 @@ const csp = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Match our ES2017 target: noVNC packages its feature probes as async modules.
+  webpack(config) {
+    config.output = config.output || {};
+    config.output.environment = {...config.output.environment, asyncFunction: true};
+    return config;
+  },
   // The theme engine in ../shared is also used by the API, so it lives outside this folder.
   experimental: { externalDir: true },
   async headers() {

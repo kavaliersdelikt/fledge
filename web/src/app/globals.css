@@ -1886,6 +1886,29 @@ textarea.input {
 .modal--wide {
   max-width: min(620px, calc(100vw - 32px)) !important;
 }
+.modal.notification-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, calc(100vw - 32px));
+  min-height: 0;
+}
+.notification-dialog > .form {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.notification-dialog .chan-events {
+  max-height: min(360px, 40dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.notification-dialog .modal__actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--raised);
+  padding-block: 12px 0;
+  z-index: 1;
+}
 .modal__head {
   display: flex;
   flex-direction: column;
@@ -3248,6 +3271,9 @@ details.disclosure > :not(summary) {
     transition: opacity 120ms linear !important;
     translate: none !important;
     scale: none !important;
+  }
+  .modal.modal {
+    translate: -50% -50% !important;
   }
   .palette.palette {
     translate: -50% 0 !important;

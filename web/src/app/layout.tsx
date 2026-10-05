@@ -1,3 +1,5 @@
+import "@xterm/xterm/css/xterm.css";
+import './mews.css';
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import "./globals.css";
