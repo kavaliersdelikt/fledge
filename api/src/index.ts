@@ -1,3 +1,9 @@
+import {usageRoutes,sweepUsage,observeUsageActivity} from './usage.js';
+import {registerVMConsole} from './vm-console.js';
+import {virtualizationRoutes} from './virtualization.js';
+import {suspensionRoutes,sweepSuspensions} from './suspension.js';
+import {teamRoutes} from './team.js';
+import {supportRoutes,sweepSupport} from './support.js';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
@@ -60,9 +66,9 @@ await app.register(cookie);await registerPanelCors(app,WEB_ORIGIN);await app.reg
 
 await app.register(rateLimit,{max:10000,timeWindow:'1 minute'});
 registerOperations(app);
-app.addHook('preHandler',async(req,reply)=>{await authenticate(req,reply);await adminNetworkPolicy(req);});
-app.setErrorHandler((err,req,reply)=>{req.log.error(err);const sql=(err as any).code;const code=sql==='23505'||sql==='23503'?409:sql==='22P02'?400:(err as any).statusCode||500;reply.code(code).send({error:(err as any).error||(code===500?'internal_error':'request_failed'),message:code>=500&&code!==502&&code!==503&&code!==504?'Internal server error':safeError(err),...((err as any).details&&code<500?{details:(err as any).details}:{})});});
-verificationRoutes(app);recoveryRoutes(app);sftpRoutes(app);transferRoutes(app);authRoutes(app);providerRoutes(app);serverRoutes(app);agentRoutes(app);registerLive(app);
+app.addHook('preHandler',async(req,reply)=>{await authenticate(req,reply);await adminNetworkPolicy(req);observeUsageActivity(req);});
+app.setErrorHandler((err,req,reply)=>{req.log.error(err);const sql=(err as any).code;const code=sql==='23505'||sql==='23503'?409:sql==='22P02'?400:(err as any).statusCode||500;reply.code(code).send({error:(err as any).error||(code===500?'internal_error':'request_failed'),message:code>=500&&code!==502&&code!==503&&code!==504?'Internal server error':safeError(err),...((err as any).details&&code<500?{details:(err as any).details,...((err as any).error==='account_suspended'?{reference:(err as any).details.reference}:{})}:{})});});
+usageRoutes(app);virtualizationRoutes(app);suspensionRoutes(app);teamRoutes(app);supportRoutes(app);verificationRoutes(app);recoveryRoutes(app);sftpRoutes(app);transferRoutes(app);authRoutes(app);providerRoutes(app);serverRoutes(app);agentRoutes(app);registerLive(app);await registerVMConsole(app);
 registerUpdates(app);settingsRoutes(app);
 app.get('/api/storage/status',async()=>({enabled:await backupEnabled()}));agentUpdateRoutes(app);failoverRoutes(app);pluginRoutes(app);addonRoutes(app);templateRoutes(app);portRoutes(app);cloneRoutes(app);automationRoutes(app);crashRoutes(app);notificationRoutes(app);auditRoutes(app);accountRoutes(app);brandingRoutes(app);emailRoutes(app);limitRoutes(app);signupRoutes(app);selfServiceRoutes(app);await registerBilling(app);metricsRoutes(app);openapiRoutes(app);
 app.post('/api/settings/storage/test',async(req)=>{admin(req);const b=req.body as any,cur=(await settings()).storage;if(!b||typeof b!=='object')fail(400,'Expected an object');return testStorage({enabled:true,endpoint:String(b.endpoint??cur.endpoint),region:String(b.region||cur.region),bucket:String(b.bucket??cur.bucket),accessKey:String(b.accessKey??cur.accessKey),forcePathStyle:b.forcePathStyle??cur.forcePathStyle,secretKey:b.secretKey?String(b.secretKey):cur.secretKey});});
@@ -81,11 +87,14 @@ async function sweep(){if(sweeping)return;sweeping=true;try{
  const expired=await pool.query("UPDATE jobs SET state='failed',error='Agent exhausted retry limit',finished_at=now() WHERE state='running' AND lease_until<now() AND attempt>=5 RETURNING id,kind,server_id,payload");for(const j of expired.rows){if(['file.fetch','file.delete','file.rename'].includes(j.kind))await applyAddonResult(pool,j,false,null,'Agent exhausted retry limit').catch(()=>{});if(j.kind==='backup')await pool.query("UPDATE backups SET state='failed',error='Agent exhausted retry limit',completed_at=now() WHERE job_id=$1",[j.id]);if(j.server_id&&['create','reinstall','configure','restore','delete','start','stop','restart','kill'].includes(j.kind))await pool.query("UPDATE servers SET observed_status='failed' WHERE id=$1 AND deleted_at IS NULL AND observed_status<>'deleting'",[j.server_id]);}
  // Each step is isolated so one failing sweep cannot starve the others.
  const step=async(name:string,fn:()=>Promise<unknown>)=>{try{await fn();}catch(e){app.log.error(e,`sweep step ${name} failed`);}};
+ await step('suspensions',()=>sweepSuspensions());
+ await step('support',()=>sweepSupport());
  await step('metrics',()=>flushMetrics());
  await step('automation',()=>sweepAutomation());
  await step('crashes',()=>withAdvisoryLock(727101,sweepCrashes));
  await step('addons',()=>sweepAddons());
  await step('email',()=>sweepOutbox());
+ await step('usage',()=>sweepUsage());
  await step('billing',()=>sweepBillingAll());
  await step('owner-deletes',()=>withAdvisoryLock(727304,sweepOwnerDeletes));
  if(Date.now()-lastSlow>(Number(process.env.SLOW_SWEEP_MS)||60_000)){lastSlow=Date.now();await step('alerts',()=>withAdvisoryLock(727102,sweepAlerts));await step('notifications',()=>sweepNotifications());await step('limits',()=>withAdvisoryLock(727302,sweepLimits));await step('signup',()=>withAdvisoryLock(727303,sweepSignup));await step('audit',()=>sweepAudit());await step('branding',()=>sweepBranding());await step('metrics-trim',()=>withAdvisoryLock(727103,trimMetrics));}

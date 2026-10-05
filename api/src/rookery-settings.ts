@@ -4,8 +4,8 @@ import {fail,looksLikeEmail} from './core.js';
 // billing and the store. Defaults describe a panel that behaves exactly like 0.6.2.1:
 // sign-up, self-service and the store are off, and limits only enforce what is configured.
 
-export const LIMIT_NUMBERS=['servers','runningServers','memoryMb','cpuPercent','diskMb','maxServerMemoryMb','maxServerCpuPercent','maxServerDiskMb','backups','backupsPerServer','backupStorageMb','extraPorts','collaboratorsPerServer','schedulesPerServer'] as const;
-export const LIMIT_FLAGS=['selfCreate','selfDelete','sftp','addons','schedules','collaborators','extraPortsAllowed'] as const;
+export const LIMIT_NUMBERS=['servers','runningServers','memoryMb','cpuPercent','diskMb','maxServerMemoryMb','maxServerCpuPercent','maxServerDiskMb','backups','backupsPerServer','backupStorageMb','extraPorts','collaboratorsPerServer','schedulesPerServer','ticketsPerDay'] as const;
+export const LIMIT_FLAGS=['selfCreate','selfDelete','sftp','addons','schedules','collaborators','extraPortsAllowed','mayOpenTickets'] as const;
 export const LIMIT_LISTS=['allowedTemplates','allowedLocations'] as const;
 export type LimitNumber=typeof LIMIT_NUMBERS[number];
 export type LimitFlag=typeof LIMIT_FLAGS[number];
@@ -23,7 +23,7 @@ export type BillingSettings={provider:string;currency:string;currencies:string[]
  reminderDays:number[];suspendAfterDays:number;terminateAfterDays:number;autoTerminate:boolean;retentionDays:number;finalBackup:boolean;
  cancelDefault:'period_end'|'immediate';allowCustomerCancel:boolean;allowResume:boolean;allowPlanChange:boolean;allowDowngrade:boolean;
  trialEndingDays:number;renewalReminderDays:number;provisionRetryHours:number;failedFulfilment:'manual'|'refund';reconcileMinutes:number;
- checkoutsPerHour:number;orderExpiryHours:number;notifyAdmins:boolean;allowManualGrants:boolean;suspendOnDispute:boolean;billingHoldBlocksStart:boolean};
+ checkoutsPerHour:number;orderExpiryHours:number;notifyAdmins:boolean;allowManualGrants:boolean;suspendOnDispute:boolean;billingHoldBlocksStart:boolean;suspendAccountOnLatePayment:boolean};
 export type StoreSettings={enabled:boolean;publicCatalog:boolean;title:string;intro:string;termsUrl:string;privacyUrl:string;withdrawalNotice:string;requireTerms:boolean;
  companyName:string;companyAddress:string;companyEmail:string;companyTaxId:string;supportUrl:string;
  automaticTax:boolean;collectAddress:boolean;collectTaxId:boolean;promoCodes:boolean;taxNote:string;showSavings:boolean;defaultInterval:'month'|'quarter'|'semiannual'|'year';soldOut:'show'|'hide';requireVerifiedEmail:boolean;maxActivePerCustomer:number};
@@ -38,7 +38,7 @@ export const defaultBilling=():BillingSettings=>({provider:'',currency:'eur',cur
  reminderDays:[0,3,14],suspendAfterDays:7,terminateAfterDays:30,autoTerminate:false,retentionDays:30,finalBackup:true,
  cancelDefault:'period_end',allowCustomerCancel:true,allowResume:true,allowPlanChange:true,allowDowngrade:true,
  trialEndingDays:3,renewalReminderDays:7,provisionRetryHours:24,failedFulfilment:'manual',reconcileMinutes:15,
- checkoutsPerHour:5,orderExpiryHours:24,notifyAdmins:true,allowManualGrants:true,suspendOnDispute:true,billingHoldBlocksStart:true});
+ checkoutsPerHour:5,orderExpiryHours:24,notifyAdmins:true,allowManualGrants:true,suspendOnDispute:true,billingHoldBlocksStart:true,suspendAccountOnLatePayment:false});
 export const defaultStore=():StoreSettings=>({enabled:false,publicCatalog:false,title:'Store',intro:'',termsUrl:'',privacyUrl:'',withdrawalNotice:'',requireTerms:true,
  companyName:'',companyAddress:'',companyEmail:'',companyTaxId:'',supportUrl:'',automaticTax:false,collectAddress:false,collectTaxId:false,promoCodes:false,taxNote:'',
  showSavings:true,defaultInterval:'month',soldOut:'show',requireVerifiedEmail:true,maxActivePerCustomer:20});
@@ -153,7 +153,7 @@ export function validateRookery(section:string,body:any,current:any):any{
     provisionRetryHours:int(body.provisionRetryHours,'Retry provisioning for (hours)',1,168),failedFulfilment:oneOf(body.failedFulfilment,'When a paid server cannot be created',['manual','refund'] as const),
     reconcileMinutes:int(body.reconcileMinutes,'Reconcile every (minutes)',5,1440),checkoutsPerHour:int(body.checkoutsPerHour,'Checkouts per customer and hour',1,100),
     orderExpiryHours:int(body.orderExpiryHours,'Order expiry (hours)',1,168),notifyAdmins:bool(body.notifyAdmins,'Notify administrators'),
-    allowManualGrants:bool(body.allowManualGrants,'Manual grants'),suspendOnDispute:bool(body.suspendOnDispute,'Suspend on dispute'),billingHoldBlocksStart:bool(body.billingHoldBlocksStart,'Billing suspension blocks start'),
+    allowManualGrants:bool(body.allowManualGrants,'Manual grants'),suspendOnDispute:bool(body.suspendOnDispute,'Suspend on dispute'),billingHoldBlocksStart:bool(body.billingHoldBlocksStart,'Billing suspension blocks start'),suspendAccountOnLatePayment:body.suspendAccountOnLatePayment===undefined?false:bool(body.suspendAccountOnLatePayment,'Suspend account for late payment'),
    };
    if(v.terminateAfterDays<=v.suspendAfterDays)fail(400,'Termination must come after suspension');
    return v;

@@ -28,7 +28,7 @@ export async function bump(key:string,seconds:number):Promise<number>{
  return Number(r.rows[0].attempts);
 }
 
-async function verifyCaptcha(provider:'turnstile'|'hcaptcha',secret:string,siteKey:string,response:unknown,ip:string){
+export async function verifyCaptcha(provider:'turnstile'|'hcaptcha',secret:string,siteKey:string,response:unknown,ip:string){
  if(typeof response!=='string'||!response||response.length>4096)return false;
  const override=process.env.FLEDGE_TEST_CAPTCHA_URL;
  const url=override||(provider==='turnstile'?'https://challenges.cloudflare.com/turnstile/v0/siteverify':'https://api.hcaptcha.com/siteverify');
@@ -271,10 +271,10 @@ export function signupRoutes(app:FastifyInstance){
   browserOnly(req);
   const cfg=(await settings()).signup;
   if(req.actor!.role!=='customer')fail(403,'Administrator accounts cannot be deleted here.');
-  if(!cfg.allowAccountDeletion)fail(403,'Deleting your account is turned off. Contact support.');
+  if(!cfg.allowAccountDeletion&&!req.actor!.suspended)fail(403,'Deleting your account is turned off. Contact support.');
   await ownPassword(req,(req.body as any)?.password);
   const servers=Number((await pool.query('SELECT count(*) n FROM servers WHERE owner_id=$1 AND deleted_at IS NULL',[req.actor!.id])).rows[0].n);
-  if(servers)fail(409,'Delete your servers first. Deleting an account does not delete servers by itself.');
+  if(servers&&!req.actor!.suspended)fail(409,'Delete your servers first. Deleting an account does not delete servers by itself.');
   const subs=Number((await pool.query("SELECT count(*) n FROM subscriptions WHERE user_id=$1 AND status NOT IN ('canceled','terminated')",[req.actor!.id])).rows[0].n);
   if(subs)fail(409,'Cancel your subscriptions first.');
   const when=(await pool.query("UPDATE users SET status='deletion_pending',deletion_at=now()+make_interval(days=>$2) WHERE id=$1 RETURNING deletion_at",[req.actor!.id,cfg.deletionGraceDays])).rows[0].deletion_at as Date;
@@ -285,14 +285,14 @@ export function signupRoutes(app:FastifyInstance){
  });
  app.post('/api/account/delete/cancel',async(req)=>{
   browserOnly(req);
-  const r=await pool.query("UPDATE users SET status='active',deletion_at=NULL WHERE id=$1 AND status='deletion_pending' RETURNING id",[req.actor!.id]);
+  const r=await pool.query("UPDATE users SET status=CASE WHEN EXISTS(SELECT 1 FROM account_suspensions a WHERE a.user_id=users.id AND a.lifted_at IS NULL) THEN 'suspended' ELSE 'active' END,deletion_at=NULL WHERE id=$1 AND status='deletion_pending' RETURNING id",[req.actor!.id]);
   if(!r.rowCount)fail(409,'No deletion is scheduled.');
   await audit(req.actor!.id,'account.delete.cancel','user',req.actor!.id);
   return {ok:true};
  });
  app.get('/api/account/export',async(req,reply)=>{
   browserOnly(req);
-  if(!(await settings()).signup.allowDataExport&&req.actor!.role!=='admin')fail(403,'Data export is turned off.');
+  if(!(await settings()).signup.allowDataExport&&req.actor!.role!=='admin'&&!req.actor!.suspended)fail(403,'Data export is turned off.');
   const id=req.actor!.id;
   const q=async(sql:string)=>(await pool.query(sql,[id])).rows;
   const doc={exportedAt:new Date().toISOString(),
@@ -301,6 +301,10 @@ export function signupRoutes(app:FastifyInstance){
    subscriptions:await q("SELECT s.id,p.name AS plan,s.status,s.cycle,s.amount,s.currency,s.current_period_end,s.created_at FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.user_id=$1"),
    invoices:await q("SELECT number,status,amount_due,amount_paid,currency,period_start,period_end,created_at FROM invoices WHERE user_id=$1"),
    orders:await q("SELECT id,status,created_at,paid_at FROM orders WHERE user_id=$1"),
+   supportTickets:await q("SELECT id,number,subject,status,created_at,solved_at,rating FROM support_tickets WHERE requester_user_id=$1"),
+   supportMessages:await q("SELECT m.id,m.ticket_id,m.body,m.author_kind,m.created_at FROM support_messages m JOIN support_tickets t ON t.id=m.ticket_id WHERE t.requester_user_id=$1 AND m.kind='reply'"),
+   supportAttachments:await q("SELECT a.name,a.mime,a.size,encode(a.bytes,'base64') AS content FROM support_attachments a JOIN support_messages m ON m.id=a.message_id JOIN support_tickets t ON t.id=a.ticket_id WHERE t.requester_user_id=$1 AND m.kind='reply'"),
+   suspensions:await q("SELECT reference,reason,message,created_at,lifted_at FROM account_suspensions WHERE user_id=$1"),
    sessions:await q("SELECT ip,user_agent,created_at,last_seen_at FROM sessions WHERE user_id=$1")};
   reply.header('content-disposition','attachment; filename="account-export.json"').header('content-type','application/json');
   return JSON.stringify(doc,null,2);
@@ -312,11 +316,15 @@ export async function finishDeletions(){
  const due=(await pool.query("SELECT id,email FROM users WHERE status='deletion_pending' AND deletion_at<=now() AND role='customer' LIMIT 50")).rows;
  for(const u of due){
   const hasServers=Number((await pool.query('SELECT count(*) n FROM servers WHERE owner_id=$1 AND deleted_at IS NULL',[u.id])).rows[0].n);
-  if(hasServers){await pool.query("UPDATE users SET status='active',deletion_at=NULL WHERE id=$1",[u.id]);continue;}
+  if(hasServers){
+   if((await pool.query('SELECT 1 FROM account_suspensions WHERE user_id=$1 AND lifted_at IS NULL AND allow_account_deletion',[u.id])).rowCount){for(const s of (await pool.query("SELECT * FROM servers WHERE owner_id=$1 AND deleted_at IS NULL AND observed_status<>'deleting'",[u.id])).rows){await pool.query("INSERT INTO jobs(node_id,server_id,kind) VALUES($1,$2,'delete')",[s.node_id,s.id]);await pool.query("UPDATE servers SET observed_status='deleting' WHERE id=$1",[s.id]);}}
+   else await pool.query("UPDATE users SET status='active',deletion_at=NULL WHERE id=$1",[u.id]);continue;
+  }
   const c=await pool.connect();
   try{
    await c.query('BEGIN');
-   await c.query('DELETE FROM sessions WHERE user_id=$1',[u.id]);await c.query('DELETE FROM api_tokens WHERE user_id=$1',[u.id]);await c.query('DELETE FROM passkeys WHERE user_id=$1',[u.id]);
+   await c.query("UPDATE support_tickets SET requester_email='removed@deleted.invalid',requester_user_id=NULL,diagnostics='{}',rating_comment=NULL WHERE requester_user_id=$1",[u.id]);await c.query('UPDATE support_messages SET author_user_id=NULL WHERE author_user_id=$1',[u.id]);
+   await c.query('DELETE FROM support_drafts WHERE user_id=$1',[u.id]);await c.query('DELETE FROM support_presence WHERE user_id=$1',[u.id]);await c.query('UPDATE support_attachments SET uploaded_by=NULL WHERE uploaded_by=$1',[u.id]);await c.query('DELETE FROM sessions WHERE user_id=$1',[u.id]);await c.query('DELETE FROM api_tokens WHERE user_id=$1',[u.id]);await c.query('DELETE FROM passkeys WHERE user_id=$1',[u.id]);
    await c.query('DELETE FROM user_tokens WHERE user_id=$1',[u.id]);await c.query('DELETE FROM notification_channels WHERE user_id=$1',[u.id]);await c.query('DELETE FROM collaborators WHERE user_id=$1',[u.id]);
    await c.query('DELETE FROM recovery_codes WHERE user_id=$1',[u.id]);await c.query('DELETE FROM notifications WHERE user_id=$1',[u.id]);await c.query('DELETE FROM billing_customers WHERE user_id=$1',[u.id]);
    await c.query("UPDATE users SET email=$2,password_hash=$3,totp_secret=NULL,totp_pending=NULL,disabled=true,display_name=NULL,quota='{}'::jsonb,preferences='{}'::jsonb,terms_ip_hash=NULL,status='active',deletion_at=NULL WHERE id=$1",[u.id,`deleted-${u.id}@deleted.invalid`,hash(randomBytes(32).toString('hex'))]);

@@ -86,11 +86,11 @@ export async function sweepCrashes(){
 
 /** Disk space warnings and the "new version available" notice. */
 export async function sweepAlerts(){
- const rows=(await pool.query("SELECT id,name,disk_mb,usage,alert_state FROM servers WHERE deleted_at IS NULL AND observed_status='running' AND (usage->>'diskBytes') IS NOT NULL")).rows;
+ const rows=(await pool.query("SELECT id,name,runtime,disk_mb,usage,alert_state FROM servers WHERE deleted_at IS NULL AND observed_status='running' AND (usage->>'diskBytes') IS NOT NULL")).rows;
  for(const s of rows){
   const used=Number(s.usage.diskBytes),ratio=used/(s.disk_mb*1048576),state:any={...(s.alert_state||{})};
   if(ratio>=0.9&&!state.diskHigh){
-   await emit({kind:'server.disk_high',title:`${s.name} is almost out of disk space`,body:`${Math.round(ratio*100)}% of its ${s.disk_mb} MB is used.`,serverId:s.id,dedupe:{key:`disk:${s.id}`,minutes:360}});
+   await emit({kind:s.runtime==='vm'?'vm.resource_warning':'server.disk_high',title:`${s.name} is almost out of disk space`,body:`${Math.round(ratio*100)}% of its ${s.disk_mb} MB is used.`,serverId:s.id,dedupe:{key:`disk:${s.id}`,minutes:360}});
    state.diskHigh=true;await pool.query('UPDATE servers SET alert_state=$2 WHERE id=$1',[s.id,JSON.stringify(state)]);
   }else if(ratio<0.8&&state.diskHigh){
    delete state.diskHigh;await pool.query('UPDATE servers SET alert_state=$2 WHERE id=$1',[s.id,JSON.stringify(state)]);
