@@ -39,4 +39,4 @@ or the API only sees the proxy's address.
 
 See [Account security](/panel/account-security) for two-factor, passkeys, devices and API tokens. The account menu
 (bottom of the sidebar) also lets you choose **Light**, **Dark** or **Match this device** for yourself, unless an administrator
-turned that off under [Appearance](/panel/appearance#each-persons-choice).
+turned that off under [Appearance](/panel/appearance#each-person-s-choice).

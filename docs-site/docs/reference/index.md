@@ -16,3 +16,7 @@ Lookup tables. Most are **generated from the source** when the site is built, so
 | [Database schema](/reference/schema) | Every table and column |
 | [Agent job kinds](/reference/jobs) | Every job the agent handles |
 | [Endpoint reference](/api/reference/) | Every HTTP operation, generated from OpenAPI |
+
+## Administrator grants
+
+The [administrator permission catalogue](/reference/permissions) is generated from the API source, including the presets used by Team.

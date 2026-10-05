@@ -135,3 +135,7 @@ Their subscriptions with status, price, renewal or end date and the server; a cl
 Customer: `GET /api/billing`, `POST /api/billing/portal`, `POST /api/billing/subscriptions/:id/cancel|resume|change`, `GET /api/billing/preview-change`.
 Administrator: `/api/billing/admin/subscriptions…`, `/api/billing/grants`, `/api/billing/overview`, `/api/billing/invoices`, `/api/billing/health`, `/api/billing/events`.
 Payment providers call `POST /api/billing/webhooks/:provider`. See the [API reference](/api/reference/billing).
+
+## Account holds
+
+The default late-payment action still holds the affected server. The optional whole-account switch pauses the customer with an explanation and lifts after overdue payment is settled. Account, billing and administrator server holds are released independently; the last applicable hold controls restarting. Paid fulfilment waits through a suspension. A suspended payment portal must disable plan changes; unsupported providers leave invoice payment available instead. See [Suspension](/panel/suspension).

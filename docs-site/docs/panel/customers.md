@@ -54,3 +54,7 @@ Customers see their own usage (`GET /api/limits/me`, and the older `GET /api/acc
 
 A customer (or an administrator) can invite another customer to a single server with chosen permissions on the server's
 **Access** tab. Collaborators need an existing customer account.
+
+## Suspension and blocked sign-in
+
+**Suspend account** opens the explained pause and appeal flow. **Block sign-in** is the separate hard lock; it does not stop servers. See [Account suspension](/panel/suspension). Customer creation and limits need `customers.edit`, suspension needs `customers.suspend`, password and device operations need `customers.security`, and deletion needs `customers.delete`.

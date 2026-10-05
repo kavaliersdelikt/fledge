@@ -54,3 +54,9 @@ Besides the emails you expect, the panel emails a person when their **password**
 
 `GET /api/email/templates`, `PUT|DELETE /api/email/templates/:id`, `POST /api/email/templates/:id/preview|test`, `GET /api/email/outbox`, `POST /api/email/outbox/:id/retry`. See the
 [API reference](/api/reference/email).
+
+## Suspension and support mail
+
+Mews adds editable suspension, appeal, support receipt/reply, resolution, closure, nudge, rating and deadline-warning templates, plus team transfer confirmation. They share the normal preview, linting, delivery log and retrying outbox. See the generated [template reference](/reference/email-templates).
+
+![Account suspension email preview](/screenshots/email-suspended.webp){.screenshot}

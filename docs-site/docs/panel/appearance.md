@@ -119,7 +119,7 @@ it is saved and every time it is served:
 - at most 32 KB, with balanced braces.
 
 Because it cannot load anything from another server, CSS cannot send data out. It can still hide or rearrange parts of the
-panel, so keep [safe mode](/operate/branding-recovery#safe-mode) in mind. The colour variables are named in
+panel, so keep [safe mode](/operate/branding-recovery#_2-safe-mode) in mind. The colour variables are named in
 [Theme tokens and presets](/reference/theme-tokens).
 
 **Share or back up.** *Export theme* downloads a `fledge-theme` JSON file with everything on these tabs and the images.

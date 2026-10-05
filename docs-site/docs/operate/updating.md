@@ -60,3 +60,9 @@ docker compose up -d --build
 
 Restore the database from `.backups/` only if the new schema broke something: additive tables and columns are
 ignored by older code, so a code-only rollback is usually enough.
+
+## Upgrading to Mews
+
+0.9.1.1 adds account suspension and help desk tables and administrator grants. Back up the database before upgrading. The additive schema can be applied again safely. The oldest active, unblocked administrator becomes the super administrator; other existing administrators retain full grants. Existing sign-in blocks and server holds keep their meaning.
+
+The built-in help desk, public articles, abuse reports, whole-account billing suspension and destructive retention are off by default. Review [Team](/panel/team) and [support setup](/operate/support-setup) after upgrading. Keep the panel API and node agent on the same release.

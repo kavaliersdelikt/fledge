@@ -28,7 +28,7 @@ See [Install](/operate/install) for the details and the manual route.
 
 ## 2. Create the administrator
 
-The first visit creates the administrator account and asks you to enrol an authenticator app. Save the recovery
+The first visit creates the super administrator account and asks you to enrol an authenticator app. Save the recovery
 codes it shows; they are the only way back in if you lose the device.
 
 ![First sign-in and two-factor setup](/screenshots/first-run.webp){.screenshot}
@@ -57,3 +57,5 @@ codes it shows; they are the only way back in if you lose the device.
 - Put the panel behind [TLS](/operate/reverse-proxy) before exposing it.
 - Install the [Modrinth plugins](/plugins/using) to add mods and plugins from the server page.
 - Add [schedules](/panel/schedules) and [crash protection](/panel/crash-protection).
+
+Invite additional administrators and delegate grants through [Team](/panel/team).

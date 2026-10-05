@@ -87,3 +87,22 @@ An owner (or an administrator) can invite another customer to one server and cho
 | "Confirm your email address" | The customer signed up themselves and has not confirmed; see [Sign-up](/panel/signup) |
 | Customer cannot delete a server | A subscription server (cancel the subscription), deleting turned off, or **May delete their own servers** is No |
 | A customer lost a right after a payment problem | The account plan that gave it is suspended or ended; see [Billing and subscriptions](/panel/billing) |
+
+## Suspended accounts
+
+Account suspension overrides customer and collaborator grants. Billing, permitted account deletion, data export, security and the linked appeal remain available. Server operations, purchases and API tokens are refused. Backup download is opt-in for each suspension. See [Suspension](/panel/suspension) and the separate [administrator catalogue](/reference/permissions).
+
+**May open support tickets** and **New tickets per day** are available in the layered limits editor. These do not disable suspension appeals.
+
+| Action | Active customer | Suspended customer |
+| --- | --- | --- |
+| Server controls, console, files and SFTP | Within server grants | Refused |
+| Buying and plan changes | Within store rules | Refused |
+| Own invoices, paying, cancel and resume | Yes | Yes |
+| Password, authenticator, passkeys and devices | Yes | Yes |
+| Data export | When enabled | Always |
+| Account deletion | Within account settings | Per suspension option |
+| Backup download | Within server grants | Per suspension option |
+| General tickets and articles | When desk enabled | Refused |
+| Linked suspension appeal | When applicable | When appeals enabled |
+| API tokens | Within token scopes | Refused |

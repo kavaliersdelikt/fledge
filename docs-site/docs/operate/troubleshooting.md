@@ -20,7 +20,7 @@ Behind a proxy see [Reverse proxy and TLS](/operate/reverse-proxy). After changi
 
 ## The panel looks wrong after changing the appearance
 
-Use [safe mode](/operate/branding-recovery#safe-mode) (`?safe=1`) to get in, then restore an earlier version or reset. See
+Use [safe mode](/operate/branding-recovery#_2-safe-mode) (`?safe=1`) to get in, then restore an earlier version or reset. See
 [Recovering from a bad theme](/operate/branding-recovery).
 
 ## A node shows as disconnected
@@ -89,3 +89,7 @@ Object storage is not configured or not reachable. See [Backups and object stora
 Include the panel version, the relevant log lines and what you expected, and **redact credentials, enrollment tokens
 and backup URLs**. Ask in the [Discord](https://discord.gg/gu49ZF6tQh) or open an
 [issue](https://github.com/kavaliersdelikt/fledge/issues/new).
+
+## Team, suspension and support
+
+A 403 naming a permission means the super administrator must review the current grants in Team. A suspension response includes `account_suspended` and its reference; server operations stay blocked until the applicable holds lift. If support is absent, check Desk settings: the general desk is off by default. Abuse reports also require configured bot protection. Email reply ingestion needs the signed inbox bridge described in [Support setup](/operate/support-setup). For lost super administrator access use the [shell recovery procedure](/panel/team#recovery-from-the-server).

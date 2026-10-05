@@ -24,6 +24,270 @@ Every email the panel sends, with the values you can use in it. Edit them under 
 
 ## Account
 
+### Account suspended
+
+`account_suspended` · to the customer · always sent
+
+Account suspended
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Account suspended ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Account restored
+
+`account_restored` · to the customer · always sent
+
+Account restored
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Account restored ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Reply to your appeal
+
+`suspension_reply` · to the customer · always sent
+
+Reply to your appeal
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Reply to your appeal ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Suspension appeal received
+
+`suspension_appeal_received` · to administrators · always sent
+
+Suspension appeal received
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Suspension appeal received ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Ticket received
+
+`support_received` · to the customer · always sent
+
+Ticket received
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Ticket received ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Support reply
+
+`support_reply` · to the customer · always sent
+
+Support reply
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Support reply ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Ticket solved
+
+`support_solved` · to the customer · always sent
+
+Ticket solved
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Ticket solved ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Ticket closed
+
+`support_closed` · to the customer · always sent
+
+Ticket closed
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Ticket closed ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Waiting for your reply
+
+`support_nudge` · to the customer · always sent
+
+Waiting for your reply
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Waiting for your reply ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Rate your support experience
+
+`support_rating` · to the customer · always sent
+
+Rate your support experience
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Rate your support experience ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Support deadline warning
+
+`support_deadline_warning` · to administrators · always sent
+
+Support deadline warning
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Support deadline warning ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
+### Confirm super administrator transfer
+
+`team_transfer` · to administrators · always sent
+
+Confirm super administrator transfer
+
+| Variable | Meaning | Example |
+| --- | --- | --- |
+| `{{reference}}` | Account or ticket reference | MWS-1234ABCD-01 |
+| `{{message}}` | Message | Please review your account. |
+| `{{link}}` | The one-time link | https://panel.example.com/?token=abc |
+
+Subject: `Confirm super administrator transfer ? {{brand}}`
+
+```text
+{{message}}
+
+{{#if reference}}Reference: {{reference}}{{/if}}
+
+[button: Open panel | {{link}}]
+```
+
 ### Verify your email address
 
 `verify_email` · to the customer · always sent

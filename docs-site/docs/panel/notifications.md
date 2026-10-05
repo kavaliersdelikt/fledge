@@ -46,3 +46,11 @@ Administrators' channels may use internal addresses, for example a Mattermost se
 
 - `fledge_notification_channels_failing` in [metrics](/operate/monitoring) counts channels whose last delivery failed.
 - Inbox entries are kept for a limited time and trimmed automatically.
+
+## Mews events and recipients
+
+Selectable events cover suspension creation, edits and lifting; appeals and replies; retention scheduling and cancellation; ticket assignment, agent replies, status changes, reopening, ratings and abuse reports. VM events cover confirmed provisioning, failed power operations, installation changes, snapshots, restore, migration outcomes and storage warnings. The [event reference](/reference/events) is generated from the shipping catalogue and lists scope, severity and required grants.
+
+Account and ticket events identify their recipients directly. They do not need a server association. Customer inboxes and external payloads exclude private notes, internal suspension reasons, reporter details and secrets. Administrator channels are checked against the recipient administrator's current grants; changing permissions affects pending delivery too.
+
+Events follow committed database transitions or confirmed agent outcomes. Inbox deduplication and durable delivery records prevent sweeps or repeated job acknowledgements creating new deliveries. Generic webhooks receive a stable `Idempotency-Key` on retries. External delivery is at least once: receivers should deduplicate that key; Discord cannot guarantee exactly-once delivery after an ambiguous timeout.
