@@ -9,7 +9,6 @@ VM hosting is disabled by default. Use a dedicated Linux x86-64 host with usable
 Install libvirt/QEMU, `qemu-img`, `genisoimage`, `nft`, `setfacl`, `ip` and `bridge` from iproute2. Install OVMF for UEFI and `swtpm` and `swtpm-tools` (including `swtpm_setup`) for TPM. TPM state directories require libvirt **10.10 or later**. Keep libvirt's AppArmor/SELinux confinement enabled and allow only the configured Fledge data paths through the distribution's policy.
 
 ```ini
-VM_ENABLED=true
 VM_QEMU_USER=libvirt-qemu
 VM_TPM_USER=tss
 VM_UEFI_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd
@@ -28,7 +27,7 @@ For NAT, enable forwarding and libvirt's NAT rules. Fledge adds per-VM nftables 
 
 For routed IPv4/IPv6, arrange provider routes, return paths and forwarding before enabling the pool. Guest bridge ports are isolated and native nftables ingress filters enforce approved MAC/IP identities. Host service access is restricted; guest firewall rules still govern public services. The panel cannot install an upstream route at your provider.
 
-Discovery reports KVM, architecture, libvirt, firmware, TPM, required tools and active network names. **Virtual machines > Nodes** shows missing prerequisites. An unavailable capability prevents placement before reservations are taken.
+Discovery reports KVM, architecture, libvirt, firmware, TPM, required tools and active network names. In **Virtual machines > Nodes**, wait for the node to connect and pass its checks, then switch on **Allow new VMs on this node**. The switch is disabled until the Linux agent reports KVM, libvirt and network isolation ready. This panel allow-list is the explicit opt-in; disabling it prevents new placements and migrations without stopping existing guests. An unavailable capability prevents placement before reservations are taken. No `VM_ENABLED` environment flag is required.
 
 ## Console relay
 

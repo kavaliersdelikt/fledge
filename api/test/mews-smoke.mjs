@@ -218,6 +218,16 @@ try {
     "team protected",
   );
   const db = (sql, args) => dbQuery(stack.databaseUrl, sql, args);
+  check(!(await call("GET", "/api/support/inbound/settings")).data?.enabled, "inbound bridge starts disabled");
+  status(await call("PUT", "/api/support/inbound/settings", { enabled: true }), 409, "bridge cannot enable without a secret");
+  const bridge = ok(await call("POST", "/api/support/inbound/secret", {}), "generate bridge secret");
+  check(bridge.secret.length >= 32, "generated bridge key has enough entropy");
+  const storedBridge = (await db("SELECT value,secret FROM settings WHERE key='support_inbound'"))[0];
+  check(storedBridge.value.enabled === false && !storedBridge.secret.includes(bridge.secret), "bridge secret is stored encrypted and stays disabled until enabled");
+  ok(await call("PUT", "/api/support/inbound/settings", { enabled: true }), "enable bridge from panel");
+  check((await call("GET", "/api/support/inbound/settings")).data.enabled, "panel reports enabled bridge state");
+  ok(await call("PUT", "/api/support/inbound/settings", { enabled: false }), "disable bridge from panel");
+  check(!(await call("GET", "/api/support/inbound/settings")).data.enabled, "panel disables inbound replies immediately");
   const listed = ok(await call("GET", "/api/support/tickets"), "queue");
   check(
     listed.find((t) => t.id === ticket.id).unread,

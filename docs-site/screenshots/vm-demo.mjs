@@ -18,7 +18,7 @@ export async function seedVM(demo, ownerId) {
   // guest fixture rather than falsely reporting a hardware KVM capability.
   await dbQuery(stack.databaseUrl,"INSERT INTO servers(id,name,owner_id,node_id,template_id,runtime,vm_config,memory_mb,cpu_percent,disk_mb,port,desired_status,observed_status) VALUES($1,'Alpine Linux',$2,$3,'linux-vm','vm',$4,$5,$6,$7,25000,'running','running')",[actual.id,ownerId,node.id,JSON.stringify(config),actual.memoryMb,actual.cpuPercent,actual.diskMb]);
   await dbQuery(stack.databaseUrl,'UPDATE vm_addresses SET server_id=$1 WHERE network_id=$2 AND address=$3',[actual.id,network.id,actual.vm.address]);
-  const heartbeat=async()=>ok(await c.call('POST','/api/agent/heartbeat',{version:'0.9.1.1',agent:{os:'linux',arch:'amd64',virtualization:{enabled:true,kvm:false,libvirt:true,arch:'amd64',nft:true,isolation:true,networks:['fledge-guests']}},servers:[{id:actual.id,status:'running',diskEnforced:false}]},node.headers),'verification node');
+  const heartbeat=async()=>ok(await c.call('POST','/api/agent/heartbeat',{version:'0.9.1.2',agent:{os:'linux',arch:'amd64',virtualization:{enabled:true,kvm:false,libvirt:true,arch:'amd64',nft:true,isolation:true,networks:['fledge-guests']}},servers:[{id:actual.id,status:'running',diskEnforced:false}]},node.headers),'verification node');
   await heartbeat();const timer=setInterval(()=>heartbeat().catch(()=>{}),5000);timer.unref();
   if(process.env.VM_RELAY_CONFIG)writeFileSync(process.env.VM_RELAY_CONFIG,JSON.stringify({API:stack.base.replace('127.0.0.1','host.docker.internal').replace('localhost','host.docker.internal'),NodeID:node.id,Credential:node.headers.authorization.slice(7)}),{mode:0o600});
   return {id:actual.id,node,stop:()=>clearInterval(timer)};

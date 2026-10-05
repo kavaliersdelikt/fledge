@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.9.1.1"
+var version = "0.9.1.2"
 
 const maxTransfer = 8 << 20
 

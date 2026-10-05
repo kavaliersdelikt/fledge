@@ -1,5 +1,5 @@
 {
-  "SUPPORT_INBOUND_SECRET": {"scope": "api", "group": "email", "description": "Optional inbox-bridge HMAC secret (at least 32 characters). Empty disables inbound help-desk email. Never expose this secret to a browser."},
+  "SUPPORT_INBOUND_SECRET": {"scope": "api", "group": "email", "description": "Legacy fallback for existing installs only. New bridge secrets are generated and stored encrypted in Help desk → Settings → Inbound."},
   "_comment": "One entry per environment variable the code or compose file reads. The generator fails when a variable is used but not described here or in .env.example.",
   "POSTGRES_PASSWORD": {"scope": "compose", "group": "required", "description": "Password of the bundled PostgreSQL database. Use URL-safe letters and digits: it is placed inside DATABASE_URL."},
   "ENCRYPTION_KEY": {"scope": "compose", "group": "required", "description": "64 hex characters (`openssl rand -hex 32`). Encrypts two-factor secrets, stored S3 credentials, SMTP passwords and plugin secrets. Keep it permanently; replacing it makes them unreadable."},
@@ -59,7 +59,6 @@
   "SFTP_HOST_KEY": {"scope": "agent", "group": "agent", "description": "Path of the SFTP host key. Defaults to `sftp_host_key` beside the credential file."},
   "ALLOW_INSECURE_HTTP": {"scope": "agent", "group": "agent", "description": "`true` allows an HTTP panel URL; local evaluation only."},
   "FLEDGE_DOCKER_TEST_IMAGE": {"scope": "test", "group": "test", "description": "Agent tests only: an image already on the local engine for the live stdin test."},
-  "VM_ENABLED": {"scope": "agent", "group": "agent", "default": "false", "description": "Opt-in Linux x86-64 KVM/libvirt hosting."},
   "VM_QEMU_USER": {"scope": "agent", "group": "agent", "default": "libvirt-qemu", "description": "QEMU account granted access to managed VM storage."},
   "VM_UEFI_CODE": {"scope": "agent", "group": "agent", "default": "/usr/share/OVMF/OVMF_CODE_4M.fd", "description": "UEFI firmware code image."},
   "VM_UEFI_SECURE_CODE": {"scope": "agent", "group": "agent", "default": "/usr/share/OVMF/OVMF_CODE_4M.ms.fd", "description": "Secure Boot firmware code image."},
@@ -69,7 +68,7 @@
   "API_REPLICAS": {"scope": "api", "group": "api", "default": "1", "description": "Number of API instances; values above one require VM_REDIS_URL."},
   "BACKUP_MAX_BYTES": {"scope": "api, agent", "group": "storage", "default": "68719476736", "description": "Maximum compressed upload and expanded backup size in bytes. Set the same value on API and agents; 1 GiB to 1 TiB. Default 64 GiB. Recovery needs additional staging space."},
   "VM_TPM_USER": {"scope": "agent", "group": "virtualization", "default": "tss", "description": "Host account used by libvirt swtpm. Grants traversal and TPM-state ACLs without disabling host confinement."},
-  "USAGE_INTAKE_REPOSITORY": {"scope": "api", "group": "usage", "description": "Optional public owner/repository for encrypted opt-in installation reports. Configure the private GitHub Actions collector before enabling."},
-  "USAGE_GITHUB_CLIENT_ID": {"scope": "api", "group": "usage", "description": "Public GitHub App client ID with device flow and minimal public intake issue permissions. No shared maintainer token belongs in the panel."},
-  "USAGE_INTAKE_PUBLIC_KEY": {"scope": "api", "group": "usage", "description": "Base64-encoded RSA public PEM, at least 2048 bits. The private key belongs only in the private collector repository secrets."}
+  "USAGE_INTAKE_REPOSITORY": {"scope": "api", "group": "usage", "description": "Optional override for the intake repository. Normally configured in Settings → Panel → Usage reporting; no environment entry is required."},
+  "USAGE_GITHUB_CLIENT_ID": {"scope": "api", "group": "usage", "description": "Optional override for the public GitHub App Client ID. Normally configured in the panel; no environment entry is required."},
+  "USAGE_INTAKE_PUBLIC_KEY": {"scope": "api", "group": "usage", "description": "Optional override for the base64 RSA public key. Normally configured in the panel; the matching private key stays only in the private collector."}
 }

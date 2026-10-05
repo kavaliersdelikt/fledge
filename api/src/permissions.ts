@@ -128,6 +128,8 @@ export function routePermission(
   }
   if (p.startsWith("/api/nodes")) return read ? "nodes.view" : "nodes.manage";
   if (p.startsWith("/api/support")) {
+    if (p.endsWith("/inbound/settings")) return read ? "support.view" : "support.manage";
+    if (p.endsWith("/inbound/secret")) return "support.manage";
     if (p.endsWith("/suspension-settings")) return "customers.suspend";
     if (p.includes("/reports")) return "support.reports";
     if (p.includes("/articles") || p.endsWith("/search"))
@@ -171,6 +173,7 @@ export function routePermission(
     p.startsWith("/api/agent-releases")
   )
     return read ? "settings.view" : "updates.apply";
+  if (p === "/api/activity/overview") return "servers.view";
   if (
     p.startsWith("/api/audit") ||
     p.startsWith("/api/activity") ||

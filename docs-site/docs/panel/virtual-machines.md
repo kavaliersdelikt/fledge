@@ -6,6 +6,8 @@ title: Virtual machines
 
 Mews adds an opt-in Linux x86-64 KVM/libvirt runtime alongside Docker. Containers remain the default; a server's runtime cannot change after creation.
 
+**Operators:** start with the linked [VM host setup guide](/operate/virtual-machines). After the agent reports ready, turn on **Allow new VMs on this node** in the panel's **Virtual machines → Nodes** tab. Host packages and routing must be prepared first.
+
 ## Prepare a host
 
 Follow [VM node setup](../operate/virtual-machines.md) before enabling templates. In **Virtual machines**, administrators register checksum-verified cloud images, installation ISOs and driver ISOs, immutable hardware profiles, and configured libvirt networks with address pools. Disable an entry to prevent new use; running guests keep their approved configuration. Changes require a new catalogue entry.

@@ -109,6 +109,7 @@ export default defineConfig({
             { text: 'Updating and rollback', link: '/operate/updating' },
             { text: 'Backups and object storage', link: '/operate/backups' },
             { text: 'Failover and moves', link: '/operate/failover' },
+            { text: 'VM host setup', link: '/operate/virtual-machines' },
             { text: 'Email', link: '/operate/email' },
             { text: 'Set up support', link: '/operate/support-setup' },
             { text: 'Selling servers: going live', link: '/operate/selling' },

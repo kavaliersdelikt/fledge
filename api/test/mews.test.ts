@@ -28,6 +28,10 @@ test("presets contain known unique grants; team management is exclusive", () => 
   assert(!validPermissions(["team.manage"]));
   assert(!validPermissions(["servers.view", "servers.view"]));
 });
+test("overview gets a narrow operational feed while audit stays restricted", () => {
+  assert.equal(routePermission("GET", "/api/activity/overview"), "servers.view");
+  assert.equal(routePermission("GET", "/api/activity"), "audit.view");
+});
 test("suspension defaults deny method confusion, encoded paths and unrelated tickets", () => {
   assert(suspensionAllows("GET", "/api/auth/me"));
   for (const [m, p] of [

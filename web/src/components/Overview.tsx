@@ -53,7 +53,7 @@ export default function Overview() {
     try {
       const [overview, activity, servers, recentJobs] = await Promise.all([
         request<OverviewData>("/overview"),
-        request<Event[]>("/activity?limit=30"),
+        request<Event[]>("/activity/overview"),
         request<Server[]>("/servers?limit=100&offset=0"),
         request<Job[]>("/jobs?limit=100"),
       ]);

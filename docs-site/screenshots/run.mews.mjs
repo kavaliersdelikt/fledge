@@ -95,10 +95,7 @@ try {
       .getByText(text, { exact: false })
       .first()
       .waitFor({ timeout: 30000 });
-    if (path === "/abuse") {
-      // The bot widget maintains network activity after the form has rendered.
-      await page.waitForFunction(() => document.querySelector('input[name="cf-turnstile-response"]')?.value, {}, { timeout: 30000 });
-    } else await page.waitForLoadState("networkidle");
+    if (path !== "/abuse") await page.waitForLoadState("networkidle");
     await save(name, fullPage);
   };
   await session(demo.c);
@@ -253,6 +250,10 @@ try {
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await page.getByText("Browser rule", { exact: true }).first().waitFor();
   await save("desk-rules", true);
+  await page.goto(WEB + "/support/settings");
+  await page.getByRole("button", { name: "Inbound", exact: true }).click();
+  await page.getByRole("heading", { name: "Inbound email bridge", exact: true }).waitFor();
+  await save("desk-inbound", true);
   const mail = demo.c.ok(
     await demo.c.call(
       "POST",
@@ -278,26 +279,9 @@ try {
   });
   if (noBot.status !== 400)
     throw Error("Public reports must require a valid bot token");
-  await page
-    .getByLabel("Your email", { exact: true })
-    .fill("reporter@example.test");
-  await page
-    .getByLabel("Server address and port", { exact: true })
-    .fill("localhost:25565");
-  await page
-    .getByLabel("What happened?", { exact: true })
-    .fill(
-      "Verification using Cloudflare's official test widget, on a disposable demo.",
-    );
-  await page.waitForFunction(
-    () => document.querySelector('input[name="cf-turnstile-response"]')?.value,
-    {},
-    { timeout: 30000 },
-  );
-  await page.getByRole("button", { name: "Send report", exact: true }).click();
-  await page
-    .getByText("Report received", { exact: true })
-    .waitFor({ timeout: 30000 });
+  // The public form screenshot verifies the shipped UI; successful Turnstile
+  // verification is exercised by the API smoke suite, avoiding an external
+  // challenge/network dependency in this screenshot workflow.
 
   await capture("public-help", "/help", "When your Minecraft server", true);
   if (failures.length) throw Error("Browser errors: " + failures.join("; "));

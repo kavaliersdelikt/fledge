@@ -111,16 +111,32 @@ func vmName(id string) string { return "fledge-vm-" + id }
 func vmRoot(id string) string { return filepath.Join(dataRoot, id) }
 func vmX(s string) string     { var b bytes.Buffer; _ = xml.EscapeText(&b, []byte(s)); return b.String() }
 func exists(p string) bool    { _, e := os.Stat(p); return e == nil }
+var vmCapabilityCache struct {
+	sync.Mutex
+	checked time.Time
+	value   map[string]interface{}
+}
+
 func vmCapabilities() map[string]interface{} {
-	enabled := env("VM_ENABLED", "false") == "true"
+	vmCapabilityCache.Lock()
+	defer vmCapabilityCache.Unlock()
+	if vmCapabilityCache.value != nil && time.Since(vmCapabilityCache.checked) < time.Minute {
+		return vmCapabilityCache.value
+	}
+	vmCapabilityCache.value = discoverVMCapabilities()
+	vmCapabilityCache.checked = time.Now()
+	return vmCapabilityCache.value
+}
+
+func discoverVMCapabilities() map[string]interface{} {
 	kvm := false
 	if f, e := os.OpenFile("/dev/kvm", os.O_RDWR, 0); e == nil {
 		kvm = true
 		f.Close()
 	}
 	variables := exists(env("VM_UEFI_VARS", "/usr/share/OVMF/OVMF_VARS_4M.fd"))
-	out := map[string]interface{}{"enabled": enabled, "kvm": kvm, "arch": runtime.GOARCH, "libvirt": false, "uefi": variables && exists(env("VM_UEFI_CODE", "/usr/share/OVMF/OVMF_CODE_4M.fd")), "secureBoot": exists(env("VM_UEFI_SECURE_VARS", "/usr/share/OVMF/OVMF_VARS_4M.ms.fd")) && exists(env("VM_UEFI_SECURE_CODE", "/usr/share/OVMF/OVMF_CODE_4M.ms.fd")), "tpm": false, "nft": false, "isolation": false, "networks": []string{}}
-	if !enabled {
+	out := map[string]interface{}{"enabled": false, "kvm": kvm, "arch": runtime.GOARCH, "libvirt": false, "uefi": variables && exists(env("VM_UEFI_CODE", "/usr/share/OVMF/OVMF_CODE_4M.fd")), "secureBoot": exists(env("VM_UEFI_SECURE_VARS", "/usr/share/OVMF/OVMF_VARS_4M.ms.fd")) && exists(env("VM_UEFI_SECURE_CODE", "/usr/share/OVMF/OVMF_CODE_4M.ms.fd")), "tpm": false, "nft": false, "isolation": false, "networks": []string{}}
+	if !kvm || runtime.GOARCH != "amd64" {
 		return out
 	}
 	_, tpmErr := exec.LookPath("swtpm")
@@ -163,6 +179,7 @@ func vmCapabilities() map[string]interface{} {
 	if len(tools) > 0 {
 		out["libvirt"] = false
 	}
+	out["enabled"] = kvm && out["libvirt"] == true && out["nft"] == true && out["isolation"] == true && len(tools) == 0
 	return out
 }
 func validateVM(s *server) error {
@@ -818,7 +835,7 @@ func vmStart(s *server) error {
 // Rebuild owned interfaces and isolation after restart. A guest whose manifest,
 // authorization or firewall cannot be reconciled is fenced rather than exposed.
 func vmReconcile() {
-	if env("VM_ENABLED", "false") != "true" {
+	if vmCapabilities()["libvirt"] != true {
 		return
 	}
 	entries, e := os.ReadDir(dataRoot)
@@ -954,11 +971,8 @@ func executeVM(j *job) (interface{}, error) {
 	defer vmActiveJobs.Delete(s.ID)
 	cleanup := j.Kind == "stop" || j.Kind == "kill" || j.Kind == "delete"
 	if !cleanup {
-		if env("VM_ENABLED", "false") != "true" {
-			return nil, errors.New("VM hosting is disabled on this node")
-		}
 		caps := vmCapabilities()
-		if caps["kvm"] != true || caps["libvirt"] != true || caps["isolation"] != true {
+		if caps["enabled"] != true {
 			return nil, errors.New("KVM/libvirt isolation prerequisites are unavailable")
 		}
 		if _, err := vmAuthorization(s); err != nil {
@@ -1302,7 +1316,7 @@ func vmSnapshot(j *job) (map[string]interface{}, error) {
 	return result, nil
 }
 func vmStatuses() []map[string]interface{} {
-	if env("VM_ENABLED", "false") != "true" {
+	if vmCapabilities()["libvirt"] != true {
 		return nil
 	}
 	names, e := virsh("list", "--all", "--name")

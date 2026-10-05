@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS nodes (
  draining boolean NOT NULL DEFAULT false, headroom_mb integer NOT NULL DEFAULT 512,
  memory_mb integer NOT NULL, cpu_percent integer NOT NULL, disk_mb integer NOT NULL,
  version text, usage jsonb NOT NULL DEFAULT '{}'::jsonb, deleted_at timestamptz, credential_hash text,
- enrollment_hash text, enrollment_expires_at timestamptz,
+ enrollment_hash text, enrollment_expires_at timestamptz, vm_enabled boolean NOT NULL DEFAULT false,
  created_at timestamptz NOT NULL DEFAULT now(),
  CHECK(memory_mb>0 AND cpu_percent>0 AND disk_mb>0 AND headroom_mb>=0)
 );
@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS settings(key text PRIMARY KEY,value jsonb NOT NULL DE
 ALTER TABLE file_transfers ADD COLUMN IF NOT EXISTS store text NOT NULL DEFAULT 's3';
 -- What the agent reports about itself (platform, quota support, SFTP, updatability).
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS agent jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS vm_enabled boolean NOT NULL DEFAULT false;
 -- Address players and SFTP clients use to reach the node.
 ALTER TABLE nodes ADD COLUMN IF NOT EXISTS public_host text;
 CREATE INDEX IF NOT EXISTS jobs_agent_update_idx ON jobs(node_id,created_at) WHERE kind='agent.update';

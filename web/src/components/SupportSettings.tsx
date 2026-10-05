@@ -4,6 +4,7 @@ import { json, API } from "@/lib/api";
 import {
   Button,
   Card,
+  ErrorNotice,
   Form,
   Notice,
   PageHeader,
@@ -14,6 +15,7 @@ import {
 import { DeskCollectionEditor } from "./DeskCollectionEditor";
 import { Captcha } from "./Auth";
 import { BrandMark } from "@/lib/brand";
+import { CopyButton, useConfirm } from "./feedback";
 export function SupportSettings() {
   const { data: d, error, loading, reload } = useLoad<any>("/support/settings"),
     [tab, setTab] = useState("general");
@@ -29,6 +31,7 @@ export function SupportSettings() {
       <nav className="mews-views" aria-label="Desk settings">
         {[
           "general",
+          "inbound",
           "suspension",
           "hours",
           "tiers",
@@ -50,6 +53,40 @@ export function SupportSettings() {
       {d && <DeskEditor key={tab} tab={tab} data={d} reload={reload} />}
     </>
   );
+}
+function InboundEmailEditor({ data, reload }: { data: { enabled: boolean }; reload: () => void }) {
+  const confirm = useConfirm();
+  const [enabled, setEnabled] = useState(!!data?.enabled),
+    [secret, setSecret] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  async function toggle(value: boolean) {
+    setBusy(true); setError("");
+    try {
+      const result = await json("PUT", "/support/inbound/settings", { enabled: value }) as { enabled: boolean };
+      setEnabled(result.enabled); reload();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function generate() {
+    if (!(await confirm("This replaces any existing secret and disables inbound replies until you update the trusted bridge.", { title: "Rotate inbound email secret?", confirmLabel: "Replace secret" }))) return;
+    setBusy(true); setError(""); setSecret("");
+    try {
+      const result = await json("POST", "/support/inbound/secret", {}) as { secret: string };
+      setSecret(result.secret); setEnabled(false); reload();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <Card title="Inbound email bridge">
+    <div className="form"><ErrorNotice message={error}/>
+      <p className="muted">Fledge does not read mailboxes. A trusted inbox bridge can post signed ticket replies to the panel. Its shared secret is stored encrypted and never shown again after generation.</p>
+      <div className="mews-setting"><span>Accept signed inbound replies</span><Switch label="Accept signed inbound replies" checked={enabled} disabled={busy} onChange={(value) => void toggle(value)}/></div>
+      <p className="field__hint">Turning this off rejects inbound replies immediately. Outbound email and panel replies are unchanged.</p>
+      <Button variant="ghost" busy={busy} onClick={() => void generate()}>Generate or rotate bridge secret</Button>
+      {secret && <Notice><p>Copy this secret into your trusted inbox bridge now. Fledge will not display it again.</p><code className="mono">{secret}</code> <CopyButton value={secret}/></Notice>}
+      <p className="small muted">Rotating the secret disables inbound replies until you enable them again and update the bridge. See the <a href="https://kavaliersdelikt.github.io/fledge/operate/support-setup#optional-inbound-email" target="_blank" rel="noreferrer">inbound email setup guide</a>.</p>
+    </div>
+  </Card>;
 }
 function DeskEditor({
   tab,
@@ -133,6 +170,8 @@ function DeskEditor({
         </Form>
       </Card>
     );
+  if (tab === "inbound")
+    return <InboundEmailEditor data={d.inboundEmail} reload={reload} />;
   if (tab === "suspension")
     return (
       <Card title="Account suspension">

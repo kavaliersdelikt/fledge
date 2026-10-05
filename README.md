@@ -33,7 +33,7 @@ Ask setup questions, share your servers, and help shape what Fledge becomes.
 
 </div>
 
-> **Version v0.9.1.1 (Mews)** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review.
+> **Version v0.9.1.2** Fledge is an actively developed project. It is suitable for local evaluation and controlled testing; it has not completed a production security review. See the [0.9.1.2 release notes](docs/releases/v0.9.1.2.md).
 >
 > **License:** GNU Affero General Public License v3.0 only (AGPL-3.0-only). See [LICENSE.md](LICENSE.md). Modified versions offered as a network service must provide their corresponding source under the license terms.
 
@@ -67,6 +67,8 @@ flowchart TB
 ```
 
 ## What you get
+
+> **New in v0.9.1.2:** VM hosting can now be enabled per ready node in the panel after automatic host discovery; the VM host guide is linked from setup and docs navigation. GitHub usage reporting uses the prepared intake by default and can be configured in the panel without `.env` edits. The signed inbound support-email bridge can also be enabled and keyed in desk settings. Operator overview access and workspace navigation are corrected. See the [release notes](https://kavaliersdelikt.github.io/fledge/releases/v0.9.1.2).
 
 | | |
 |---|---|

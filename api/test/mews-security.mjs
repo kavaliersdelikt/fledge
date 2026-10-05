@@ -106,6 +106,39 @@ try {
     403,
     "super cannot be removed",
   );
+  const operatorInvite = ok(
+      await call("POST", "/api/team", {
+        email: "operator@example.test",
+        preset: "Operator",
+        totp: authenticator.generate(credentials.secret),
+      }),
+      "invite operator",
+    ),
+    operator = client(stack.base);
+  operator.ok(
+    await operator.call("POST", "/api/auth/token/accept", {
+      token: new URL(operatorInvite.link).searchParams.get("token"),
+      password: "a-long-operator-password",
+    }),
+    "accept operator invitation",
+  );
+  operator.ok(
+    await operator.call("POST", "/api/auth/login", {
+      email: operatorInvite.email,
+      password: "a-long-operator-password",
+    }),
+    "operator login",
+  );
+  const operatorSetup = operator.ok(
+    await operator.call("POST", "/api/auth/2fa/setup", {}),
+    "operator 2FA setup",
+  );
+  operator.ok(
+    await operator.call("POST", "/api/auth/2fa/confirm", {
+      code: authenticator.generate(operatorSetup.secret),
+    }),
+    "operator 2FA confirm",
+  );
   const customer = ok(
       await call("POST", "/api/customers", { email: "holds@example.test" }),
       "customer",
@@ -129,6 +162,20 @@ try {
   const normal = await make("Normal"),
     manual = await make("Admin hold"),
     billing = await make("Billing hold");
+  operator.ok(await operator.call("GET", "/api/overview"), "operator overview data");
+  operator.ok(await operator.call("GET", "/api/servers?limit=100&offset=0"), "operator overview servers");
+  operator.ok(await operator.call("GET", "/api/jobs?limit=100"), "operator overview jobs");
+  const operationalFeed = operator.ok(
+    await operator.call("GET", "/api/activity/overview"),
+    "operator overview activity",
+  );
+  check(operationalFeed.some((event) => event.action === "node.create"), "operator sees node activity");
+  check(
+    !operationalFeed.some((event) => event.action.startsWith("customer.")) &&
+      operationalFeed.every((event) => !("detail" in event) && !("actor_email" in event)),
+    "overview activity omits customer events and audit details",
+  );
+  operator.status(await operator.call("GET", "/api/activity"), 403, "operator cannot inspect full audit");
   await db(
     "UPDATE servers SET desired_status='running',observed_status='running' WHERE owner_id=$1",
     [customer.id],

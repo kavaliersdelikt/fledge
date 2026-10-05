@@ -1,12 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { pool, fail, txt, hash } from "./core.js";
+import { pool, fail, txt, hash, decrypt } from "./core.js";
 import { supportRate, supportSettings } from "./support-policy.js";
 import { emit } from "./notifications.js";
-const key = () => process.env.SUPPORT_INBOUND_SECRET || "";
-export const inboundEnabled = () => key().length >= 32;
-export const replyToken = (id: string, email: string) =>
-  createHmac("sha256", key())
+const key = async () => {
+  const configured = (await pool.query("SELECT value,secret FROM settings WHERE key='support_inbound'")).rows[0];
+  if (configured) {
+    if (configured.value?.enabled !== true || !configured.secret) return "";
+    try { return String(JSON.parse(decrypt(configured.secret)).key || ""); } catch { return ""; }
+  }
+  return process.env.SUPPORT_INBOUND_SECRET || "";
+};
+export const inboundEnabled = async () => (await key()).length >= 32;
+export const replyToken = async (id: string, email: string) =>
+  createHmac("sha256", await key())
     .update(`ticket:${id}:${email.toLowerCase()}`)
     .digest("hex");
 function same(a: unknown, b: string) {
@@ -35,7 +42,8 @@ export function supportInbound(
   },
 ) {
   app.post("/api/support/inbound", async (req) => {
-    if (!inboundEnabled()) fail(404, "Inbound support email is disabled");
+    const secret = await key();
+    if (secret.length < 32) fail(404, "Inbound support email is disabled");
     const stamp = String(req.headers["x-support-timestamp"] || ""),
       sig = req.headers["x-support-signature"];
     if (
@@ -43,7 +51,7 @@ export function supportInbound(
       Math.abs(Date.now() / 1000 - Number(stamp)) > 300
     )
       fail(401, "Expired inbound signature");
-    const expected = createHmac("sha256", key())
+    const expected = createHmac("sha256", secret)
       .update(stamp + "\n" + JSON.stringify(req.body))
       .digest("hex");
     if (!same(sig, expected)) fail(401, "Invalid inbound signature");
@@ -57,7 +65,7 @@ export function supportInbound(
       ).rows[0];
     if (
       !t ||
-      !same(b.replyToken, replyToken(t.id, t.requester_email)) ||
+      !same(b.replyToken, await replyToken(t.id, t.requester_email)) ||
       String(b.from || "").toLowerCase() !== t.requester_email.toLowerCase()
     )
       fail(403, "Invalid ticket reply token");

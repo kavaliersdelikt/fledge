@@ -21,7 +21,9 @@ Suspension defaults have a separate tab. Appeals remain usable when the desk is 
 
 ## Optional inbound email
 
-Outbound replies use the existing retrying outbox. Inbound email needs a trusted inbox bridge that reads your mailbox and forwards structured replies. Fledge does not poll a mailbox itself. Leave `SUPPORT_INBOUND_SECRET` empty to keep the endpoint disabled. Use a random secret of at least 32 characters to enable it, and restart the API.
+Outbound replies use the existing retrying outbox. Inbound email needs a trusted inbox bridge that reads your mailbox and forwards structured replies. Fledge does not poll a mailbox itself. In **Help desk → Settings → Inbound**, generate a secret, copy it into the trusted bridge, then enable signed inbound replies. Fledge stores the key encrypted and shows it only once. Disable inbound replies there to reject new messages immediately; rotation disables the bridge until its new key is copied and enabled.
+
+![Panel controls for the optional inbound email bridge](/screenshots/desk-inbound.webp){.screenshot}
 
 The bridge extracts the signed reply reference from the outgoing message, splits it into ticket ID and reply token, and posts to `/api/support/inbound`:
 

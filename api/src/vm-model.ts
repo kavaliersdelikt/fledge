@@ -36,6 +36,7 @@ export async function vmTemplate(raw:any){
  return {profileId,mediaId,networkId,driverId};
 }
 export function vmNodeBlocker(n:any,p:VMProfile,network:any):string|null {
+ if(n.vm_enabled!==true)return 'VM hosting is disabled for this node in the panel';
  const v=n.agent?.virtualization;
  if(!v?.enabled||!v.kvm||!v.libvirt||v.arch!=='amd64')return 'KVM/libvirt is not ready';
  if(p.firmware==='uefi'&&!v.uefi)return 'UEFI firmware is unavailable';

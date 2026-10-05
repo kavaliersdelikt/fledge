@@ -25,7 +25,7 @@ async function operation(req:FastifyRequest,permission:string,kind:string,prepar
 export function virtualizationRoutes(app:FastifyInstance){
  app.get('/api/servers/:id/vm/migration-targets',async(req)=>{
   const s=await vmAccess(req,'manage');if(req.actor?.role==='admin')can(req,'servers.backups');else await serverAccess(req,s.id,'backups');
-  const nodes=(await pool.query("SELECT id,name,location,agent FROM nodes WHERE status='connected' AND NOT draining AND deleted_at IS NULL AND id<>$1 ORDER BY name",[s.node_id])).rows;
+  const nodes=(await pool.query("SELECT id,name,location,agent,vm_enabled FROM nodes WHERE status='connected' AND NOT draining AND deleted_at IS NULL AND id<>$1 ORDER BY name",[s.node_id])).rows;
   const networks=req.actor?.role==='admin'?(await pool.query('SELECT * FROM vm_networks WHERE enabled ORDER BY name')).rows:[s.vm_config.network];
   const targets=[];for(const n of nodes)for(const network of networks){if(!vmNodeBlocker(n,s.vm_config.profile,network))targets.push({nodeId:n.id,nodeName:n.name,location:n.location,networkId:network.id,networkName:network.name,preservesAddress:network.id===s.vm_config.networkId});}
   return {targets};

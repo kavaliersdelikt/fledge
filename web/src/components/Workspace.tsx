@@ -68,27 +68,27 @@ type Destination = {
   title: string;
   url: string;
   icon: LucideIcon;
-  group: "" | "Infrastructure" | "Administration";
+  group: "Workspace" | "Infrastructure" | "Administration";
   adminOnly: boolean;
   /** Hidden for customers until the administrator turns the feature on. */
   feature?: "store" | "billing";
 };
 
 export const destinations: Destination[] = [
-  {id:"support",title:"Help centre",url:"/support",icon:LifeBuoy,group:"Administration",adminOnly:false},
-  {id:"team",title:"Team",url:"/team",icon:Users,group:"Administration",adminOnly:true},
-  { id: "overview", title: "Overview", url: "/", icon: LayoutGrid, group: "", adminOnly: true },
-  { id: "servers", title: "Servers", url: "/servers", icon: Server, group: "", adminOnly: false },
-  { id: "store", title: "Store", url: "/store", icon: ShoppingBag, group: "", adminOnly: false, feature: "store" },
-  { id: "billing", title: "Billing", url: "/billing", icon: Receipt, group: "", adminOnly: false, feature: "billing" },
+  { id: "overview", title: "Overview", url: "/", icon: LayoutGrid, group: "Workspace", adminOnly: true },
+  { id: "servers", title: "Servers", url: "/servers", icon: Server, group: "Workspace", adminOnly: false },
+  { id: "store", title: "Store", url: "/store", icon: ShoppingBag, group: "Workspace", adminOnly: false, feature: "store" },
+  { id: "billing", title: "Billing", url: "/billing", icon: Receipt, group: "Workspace", adminOnly: false, feature: "billing" },
+  { id: "support", title: "Help centre", url: "/support", icon: LifeBuoy, group: "Workspace", adminOnly: false },
   { id: "nodes", title: "Nodes", url: "/nodes", icon: HardDrive, group: "Infrastructure", adminOnly: true },
-  { id: "resilience", title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
   { id: "virtualization", title: "Virtual machines", url: "/virtualization", icon: HardDrive, group: "Infrastructure", adminOnly: true },
+  { id: "resilience", title: "Resilience", url: "/resilience", icon: ShieldCheck, group: "Infrastructure", adminOnly: true },
   { id: "templates", title: "Templates", url: "/templates", icon: Box, group: "Infrastructure", adminOnly: true },
   { id: "plugins", title: "Plugins", url: "/plugins", icon: Puzzle, group: "Infrastructure", adminOnly: true },
   { id: "customers", title: "Customers", url: "/customers", icon: Users, group: "Administration", adminOnly: true },
   { id: "billing-admin", title: "Billing", url: "/billing", icon: Receipt, group: "Administration", adminOnly: true },
   { id: "activity", title: "Activity", url: "/activity", icon: Activity, group: "Administration", adminOnly: true },
+  { id: "team", title: "Team", url: "/team", icon: Users, group: "Administration", adminOnly: true },
   { id: "api", title: "API", url: "/api-docs", icon: Code2, group: "Administration", adminOnly: true },
   { id: "updates", title: "Updates", url: "/updates", icon: Download, group: "Administration", adminOnly: true },
   { id: "settings", title: "Settings", url: "/settings", icon: Settings, group: "Administration", adminOnly: false },
@@ -159,7 +159,7 @@ export default function Workspace({
   const admin = user.role === "admin";
   const attention = useAttention(admin);
   const notifications = useNotifications();
-  // Customers only see two pages, so they get one unlabeled group.
+  // Customers get a single workspace group; administrators get a stable three-part hierarchy.
   const { brand } = useBrand();
   const labels = brand.navigation.labels;
   const features = useFeatures();
@@ -172,7 +172,7 @@ export default function Workspace({
         .filter(d=>!admin||user.isSuper||!user.permissions||!({overview:"servers.view",servers:"servers.view",virtualization:"nodes.view",nodes:"nodes.view",resilience:"failover.manage",templates:"templates.manage",plugins:"plugins.manage",customers:"customers.view","billing-admin":"billing.view",activity:"audit.view",api:"audit.view",updates:"settings.view",support:"support.view"} as Record<string,string>)[d.id]||user.permissions.includes(({overview:"servers.view",servers:"servers.view",virtualization:"nodes.view",nodes:"nodes.view",resilience:"failover.manage",templates:"templates.manage",plugins:"plugins.manage",customers:"customers.view","billing-admin":"billing.view",activity:"audit.view",api:"audit.view",updates:"settings.view",support:"support.view"} as Record<string,string>)[d.id]))
         // Administrators manage billing from the Administration group; customers see their own pages once they exist.
         .filter((d) => (admin ? d.feature === undefined && (d.id !== "billing-admin" || features.billing.visible) : !d.feature || (d.feature === "store" ? features.store.enabled : features.billing.visible)))
-        .map((d) => ({ ...d, title: d.id==="support"&&admin?"Help desk":labels[d.id === "billing-admin" ? "billing" : d.id] || (d.id === "store" ? features.store.title : d.title), group: admin ? d.group : ("" as const) })),
+        .map((d) => ({ ...d, title: d.id==="support"&&admin?"Help desk":labels[d.id === "billing-admin" ? "billing" : d.id] || (d.id === "store" ? features.store.title : d.title), group: admin ? d.group : ("Workspace" as const) })),
     [admin, labels, features, user.isSuper, user.permissions],
   );
   const current = allowed.find((d) => isActive(pathname, d.url));
@@ -276,7 +276,8 @@ function SidebarContent({
   };
   const effective: PersonalMode = mode ?? brand.theme.mode;
   useGlide(nav, '[aria-current="page"]', pathname);
-  const groups = [...new Set(allowed.map((d) => d.group))];
+  const groupOrder = user.role === "admin" ? ["Workspace", "Infrastructure", "Administration"] : ["Workspace"];
+  const groups = groupOrder.filter((group) => allowed.some((destination) => destination.group === group));
   const badge = (url: string) =>
     url === "/servers" && attention.servers ? (
       <span className="nav__badge nav__badge--bad" title={`${attention.servers} need attention`}>
@@ -302,7 +303,8 @@ function SidebarContent({
       <BellButton center={notifications} variant="row" />
       <nav className="nav glide" ref={setNav}>
         {groups.map((group) => (
-          <div className="nav__group" key={group || "main"}>
+          <div className="nav__group" key={group}>
+            <h2 className="nav__heading">{group}</h2>
             {allowed
               .filter((d) => d.group === group)
               .map((d) => (

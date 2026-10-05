@@ -4,6 +4,7 @@ import {
   replyToken,
 } from "./support-inbound.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { randomBytes } from "node:crypto";
 import {
   pool,
   can,
@@ -12,6 +13,7 @@ import {
   asId,
   audit,
   hash,
+  encrypt,
   WEB_ORIGIN,
   looksLikeEmail,
 } from "./core.js";
@@ -105,8 +107,8 @@ async function mail(t: any, template: string, message: string) {
       reference: "#" + t.number,
       message:
         message +
-        (inboundEnabled()
-          ? `\n\nEmail reply reference: ${t.id}.${replyToken(t.id, t.requester_email)}`
+        ((await inboundEnabled())
+          ? `\n\nEmail reply reference: ${t.id}.${await replyToken(t.id, t.requester_email)}`
           : ""),
       link: `${WEB_ORIGIN}/support/${t.id}`,
     },
@@ -1324,7 +1326,34 @@ function registerDeskSettings(app: FastifyInstance) {
       agents: await q(
         "SELECT id,email,display_name FROM users WHERE role='admin' AND NOT disabled",
       ),
+      inboundEmail: { enabled: await inboundEnabled() },
     };
+  });
+  app.get("/api/support/inbound/settings", async (req) => {
+    can(req, "support.manage");
+    return { enabled: await inboundEnabled() };
+  });
+  app.put("/api/support/inbound/settings", async (req) => {
+    can(req, "support.manage");
+    const enabled = (req.body as any)?.enabled;
+    if (typeof enabled !== "boolean") fail(400, "enabled must be a boolean");
+    const current = (await pool.query("SELECT secret FROM settings WHERE key='support_inbound'")).rows[0];
+    let secret = current?.secret || null;
+    if (enabled && !secret) {
+      const legacy = process.env.SUPPORT_INBOUND_SECRET || "";
+      if (legacy.length < 32) fail(409, "Generate an inbound email secret in this panel first");
+      secret = encrypt(JSON.stringify({ key: legacy }));
+    }
+    await pool.query("INSERT INTO settings(key,value,secret,updated_by) VALUES('support_inbound',$1,$2,$3) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,secret=coalesce(settings.secret,EXCLUDED.secret),updated_by=EXCLUDED.updated_by,updated_at=now()", [JSON.stringify({ enabled }), secret, req.actor!.id]);
+    await audit(req.actor!.id, enabled ? "support.inbound.enable" : "support.inbound.disable", "settings", "support-inbound", { enabled });
+    return { enabled: await inboundEnabled() };
+  });
+  app.post("/api/support/inbound/secret", async (req) => {
+    can(req, "support.manage");
+    const secret = randomBytes(32).toString("base64url");
+    await pool.query("INSERT INTO settings(key,value,secret,updated_by) VALUES('support_inbound',$1,$2,$3) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,secret=EXCLUDED.secret,updated_by=EXCLUDED.updated_by,updated_at=now()", [JSON.stringify({ enabled: false }), encrypt(JSON.stringify({ key: secret })), req.actor!.id]);
+    await audit(req.actor!.id, "support.inbound.rotate", "settings", "support-inbound", { enabled: false });
+    return { secret };
   });
   app.put("/api/support/settings", async (req) => {
     can(req, "support.manage");

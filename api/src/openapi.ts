@@ -25,6 +25,7 @@ export function captureRoutes(app:FastifyInstance){
 const D=(tag:string,summary:string,access:Access='session',extra:Partial<Doc>={}):Doc=>({tag,summary,access,...extra});
 const docs:Record<string,Doc>={
  'GET /api/usage':D('Usage reporting','Super-administrator reporting consent and GitHub connection state','admin'),
+ 'PUT /api/usage/config':D('Usage reporting','Configure the public intake coordinates; no private key or app secret is accepted','admin',{body:'repository:string, clientId:string, publicKeyBase64:string'}),
  'POST /api/usage/consent':D('Usage reporting','Review the current notice, opt in or withdraw','admin',{body:'consent:boolean, noticeVersion:number'}),
  'POST /api/usage/connect':D('Usage reporting','Begin GitHub App device authorization after explicit consent','admin'),
  'POST /api/usage/connect/poll':D('Usage reporting','Poll the bounded GitHub authorization challenge','admin'),
@@ -34,6 +35,7 @@ const docs:Record<string,Doc>={
  'PATCH /api/virtualization/media/:id':D('Virtual machines','Enable or disable media for new installations','admin',{body:'enabled:boolean'}),
  'PATCH /api/virtualization/profiles/:id':D('Virtual machines','Enable or disable an approved hardware profile','admin',{body:'enabled:boolean'}),
  'PATCH /api/virtualization/networks/:id':D('Virtual machines','Enable or disable a configured guest pool','admin',{body:'enabled:boolean'}),
+ 'PATCH /api/nodes/:id/virtualization':D('Fleet','Allow or disallow new VM placement on a host after checking agent prerequisites','admin',{scope:'provision',body:'enabled:boolean'}),
  'GET /api/agent/servers/:id/vm-authorization':D('Virtual machines','Fresh hold and active-lease decision before guest boot','agent'),
  'GET /api/agent/vm-consoles':D('Virtual machines','Authorized pending binary console relays for this node','agent'),
 
@@ -85,6 +87,9 @@ const docs:Record<string,Doc>={
  'POST /api/customers/:id/suspension/reply':D('Suspension','Reply to appeal','admin'),
  'GET /api/support/config':D('Support','Available categories and support tier','session'),
  'POST /api/support/inbound':D('Support','Signed inbox bridge for email replies','public'),
+ 'GET /api/support/inbound/settings':D('Support','Read whether the signed inbox bridge is enabled','admin'),
+ 'PUT /api/support/inbound/settings':D('Support','Enable or disable signed inbound replies','admin',{body:'enabled:boolean'}),
+ 'POST /api/support/inbound/secret':D('Support','Rotate the encrypted inbox bridge secret; shown once','admin'),
  'DELETE /api/support/tickets/:id':D('Support','Delete ticket','admin'),
  'POST /api/support/tickets/bulk':D('Support','Bulk assignment and status updates','admin'),
  'GET /api/support/diagnostics/:id':D('Support','Preview redacted server diagnostics','session'),

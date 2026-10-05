@@ -25,6 +25,16 @@ const csvCell=(v:unknown)=>{
 };
 
 export function auditRoutes(app:FastifyInstance){
+ // The dashboard gets a narrow operational feed. Full audit rows, actor identities and details
+ // remain behind audit.view on /api/activity.
+ app.get('/api/activity/overview',async(req)=>{
+  admin(req);scope(req,'read');
+  return (await pool.query(`SELECT a.id,a.action,a.created_at,a.target_type,a.target_id
+   FROM audit_events a
+   WHERE (a.target_type='server' AND a.action LIKE 'server.%')
+      OR (a.target_type='node' AND a.action LIKE 'node.%')
+   ORDER BY a.created_at DESC,a.id DESC LIMIT 20`)).rows;
+ });
  app.get('/api/activity',async(req)=>{
   admin(req);scope(req,'read');
   const p=page(req.query),f=filters(req.query);

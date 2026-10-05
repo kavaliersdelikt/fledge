@@ -19,33 +19,35 @@ func vmConsoleLoop() {
 	active := map[string]bool{}
 	var mu sync.Mutex
 	for {
-		if env("VM_ENABLED", "false") == "true" {
-			var reply struct {
-				Consoles []struct {
-					ID       string `json:"id"`
-					ServerID string `json:"serverId"`
-					Mode     string `json:"mode"`
-				} `json:"consoles"`
-			}
-			if request("GET", "/api/agent/vm-consoles", nil, &reply, true) == nil {
-				for _, c := range reply.Consoles {
-					if !vmConsoleDigest.MatchString(c.ID) || !uuidName.MatchString(c.ServerID) || (c.Mode != "vnc" && c.Mode != "serial") {
-						continue
-					}
-					mu.Lock()
-					running := active[c.ID]
-					if !running && len(active) < 32 {
-						active[c.ID] = true
-						mu.Unlock()
-						go func(id, serverID, mode string) {
-							defer func() { mu.Lock(); delete(active, id); mu.Unlock() }()
-							_ = vmConsoleSession(id, serverID, mode)
-						}(c.ID, c.ServerID, c.Mode)
-					} else {
-						mu.Unlock()
-					}
+		if vmCapabilities()["libvirt"] != true {
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		var reply struct {
+			Consoles []struct {
+				ID       string `json:"id"`
+				ServerID string `json:"serverId"`
+				Mode     string `json:"mode"`
+			} `json:"consoles"`
+		}
+		if request("GET", "/api/agent/vm-consoles", nil, &reply, true) == nil {
+			for _, c := range reply.Consoles {
+				if !vmConsoleDigest.MatchString(c.ID) || !uuidName.MatchString(c.ServerID) || (c.Mode != "vnc" && c.Mode != "serial") {
+					continue
 				}
-			}
+				mu.Lock()
+				running := active[c.ID]
+				if !running && len(active) < 32 {
+					active[c.ID] = true
+					mu.Unlock()
+					go func(id, serverID, mode string) {
+						defer func() { mu.Lock(); delete(active, id); mu.Unlock() }()
+						_ = vmConsoleSession(id, serverID, mode)
+					}(c.ID, c.ServerID, c.Mode)
+				} else {
+					mu.Unlock()
+				}
+				}
 		}
 		time.Sleep(time.Second)
 	}

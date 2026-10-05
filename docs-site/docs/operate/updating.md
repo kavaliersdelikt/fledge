@@ -65,4 +65,6 @@ ignored by older code, so a code-only rollback is usually enough.
 
 0.9.1.1 adds account suspension and help desk tables and administrator grants. Back up the database before upgrading. The additive schema can be applied again safely. The oldest active, unblocked administrator becomes the super administrator; other existing administrators retain full grants. Existing sign-in blocks and server holds keep their meaning.
 
+Version 0.9.1.2 adds a default-off per-node VM placement switch. Existing nodes remain disabled until an administrator enables a ready host in **Virtual machines → Nodes**. The agent discovers KVM prerequisites automatically; remove the obsolete `VM_ENABLED` environment entry. Usage reporting receives its public intake defaults in the release and can be configured under **Settings → Panel → Usage reporting**, so no usage-specific environment settings are required. No manual database action is needed; the panel applies the additive migration on startup.
+
 The built-in help desk, public articles, abuse reports, whole-account billing suspension and destructive retention are off by default. Review [Team](/panel/team) and [support setup](/operate/support-setup) after upgrading. Keep the panel API and node agent on the same release.
