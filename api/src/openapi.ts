@@ -138,6 +138,7 @@ const docs:Record<string,Doc>={
  'POST /api/tokens':D('Authentication','Create an API token (scopes: read, provision, suspend)','admin',{body:'name, scopes[], expiresAt?'}),
  'DELETE /api/tokens/:id':D('Authentication','Revoke an API token','admin'),
  'GET /api/overview':D('Fleet','Counts of nodes, servers and capacity','admin',{scope:'read'}),
+ 'GET /api/activity/overview':D('Fleet','Recent server and node activity for the administrator overview (requires servers.view; excludes audit details)','admin',{scope:'read'}),
  'GET /api/nodes':D('Fleet','List nodes','admin',{scope:'read'}),
  'POST /api/nodes':D('Fleet','Register a node','admin',{scope:'provision',body:'name, location, memoryMb, cpuPercent, diskMb, headroomMb?'}),
  'POST /api/nodes/:id/enrollment':D('Fleet','Create a one-time enrollment token for a node','admin',{scope:'provision'}),
