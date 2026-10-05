@@ -36,10 +36,14 @@ services:
     environment:
       DATABASE_URL: postgres://fledge:${POSTGRES_PASSWORD}@postgres:5432/fledge
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env}
+      USAGE_INTAKE_REPOSITORY: ${USAGE_INTAKE_REPOSITORY:-}
+      USAGE_GITHUB_CLIENT_ID: ${USAGE_GITHUB_CLIENT_ID:-}
+      USAGE_INTAKE_PUBLIC_KEY: ${USAGE_INTAKE_PUBLIC_KEY:-}
+      BACKUP_MAX_BYTES: ${BACKUP_MAX_BYTES:-68719476736}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PORT: "4000"
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:-0.8.1.1}
+      APP_VERSION: ${APP_VERSION:-0.9.1.1}
       # Appearance (Settings, Appearance): BRANDING_DISABLED=true shows the built-in look and refuses changes (recovery).
       BRANDING_DISABLED: ${BRANDING_DISABLED:-false}
       BRAND_NAME: ${BRAND_NAME:-}
@@ -96,7 +100,7 @@ services:
     environment:
       PORT: "4020"
       PLUGIN_TOKEN_FILE: /run/fledge-plugins/token
-      APP_VERSION: ${APP_VERSION:-0.8.1.1}
+      APP_VERSION: ${APP_VERSION:-0.9.1.1}
     networks:
       - plugins_net
     volumes:

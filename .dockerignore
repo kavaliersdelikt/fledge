@@ -4,9 +4,12 @@
 **/.gocache
 **/.gopath
 **/.gomodcache
+/.cache
+/.usage
+/usage-private.pem
 **/.env
 **/.env.*.local
-.git 
+.git
 **/*.log
 **/coverage
 **/.DS_Store
