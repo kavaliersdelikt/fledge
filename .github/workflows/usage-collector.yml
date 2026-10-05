@@ -1,0 +1,55 @@
+name: Private usage dashboard
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: private-usage-collector
+  cancel-in-progress: false
+jobs:
+  collect:
+    if: github.event.repository.private == true && vars.USAGE_INTAKE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      USAGE_INTAKE_REPOSITORY: ${{ vars.USAGE_INTAKE_REPOSITORY }}
+      USAGE_INTAKE_TOKEN: ${{ secrets.USAGE_INTAKE_TOKEN }}
+      USAGE_PRIVATE_KEY: ${{ secrets.USAGE_PRIVATE_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Restore latest private state
+        shell: bash
+        run: |
+          mkdir -p .usage/previous
+          artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --jq 'first(.artifacts[] | select(.name == "usage-state" and .expired == false) | .id) // empty')
+          if [ -n "$artifact_id" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > .usage/previous.zip
+            python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('.usage/previous.zip') as archive:
+              info = archive.getinfo('state.json')
+              if info.file_size > 32 * 1024 * 1024:
+                  raise ValueError('Usage state exceeds the configured collector ceiling')
+              with open('.usage/previous/state.json', 'wb') as target:
+                  target.write(archive.read(info))
+          PY
+          fi
+      - name: Decrypt and aggregate receipts
+        run: node scripts/usage-collector.mjs
+      - name: Save private state and dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: usage-state
+          path: .usage/out/
+          retention-days: 1
+          if-no-files-found: error
+      - name: Close durable receipts when a scoped intake token is configured
+        if: env.USAGE_INTAKE_TOKEN != ''
+        run: node scripts/usage-collector.mjs --close
