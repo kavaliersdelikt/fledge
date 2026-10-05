@@ -123,6 +123,8 @@ const hosting = [
   { src: 'billing-overview', url: 'panel.willowhost.example/billing', alt: 'Billing overview with recurring revenue, active subscriptions, overdue payments and a checklist for opening the store', cap: 'Recurring revenue, trials, overdue payments, and a checklist that keeps the store closed until everything works.' },
   { src: 'signup-form', url: 'panel.willowhost.example/', alt: 'The sign-up form with terms and a confirmation step by email', cap: 'People create their own account. Nothing can be created until the email address is confirmed.' },
   { src: 'email-templates', url: 'panel.willowhost.example/settings', alt: 'The email template editor with a live preview of a receipt', cap: 'Every email is a template you can edit, with a live preview and a delivery log with retries.' },
+  { src: 'suspended-dark', url: 'panel.example.org/', alt: 'Paused account with the host message, billing access and an appeal thread', cap: 'A pause with an explanation: billing, security and data stay available, with one appeal thread for the host.' },
+  { src: 'desk-ticket', url: 'panel.example.org/support', alt: 'Support ticket with a private team note and server context', cap: 'An optional help desk with private notes, server context, business-hour goals and searchable answers.' },
 ];
 const himg = $('#host-img'), hcap = $('#host-caption'), hurl = $('#host-url');
 hosting.forEach((s) => { const i = new Image(); i.src = `screenshots/${s.src}.webp`; });

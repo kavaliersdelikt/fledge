@@ -38,7 +38,7 @@
   <main id="main">
     <section class="hero">
       <div class="hero-inner">
-        <a class="news intro i1" href="releases/v0.8.1.1">New in 0.8.1.1 “Aerie”: a guided first server, per-customer permissions and Better Discord Notifications</a>
+        <a class="news intro i1" href="releases/v0.9.1.1">New in 0.9.1.1 "Mews": KVM virtual machines, an optional help desk and explained suspensions</a>
         <h1 class="intro i2"><span class="l1">Your servers,</span><span class="l2">in orbit.</span></h1>
         <p class="lede intro i3">
           Fledge is a self-hosted control panel for game servers on your own Linux Docker hosts. The panel sits at the centre;
@@ -146,8 +146,8 @@
         </div>
         <div class="spec-item">
           <h3>People and quotas</h3>
-          <p>Accounts for the people you host, collaborators with fine-grained permissions per server, and quotas on servers, memory, CPU, disk, backups and ports.</p>
-          <a href="panel/customers">Customers and quotas</a>
+          <p>A super administrator delegates permission sets to the team. Customers get per-server collaborators and quotas on servers, memory, CPU, disk, backups and ports.</p>
+          <a href="panel/team">Team and permissions</a>
         </div>
         <div class="spec-item">
           <h3>Sign-in that holds</h3>
@@ -216,6 +216,8 @@
           <button role="tab" aria-selected="false" data-i="2" tabindex="-1">Billing</button>
           <button role="tab" aria-selected="false" data-i="3" tabindex="-1">Sign-up</button>
           <button role="tab" aria-selected="false" data-i="4" tabindex="-1">Emails</button>
+          <button role="tab" aria-selected="false" data-i="5" tabindex="-1">Suspension</button>
+          <button role="tab" aria-selected="false" data-i="6" tabindex="-1">Support</button>
         </div>
       </div>
       <div class="brandsec-grid">
@@ -240,6 +242,35 @@
         </div>
       </div>
       <p class="tour-foot">A fictional hosting business on demo data, with Stripe’s test mode behind it. Tax, invoicing rules and consumer law remain your responsibility.</p>
+    </section>
+
+    <section class="block hostsec mews-section" id="support" aria-labelledby="support-h">
+      <div class="tour-head"><h2 id="support-h">Help stays close.</h2><a class="btn btn-line" href="panel/support">Explore the help desk</a></div>
+      <div class="hostsec-grid">
+        <div class="hostsec-copy">
+          <p>A conversation beside the server it concerns. Customers get tickets and a searchable knowledge base; your team gets assignments, private notes and response deadlines.</p>
+          <ul class="points">
+            <li><b>Available when you need it.</b> Enable the built-in help desk, choose who can use it, and connect an inbound email bridge if your team works by email.</li>
+            <li><b>A clear account pause.</b> Give customers a public explanation, a next step and an appeal route. Keep internal reasons private while access, billing and retention follow the hold.</li>
+            <li><b>Keep the right people informed.</b> Ticket replies, status changes and suspension events reach the panel and selected notification channels.</li>
+          </ul>
+          <div class="cta"><a href="panel/suspension">How account suspensions work</a></div>
+        </div>
+        <div class="frame-wrap"><div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span>panel.willowhost.example/support</span></div><img src="screenshots/desk-ticket.webp" alt="A support ticket with its conversation, assignment and internal note controls" width="1360" height="960" loading="lazy" /></div><p class="tour-caption">The shipped help desk, on a disposable demo account.</p></div>
+      </div>
+      <div class="mews-hold"><img src="screenshots/suspended-light.webp" alt="The customer account pause screen with a public explanation and appeal options" width="1360" height="960" loading="lazy" /><div><h3>A pause with a next step.</h3><p>The customer sees the explanation and permitted support or billing routes. Your team retains the history and controls when access resumes.</p></div></div>
+    </section>
+
+    <section class="block hostsec mews-section" id="virtual-machines" aria-labelledby="vm-h">
+      <div class="tour-head"><h2 id="vm-h">A whole machine.<br />In the same panel.</h2><a class="btn btn-line" href="panel/virtual-machines">VM hosting guide</a></div>
+      <div class="hostsec-grid">
+        <div class="hostsec-copy"><p>Run KVM guests beside your Docker servers. Approved images, hardware profiles and networks give customers room to work within the limits you set.</p><ul class="points">
+          <li><b>Install your operating system.</b> Linux cloud images with SSH provisioning, or approved Linux and licensed Windows installation media.</li>
+          <li><b>Get to the actual guest.</b> Browser VNC and serial access, with reconnect, fullscreen and explicit clipboard controls.</li>
+          <li><b>Keep recovery practical.</b> Grow disks, configure allocated NAT ports or routed addresses, take stopped snapshots and restore complete guest bundles.</li>
+        </ul><div class="cta"><a href="operate/virtual-machines">Prepare a KVM node</a></div></div>
+        <div class="frame-wrap"><div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span>panel.willowhost.example/servers/linux-vm</span></div><img src="screenshots/vm-console.webp" alt="The VM desktop console displaying a real Linux guest" width="1360" height="960" loading="lazy" /></div><p class="tour-caption">A real Linux guest. VM hosting is opt-in and requires a configured KVM/libvirt node.</p></div>
+      </div>
     </section>
 
     <section class="block brandsec" id="brand" aria-labelledby="brand-h">
