@@ -49,7 +49,8 @@ func imageAllowed(image string) bool {
 func agentInfo() map[string]interface{} {
 	blocker := updateBlocker()
 	info := map[string]interface{}{
-		"os": runtime.GOOS, "arch": runtime.GOARCH,
+		"virtualization": vmCapabilities(),
+		"os":             runtime.GOOS, "arch": runtime.GOARCH,
 		"updatable": blocker == "",
 		"quota":     quotaStatus(),
 		"sftp":      sftpStatus(),

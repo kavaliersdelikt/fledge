@@ -75,7 +75,21 @@ func beatOK() {
 	}
 	foMu.Unlock()
 	for _, id := range restart {
-		if _, e := docker("start", container(id)); e != nil {
+		var e error
+		if exists(filepath.Join(vmRoot(id), "vm.json")) {
+			unlock := vmLock(id)
+			var s server
+			var b []byte
+			b, e = os.ReadFile(filepath.Join(vmRoot(id), "vm.json"))
+			if e == nil { e = json.Unmarshal(b, &s) }
+			if e == nil { e = validateVM(&s) }
+			if e == nil { e = defineVM(&s) }
+			if e == nil { _, e = virsh("start", vmName(id)) }
+			unlock()
+		} else {
+			_, e = docker("start", container(id))
+		}
+		if e != nil {
 			log.Printf("fence: restarting %s: %v", id, e)
 		} else {
 			log.Printf("fence: panel reachable again, restarted %s", id)
@@ -101,6 +115,16 @@ func checkFence() {
 		done := fencedNow[id]
 		foMu.Unlock()
 		if done {
+			continue
+		}
+		if exists(filepath.Join(vmRoot(id), "vm.json")) {
+			if !vmStopped(id) {
+				if _, e := virsh("destroy", vmName(id)); e == nil {
+					foMu.Lock()
+					fencedNow[id] = true
+					foMu.Unlock()
+				}
+			}
 			continue
 		}
 		if state, _ := docker("inspect", "--format", "{{.State.Running}}", container(id)); state != "true" {
@@ -153,6 +177,19 @@ func evictedDir() string { return filepath.Join(dataRoot, ".evicted") }
 func evictServer(id string) (interface{}, error) {
 	if !uuidName.MatchString(id) {
 		return nil, fmt.Errorf("invalid server id")
+	}
+	if exists(filepath.Join(vmRoot(id), "vm.json")) {
+		if !vmStopped(id) {
+			if _, e := virsh("destroy", vmName(id)); e != nil {
+				return nil, e
+			}
+		}
+		if _, e := virsh("undefine", vmName(id), "--nvram", "--keep-tpm"); e != nil && !strings.Contains(e.Error(), "Domain not found") {
+			return nil, e
+		}
+		_, _ = vmCommand("nft", "delete", "table", "inet", "fledge_vm_"+strings.ReplaceAll(id, "-", ""))
+		_, _ = vmCommand("nft", "delete", "table", "netdev", "fledge_vm_"+strings.ReplaceAll(id, "-", ""))
+		_, _ = vmCommand("ip", "link", "delete", vmTap(id))
 	}
 	if _, e := docker("rm", "-f", container(id)); e != nil && !strings.Contains(e.Error(), "No such container") {
 		return nil, e

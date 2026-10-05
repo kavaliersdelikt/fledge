@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.8.1.1"
+var version = "0.9.1.1"
 
 const maxTransfer = 8 << 20
 
@@ -28,16 +28,18 @@ var api, nodeID, dataRoot, credentialFile, credential string
 var client = &http.Client{Timeout: 35 * time.Second}
 
 type server struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	MemoryMB      int    `json:"memoryMb"`
-	CPUPercent    int    `json:"cpuPercent"`
-	DiskMB        int    `json:"diskMb"`
-	Port          int    `json:"port"`
-	Image         string `json:"image"`
-	Startup       string `json:"startup"`
-	StopCommand   string `json:"stopCommand"`
-	TemplateID    string `json:"templateId"`
+	Runtime       string    `json:"runtime"`
+	VM            *vmConfig `json:"vm"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	MemoryMB      int       `json:"memoryMb"`
+	CPUPercent    int       `json:"cpuPercent"`
+	DiskMB        int       `json:"diskMb"`
+	Port          int       `json:"port"`
+	Image         string    `json:"image"`
+	Startup       string    `json:"startup"`
+	StopCommand   string    `json:"stopCommand"`
+	TemplateID    string    `json:"templateId"`
 	InternalPorts []struct {
 		Container int    `json:"container"`
 		Offset    int    `json:"offset"`
@@ -68,6 +70,12 @@ func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
 		fmt.Println(version)
 		return
+	}
+	if configured := os.Getenv("BACKUP_MAX_BYTES"); configured != "" {
+		n, e := strconv.ParseInt(configured, 10, 64)
+		if e != nil || n < 1<<30 || n > 1<<40 {
+			log.Fatal("BACKUP_MAX_BYTES must be between 1 GiB and 1 TiB")
+		}
 	}
 	api = strings.TrimRight(os.Getenv("API_URL"), "/")
 	nodeID = os.Getenv("NODE_ID")
@@ -112,10 +120,12 @@ func main() {
 	log.Printf("Fledge agent %s node %s", version, nodeID)
 	mountAllVolumes()
 	loadFailoverState()
+	vmReconcile()
 	if e := heartbeat(); e != nil {
 		log.Printf("heartbeat: %v", e)
 	}
 	go liveLoop()
+	go vmConsoleLoop()
 	go func() {
 		for {
 			if e := heartbeat(); e != nil {
@@ -277,6 +287,10 @@ func heartbeat() error {
 	} else {
 		log.Printf("docker status: %v", e)
 	}
+	for _, entry := range vmStatuses() {
+		status = append(status, entry)
+		ids = append(ids, entry["id"].(string))
+	}
 	var reply struct {
 		Config *panelConfig `json:"config"`
 	}
@@ -343,6 +357,7 @@ func executeOnce(j *job) (interface{}, error) {
 		return evictServer(id)
 	}
 	persistent := map[string]bool{"create": true, "reinstall": true, "configure": true, "start": true, "stop": true, "restart": true, "kill": true, "delete": true, "backup": true, "restore": true, "file.import": true, "file.export": true}[j.Kind]
+	persistent = persistent || strings.HasPrefix(j.Kind, "vm.")
 	if !persistent {
 		return execute(j)
 	}
@@ -359,7 +374,7 @@ func executeOnce(j *job) (interface{}, error) {
 	}
 	result, e := execute(j)
 	if e != nil {
-		return nil, e
+		return result, e
 	}
 	b, e := json.Marshal(result)
 	if e != nil {
@@ -378,6 +393,9 @@ func execute(j *job) (interface{}, error) {
 	s := j.Server
 	if s == nil {
 		return nil, errors.New("missing server")
+	}
+	if s.Runtime == "vm" {
+		return executeVM(j)
 	}
 	n := container(s.ID)
 	root := filepath.Join(dataRoot, s.ID)

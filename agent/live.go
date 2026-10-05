@@ -31,7 +31,8 @@ type streamWire struct {
 	writeMu sync.Mutex
 }
 
-func dialStream() (*streamWire, error) {
+func dialStream() (*streamWire, error) { return dialStreamRoute("/api/agent/stream") }
+func dialStreamRoute(routePath string) (*streamWire, error) {
 	u, e := url.Parse(api)
 	if e != nil {
 		return nil, e
@@ -67,7 +68,7 @@ func dialStream() (*streamWire, error) {
 		return nil, e
 	}
 	key := base64.StdEncoding.EncodeToString(nonce)
-	route := strings.TrimRight(u.EscapedPath(), "/") + "/api/agent/stream"
+	route := strings.TrimRight(u.EscapedPath(), "/") + routePath
 	hostHeader := u.Host
 	request := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: %s\r\nAuthorization: Bearer %s\r\nX-Node-ID: %s\r\n\r\n", route, hostHeader, key, credential, nodeID)
 	if _, e = io.WriteString(conn, request); e != nil {
@@ -149,7 +150,7 @@ func (w *streamWire) read() ([]byte, error) {
 			return nil, e
 		}
 		switch h[0] & 15 {
-		case 1:
+		case 1, 2:
 			return data, nil
 		case 9:
 			if e := w.sendFrame(10, data); e != nil {

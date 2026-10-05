@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,11 +17,21 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 	"unsafe"
 )
+
+// The same ceiling applies to compressed uploads and expanded archive contents.
+func backupMaxBytes() int64 {
+	n, e := strconv.ParseInt(env("BACKUP_MAX_BYTES", "68719476736"), 10, 64)
+	if e != nil || n < 1<<30 || n > 1<<40 {
+		return 64 << 30
+	}
+	return n
+}
 
 func parts(p string) ([]string, error) {
 	if !strings.HasPrefix(p, "/") {
@@ -345,8 +356,8 @@ func backup(root, link, id string) (int64, error) {
 	if e != nil {
 		return 0, e
 	}
-	if stat.Size() > 10<<30 {
-		return 0, errors.New("backup exceeds 10 GiB")
+	if stat.Size() > backupMaxBytes() {
+		return 0, errors.New("backup exceeds BACKUP_MAX_BYTES")
 	}
 	// Walk the actual generated gzip/tar file before publishing it. Reading all
 	// entry bytes through gzip.Reader validates its CRC and truncated streams.
@@ -422,7 +433,7 @@ func backupWithLifecycle(root, link, id, name string, minecraft bool) (int64, er
 // gzip checksum. If destination is nonempty it extracts only into that private
 // staging directory; the live data directory is never touched during parsing.
 func scanArchive(source io.Reader, destination string) error {
-	gz, e := gzip.NewReader(io.LimitReader(source, (10<<30)+1))
+	gz, e := gzip.NewReader(io.LimitReader(source, (backupMaxBytes())+1))
 	if e != nil {
 		return e
 	}
@@ -485,8 +496,8 @@ func scanArchive(source io.Reader, destination string) error {
 				}
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if h.Size < 0 || h.Size > (10<<30)-total {
-				return errors.New("archive exceeds 10 GiB")
+			if h.Size < 0 || h.Size > (backupMaxBytes())-total {
+				return errors.New("archive exceeds BACKUP_MAX_BYTES")
 			}
 			total += h.Size
 			if destination != "" {
@@ -689,6 +700,31 @@ func verifyBackup(j *job) (interface{}, error) {
 	}
 	if e = scanArchive(res.Body, stage); e != nil {
 		return nil, e
+	}
+	if j.Server != nil && j.Server.Runtime == "vm" {
+		var saved server
+		b, err := os.ReadFile(filepath.Join(stage, "vm.json"))
+		if err != nil {
+			return nil, err
+		}
+		if json.Unmarshal(b, &saved) != nil || saved.Runtime != "vm" || validateVM(&saved) != nil {
+			return nil, errors.New("invalid VM backup manifest")
+		}
+		for _, d := range saved.VM.Disks {
+			path := filepath.Join(stage, "disks", d.ID+".qcow2")
+			if _, err = inspectVMImage(path, d.SizeMB); err != nil {
+				return nil, err
+			}
+			if _, err = vmCommand("qemu-img", "check", "-f", "qcow2", path); err != nil {
+				return nil, err
+			}
+		}
+		if saved.VM.Profile.Firmware == "uefi" && !exists(filepath.Join(stage, "nvram.fd")) {
+			return nil, errors.New("VM backup is missing UEFI variables")
+		}
+		if saved.VM.Profile.TPM && !exists(filepath.Join(stage, "tpm")) {
+			return nil, errors.New("VM backup is missing TPM state")
+		}
 	}
 	size, e := diskUsage(stage)
 	if e != nil {
