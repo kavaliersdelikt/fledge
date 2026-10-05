@@ -63,6 +63,7 @@ if (Test-Path -LiteralPath $envPath -PathType Leaf) {
     Write-Host 'Created .env with random database and encryption secrets. Keep this file private.'
 }
 
+Write-Host 'Optional usage reporting is off. Review it after setup in Settings > Panel > Usage reporting; updates work without opting in.'
 Push-Location $root
 try {
     & docker compose up --build -d

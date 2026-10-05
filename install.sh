@@ -72,6 +72,7 @@ else
   echo 'Created a private .env with new random database and encryption secrets.'
 fi
 
+echo 'Optional usage reporting is off. Review it after setup in Settings > Panel > Usage reporting; updates work without opting in.'
 cd "$ROOT"
 docker compose up --build -d
 
