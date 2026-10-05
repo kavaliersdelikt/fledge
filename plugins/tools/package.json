@@ -1,1 +1,10 @@
-{"name":"fledge-plugin-tools","version":"0.8.1.1","private":true,"type":"module","description":"Build, sign and index Fledge plugin packages","dependencies":{"fflate":"^0.8.3"}}
+{
+  "name": "fledge-plugin-tools",
+  "version": "0.9.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Build, sign and index Fledge plugin packages",
+  "dependencies": {
+    "fflate": "^0.8.3"
+  }
+}

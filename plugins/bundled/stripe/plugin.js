@@ -131,29 +131,31 @@
     return { url: s.url, sessionId: s.id, customerId: id(s.customer), livemode: !!s.livemode };
   }
 
-  async function portalConfiguration() {
-    var saved = host.storage.get('portalConfig');
+  async function portalConfiguration(restricted) {
+    var saved = host.storage.get(restricted?'portalConfigRestricted':'portalConfig');
     if (saved) return saved;
     var conf = await api('POST', '/v1/billing_portal/configurations', {
       business_profile: { headline: host.settings.portalHeadline || 'Manage your subscription' },
       features: {
         payment_method_update: { enabled: 'true' }, invoice_history: { enabled: 'true' },
         customer_update: { enabled: 'true', allowed_updates: ['email', 'name', 'address', 'tax_id'] },
-        subscription_cancel: { enabled: 'true', mode: 'at_period_end' }
+        subscription_cancel: { enabled: 'true', mode: 'at_period_end' }, subscription_update:{enabled:'false'}
       }
     });
-    host.storage.set('portalConfig', conf.id);
+    host.storage.set(restricted?'portalConfigRestricted':'portalConfig', conf.id);
     return conf.id;
   }
-  async function createPortal(customerId, returnUrl) {
+  async function createPortal(customerId, returnUrl, options) {
+    var restricted=!!(options&&options.restricted);
     var params = { customer: customerId, return_url: returnUrl };
-    try { var s = await api('POST', '/v1/billing_portal/sessions', params); return { url: s.url }; }
+    if(restricted)params.configuration=await portalConfiguration(true);
+    try { var s = await api('POST', '/v1/billing_portal/sessions', params); return { url: s.url, restricted: restricted }; }
     catch (e) {
       // Stripe needs a portal configuration before the first session; create a sensible one once.
       if (!/configuration/i.test(e.message)) throw e;
       params.configuration = await portalConfiguration();
       var s2 = await api('POST', '/v1/billing_portal/sessions', params);
-      return { url: s2.url };
+      return { url: s2.url, restricted: restricted };
     }
   }
 
