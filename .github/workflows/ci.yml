@@ -58,7 +58,7 @@ jobs:
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         env:
           DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
-          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           WEB_ORIGIN: http://localhost:3000
           PORT: '4172'
         run: |
