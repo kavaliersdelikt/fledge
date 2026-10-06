@@ -5,7 +5,8 @@ on:
 permissions:
   contents: read
 jobs:
-  api:
+  api_core:
+    name: API core
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -28,7 +29,7 @@ jobs:
       run:
         working-directory: api
     env:
-      # The integration tests create and drop their own throw-away databases (the CI user is a superuser).
+      # Integration tests create and drop their own throw-away databases (the CI user is a superuser).
       TEST_DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
     steps:
       - uses: actions/checkout@v4
@@ -40,20 +41,24 @@ jobs:
             api/package-lock.json
             plugins/host/package-lock.json
             plugins/tools/package-lock.json
-      - run: npm ci
-      - run: npm ci
-        working-directory: plugins/host
-      - run: npm ci
-        working-directory: plugins/tools
+      - name: Install API and plugin dependencies
+        id: dependencies
+        run: |
+          npm ci
+          (cd ../plugins/host && npm ci)
+          (cd ../plugins/tools && npm ci)
       - run: npm run check
       - run: npm run test:unit
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
       - run: npm run test:cors
-      - run: npm run test:updates
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
       - run: npm run test:templates
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
       - name: HTTP and PostgreSQL smoke test (simulated node)
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         env:
           DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
-          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef
           WEB_ORIGIN: http://localhost:3000
           PORT: '4172'
         run: |
@@ -64,32 +69,245 @@ jobs:
           done
           curl --fail http://localhost:4172/api/health
           node test/smoke.mjs
+
+  api_updates:
+    name: API updates
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fledge_ci
+          POSTGRES_USER: fledge_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fledge_ci -d fledge_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    defaults:
+      run:
+        working-directory: api
+    env:
+      # Integration tests create and drop their own throw-away databases (the CI user is a superuser).
+      TEST_DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            plugins/host/package-lock.json
+            plugins/tools/package-lock.json
+      - name: Install API and plugin dependencies
+        id: dependencies
+        run: |
+          npm ci
+          (cd ../plugins/host && npm ci)
+          (cd ../plugins/tools && npm ci)
+      - run: npm run test:updates
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+
+  api_platform:
+    name: API plugins, quotas and schedules
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fledge_ci
+          POSTGRES_USER: fledge_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fledge_ci -d fledge_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    defaults:
+      run:
+        working-directory: api
+    env:
+      # Integration tests create and drop their own throw-away databases (the CI user is a superuser).
+      TEST_DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            plugins/host/package-lock.json
+            plugins/tools/package-lock.json
+      - name: Install API and plugin dependencies
+        id: dependencies
+        run: |
+          npm ci
+          (cd ../plugins/host && npm ci)
+          (cd ../plugins/tools && npm ci)
       - name: Plugin system (sandbox, store, Modrinth add-ons, trust)
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:plugins
       - name: Templates v2
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:templates-v2
       - name: Quotas, extra ports, clone
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:fit
       - name: Schedules, crash policy, notifications
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:autopilot
+
+  api_accounts:
+    name: API accounts and appearance
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fledge_ci
+          POSTGRES_USER: fledge_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fledge_ci -d fledge_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    defaults:
+      run:
+        working-directory: api
+    env:
+      # Integration tests create and drop their own throw-away databases (the CI user is a superuser).
+      TEST_DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            plugins/host/package-lock.json
+            plugins/tools/package-lock.json
+      - name: Install API and plugin dependencies
+        id: dependencies
+        run: |
+          npm ci
+          (cd ../plugins/host && npm ci)
+          (cd ../plugins/tools && npm ci)
       - name: Sessions, email, passkeys, audit, OpenAPI
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:accounts
       - name: Appearance (branding, images, custom CSS, history)
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:branding
       - name: Sign-up, limits, self-service servers, email templates
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:rookery
+
+  api_billing:
+    name: API billing and integrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fledge_ci
+          POSTGRES_USER: fledge_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fledge_ci -d fledge_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    defaults:
+      run:
+        working-directory: api
+    env:
+      # Integration tests create and drop their own throw-away databases (the CI user is a superuser).
+      TEST_DATABASE_URL: postgres://fledge_ci:ci_test_password_only@localhost:5432/fledge_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            plugins/host/package-lock.json
+            plugins/tools/package-lock.json
+      - name: Install API and plugin dependencies
+        id: dependencies
+        run: |
+          npm ci
+          (cd ../plugins/host && npm ci)
+          (cd ../plugins/tools && npm ci)
       - name: Plans, store, payments (Stripe stand-in), subscriptions, dunning
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:billing
       - name: Better Discord Notifications (embeds, styles, mention safety)
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:discord
       - name: Mews suspension, team and support
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:mews
       - name: Virtual machine API contracts and replicated console relay
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         env:
           VM_TEST_REDIS: redis://127.0.0.1:6379
         run: npm run test:vm
       - name: Encrypted opt-in usage reporting
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run test:usage
+
+  api:
+    if: always()
+    needs:
+      - api_core
+      - api_updates
+      - api_platform
+      - api_accounts
+      - api_billing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm every API suite passed
+        env:
+          API_CORE_RESULT: ${{ needs.api_core.result }}
+          API_UPDATES_RESULT: ${{ needs.api_updates.result }}
+          API_PLATFORM_RESULT: ${{ needs.api_platform.result }}
+          API_ACCOUNTS_RESULT: ${{ needs.api_accounts.result }}
+          API_BILLING_RESULT: ${{ needs.api_billing.result }}
+        run: |
+          printf 'API results: core=%s updates=%s platform=%s accounts=%s billing=%s\n' \
+            "$API_CORE_RESULT" "$API_UPDATES_RESULT" "$API_PLATFORM_RESULT" \
+            "$API_ACCOUNTS_RESULT" "$API_BILLING_RESULT"
+          if [ "$API_CORE_RESULT" != success ] || [ "$API_UPDATES_RESULT" != success ] || \
+             [ "$API_PLATFORM_RESULT" != success ] || [ "$API_ACCOUNTS_RESULT" != success ] || \
+             [ "$API_BILLING_RESULT" != success ]; then
+            exit 1
+          fi
   plugin-host:
     runs-on: ubuntu-latest
     defaults:
