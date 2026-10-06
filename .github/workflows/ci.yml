@@ -63,10 +63,21 @@ jobs:
           PORT: '4172'
         run: |
           npm start > /tmp/fledge-api-ci.log 2>&1 &
+          api_pid=$!
+          ready=0
           for i in $(seq 1 50); do
-            if curl --fail --silent http://localhost:4172/api/health > /dev/null; then break; fi
+            if curl --fail --silent --max-time 2 http://localhost:4172/api/health > /dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then break; fi
             sleep 1
           done
+          if [ "$ready" -ne 1 ]; then
+            echo "API failed to become healthy; startup log follows:"
+            cat /tmp/fledge-api-ci.log
+            exit 1
+          fi
           curl --fail http://localhost:4172/api/health
           node test/smoke.mjs
 
