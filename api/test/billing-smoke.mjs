@@ -9,9 +9,12 @@ import {bootStack,client,bootstrapAdmin,makeNode,heartbeat,nextJob,finishJob,dbQ
 import {startStripeMock} from './stripe-mock.mjs';
 
 const mails=[];
+let smtpClosing=false;
+let smtpError=null;
 const smtp=new SMTPServer({authOptional:true,allowInsecureAuth:true,disabledCommands:['STARTTLS'],
  onAuth(auth,session,cb){cb(null,{user:auth.username});},
  onData(stream,session,cb){simpleParser(stream).then(m=>{mails.push({to:m.to?.text,subject:m.subject,text:m.text,bcc:m.bcc?.text});cb();}).catch(cb);}});
+smtp.on('error',error=>{if(!(smtpClosing&&error.code==='ECONNRESET'))smtpError??=error;});
 await new Promise(r=>smtp.listen(0,'127.0.0.1',r));
 const smtpPort=smtp.server.address().port;
 
@@ -410,5 +413,9 @@ try{
 
  console.log(`PASS ${admin.state.count} assertions: plugin install and keys, plans and immutable prices, store readiness, checkout (server-side prices, idempotency, stock races), signed webhooks (forged, replayed, duplicated, unrelated), fulfilment, receipts, renewals, dunning, suspension, billing holds vs administrator suspension, cancel/resume, retention and termination, trials, setup fees, plan changes, account plans in limits, free and complimentary plans, failed fulfilment and retry, reconciliation, disputes, refunds`);
 }catch(e){failed=e;console.error('FAIL',e.message);console.error(String(e.stack).split(String.fromCharCode(10)).filter(l=>l.includes('billing-smoke')).slice(0,2).join(String.fromCharCode(10)));try{console.error('--- billing events ---',JSON.stringify(await q('SELECT type,error,attempts,processed_at IS NOT NULL AS done FROM billing_events ORDER BY id DESC LIMIT 8')));console.error('--- subscriptions ---',JSON.stringify(await q('SELECT status,fulfilment,fulfilment_error FROM subscriptions ORDER BY created_at DESC LIMIT 4')));}catch{}console.error('--- api log tail ---');console.error(stack.api.logs().split(String.fromCharCode(10)).slice(-25).join(String.fromCharCode(10)));}
-await stack.stop();smtp.close();await stripe.stop();
+smtpClosing=true;
+await stack.stop();
+await new Promise(resolve=>smtp.close(resolve));
+await stripe.stop();
+if(!failed&&smtpError){failed=smtpError;console.error('SMTP server failed:',smtpError);}
 process.exit(failed?1:0);
