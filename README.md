@@ -18,7 +18,10 @@ Manage customers, Docker game servers, KVM virtual machines and Linux nodes from
 
 [Overview](#what-is-fledge) · [Quick start](#quick-start) · [Connect a node](#connect-a-node) · [Documentation](#documentation) · [Community](#community) · [Known limits](#known-limits)
 
-<img src="docs/assets/banner2.png" width="100%" alt="Fledge — one panel, many worlds" />
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/fledge-banner.png" />
+  <img src="docs/assets/fledge-banner-animated.gif" width="100%" alt="Fledge — your servers, in orbit" />
+</picture>
 
 <p>
   <a href="https://discord.gg/gu49ZF6tQh"><img src="https://img.shields.io/badge/Join_the_Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join the Fledge Discord" /></a>
